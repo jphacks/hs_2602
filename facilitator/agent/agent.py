@@ -81,6 +81,8 @@ class FacilitatorAgent:
         since = st.since_last_intervention(now)
         if since is not None and since < s.cooldown_sec:
             return "blocked:cooldown", [], None
+        if st.silence_sec(now) < s.min_silence_for_intervention_sec:
+            return "blocked:short_pause", [], None
 
         allowed = list(FREE_ACTIONS)
         if st.speaker_info_usable() and st.names_confirmed:

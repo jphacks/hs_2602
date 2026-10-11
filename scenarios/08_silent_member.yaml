@@ -14,12 +14,12 @@ utterances:
   - {t: 97, d: 5, s: speaker_1, c: 0.9, text: テイクアウトいいですね。外のベンチで食べる人も増えそう。}
   - {t: 103, d: 5, s: speaker_2, c: 0.88, text: 雨の日はどうするかが課題ですね。}
   - {t: 109, d: 5, s: speaker_3, c: 0.9, text: 雨の日は空き教室で吸収できるんじゃないかな。}
-  - {t: 116.5, d: 6, s: speaker_1, c: 0.9, text: なるほど、組み合わせるといいですね。}
+  - {t: 117.5, d: 6, s: speaker_1, c: 0.9, text: なるほど、組み合わせるといいですね。}
   - {t: 140, d: 6, s: speaker_2, c: 0.88, text: どれを優先するかを決めたいですね。}
   - {t: 146, d: 2, s: speaker_3, c: 0.9, text: そうですね。}
   - {t: 150, d: 5, s: speaker_1, c: 0.9, text: 僕はキャッシュレス化が一番すぐできると思います。}
   - {t: 156, d: 2, s: speaker_2, c: 0.88, text: 私もそう思います。}
   - {t: 160, d: 3, s: speaker_3, c: 0.9, text: じゃあキャッシュレスが第一候補ですかね。}
 checkpoints:
-  - {at: 115.5, expect: [no_intervention], why: 3人で建設的に案が広がっている最中。割り込まない}
+  - {at: 116.5, expect: [no_intervention], why: 3人で建設的に案が広がっている最中。割り込まない}
   - {at: 166, expect: [invite_person, invite_all], forbid: [no_intervention], target_any: [speaker_4], why: 優先順位を決める段階でみさきさんが一度も発言していない。確定前に意見を聞く機会をつくる}

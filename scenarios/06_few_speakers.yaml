@@ -21,10 +21,10 @@ utterances:
   - {t: 178, d: 1, s: speaker_3, c: 0.82, text: …なるほど。}
   - {t: 180, d: 5, s: speaker_2, c: 0.88, text: あとは、アプリを使えない人への対応も考えないとですね。}
   - {t: 186, d: 3, s: speaker_1, c: 0.9, text: そこは券売機を残せばいいと思います。}
-  - {t: 191, d: 3, s: speaker_2, c: 0.88, text: 確かに。両方用意しておけば安心ですね。}
+  - {t: 192, d: 3, s: speaker_2, c: 0.88, text: 確かに。両方用意しておけば安心ですね。}
   - {t: 195, d: 5, s: speaker_1, c: 0.9, text: じゃあモバイルオーダーと券売機の併用で、時間指定もつける、と。}
   - {t: 201, d: 1.5, s: speaker_2, c: 0.88, text: いい感じですね。}
   - {t: 204, d: 2, s: speaker_1, c: 0.9, text: ほかに何かありますかね。}
 checkpoints:
-  - {at: 190.5, expect: [no_intervention], why: 偏りはあるが2人のやり取りが盛り上がっている最中。割り込まない}
+  - {at: 191.5, expect: [no_intervention], why: 偏りはあるが2人のやり取りが盛り上がっている最中。割り込まない}
   - {at: 211, expect: [invite_person, invite_all], forbid: [no_intervention], target_any: [speaker_4, speaker_3], why: 区切りがつき、みさきさんは一度も発言していない。名前紐づけ済み・信頼度高なので個人指名が適切}

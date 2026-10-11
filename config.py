@@ -21,7 +21,8 @@ class Settings:
     # --- エージェント実行タイミング ---
     analysis_interval_sec: float = 20.0  # 定期分析の間隔
     silence_trigger_sec: float = 12.0  # これ以上沈黙したらイベント駆動で分析
-    min_gap_after_speech_sec: float = 1.0  # 発話終了後、最低この秒数あけてから話す
+    min_gap_after_speech_sec: float = 1.0  # 発話終了後、最低この秒数あけてから話す(強制イベント含む)
+    min_silence_for_intervention_sec: float = 2.0  # 任意の介入はこの秒数以上の沈黙が必要(会話の途中に割り込まない)
 
     # --- 過剰介入の防止 ---
     cooldown_sec: float = 45.0  # 直前の介入からの最低間隔
