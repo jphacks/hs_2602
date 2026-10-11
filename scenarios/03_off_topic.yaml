@@ -1,0 +1,22 @@
+id: 03_off_topic
+title: 脱線
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 180
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 180, d: 6, s: speaker_3, c: 0.9, text: 対策としては、キャッシュレスレジと空き教室の開放が出てますね。}
+  - {t: 187, d: 5, s: speaker_4, c: 0.88, text: あとはメニューごとに並ぶ列を分けるのもいいかも。}
+  - {t: 193, d: 4, s: speaker_1, c: 0.9, text: メニューの話で言うと、ラーメンが一番並んでますよね。}
+  - {t: 198, d: 5, s: speaker_2, c: 0.86, text: 学食のラーメン、正直駅前のラーメン屋の方がおいしくないですか？}
+  - {t: 205, d: 4, s: speaker_3, c: 0.9, text: わかります！駅前のあの店、最近行きました？}
+  - {t: 210, d: 4, s: speaker_4, c: 0.87, text: 行きました！あそこ替え玉無料なんですよね。}
+  - {t: 215, d: 3, s: speaker_1, c: 0.9, text: え、そうなんだ。今度行こうかな。}
+  - {t: 219, d: 5, s: speaker_2, c: 0.86, text: 僕あそこの近くでバイトしてるんですけど、夜はもっと並んでますよ。}
+  - {t: 225, d: 2, s: speaker_3, c: 0.9, text: バイト何してるんですか？}
+  - {t: 228, d: 3, s: speaker_2, c: 0.88, text: 居酒屋です。シフト結構きつくて。}
+  - {t: 232, d: 3, s: speaker_4, c: 0.87, text: 居酒屋いいなあ、まかない出ます？}
+  - {t: 236, d: 4, s: speaker_2, c: 0.88, text: 出ます出ます。唐揚げがめっちゃおいしいんですよ。}
+checkpoints:
+  - {at: 204.5, expect: [no_intervention], why: 軽い脱線が始まった程度。一言の雑談で即座に介入しない}
+  - {at: 242, expect: [redirect_topic], why: テーマと無関係なバイトの話が30秒以上続いている}

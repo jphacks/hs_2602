@@ -1,0 +1,5 @@
+anthropic>=1.13
+pydantic>=2.14
+pyyaml
+python-dotenv
+pytest

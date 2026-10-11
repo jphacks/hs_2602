@@ -1,0 +1,29 @@
+id: 05_time_short
+title: 残り時間わずかで結論が出ていない
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 440
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 440, d: 6, s: speaker_3, c: 0.9, text: 案としては、キャッシュレスレジ、空き教室の開放、モバイルオーダーの3つが出ました。}
+  - {t: 447, d: 5, s: speaker_4, c: 0.87, text: どれも良さそうなので、迷いますね。}
+  - {t: 460, d: 5, s: speaker_1, c: 0.9, text: キャッシュレスレジもいいし、空き教室もいいし、どっちもありですよね。}
+  - {t: 466, d: 3, s: speaker_2, c: 0.86, text: モバイルオーダーも捨てがたいです。}
+  - {t: 470, d: 3, s: speaker_3, c: 0.88, text: 全部やればいいんじゃないですか？}
+  - {t: 474, d: 3, s: speaker_4, c: 0.87, text: でも優先順位はつけたほうがいいですよね。}
+  - {t: 490, d: 5, s: speaker_1, c: 0.9, text: じゃあ、すぐできる順にキャッシュレスレジと空き教室を最優先にしましょう。}
+  - {t: 496, d: 4, s: speaker_2, c: 0.86, text: 賛成です。モバイルオーダーは長期的な案ということで。}
+  - {t: 501, d: 4, s: speaker_3, c: 0.88, text: 理由は、コストが低くてすぐ実行できるから、でいいですかね。}
+  - {t: 506, d: 2, s: speaker_4, c: 0.87, text: はい、それで結論にしましょう。}
+  - {t: 515, d: 4, s: speaker_1, c: 0.9, text: 発表するときは、原因、対策、優先順位の順で話しましょう。}
+  - {t: 525, d: 2, s: speaker_2, c: 0.86, text: 誰が発表しますか？}
+  - {t: 529, d: 2, s: speaker_3, c: 0.88, text: たろうさんお願いできますか？}
+  - {t: 533, d: 1, s: speaker_1, c: 0.9, text: わかりました。}
+  - {t: 540, d: 4, s: speaker_4, c: 0.87, text: 一応、原因の整理のところをもう一回確認しておきましょうか。}
+  - {t: 545, d: 4, s: speaker_1, c: 0.9, text: 時間の集中、会計の遅さ、席の回転、の3つですね。}
+  - {t: 550, d: 4, s: speaker_2, c: 0.86, text: 対策もそれぞれに対応してるので、筋は通ってますね。}
+checkpoints:
+  - {at: 482, expect: [time_warning], why: 残り2分を切った。結論が出ていないので時間告知と取りまとめの促し(強制イベント)}
+  - {at: 511, expect: [no_intervention], why: 直前の介入から29秒でクールダウン中。かつ自分たちで結論を出した}
+  - {at: 556, expect: [no_intervention], why: 結論が出て自分たちで確認している。介入不要}
+  - {at: 601, expect: [close_gd], why: 制限時間到達。結論を確認して終了}

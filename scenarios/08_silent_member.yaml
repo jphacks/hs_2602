@@ -1,0 +1,25 @@
+id: 08_silent_member
+title: 1人だけ一度も発言していない
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 60
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 60, d: 5, s: speaker_1, c: 0.9, text: 原因は大きく、時間の集中と会計の遅さだと思います。}
+  - {t: 66, d: 5, s: speaker_2, c: 0.88, text: 席の少なさもありますよね。昼はいつも満席なので。}
+  - {t: 72, d: 4, s: speaker_3, c: 0.9, text: その3つで整理しましょうか。}
+  - {t: 77, d: 6, s: speaker_1, c: 0.9, text: 時間の集中には、時間帯ごとの割引が使えそうです。}
+  - {t: 84, d: 5, s: speaker_2, c: 0.88, text: 会計の遅さにはキャッシュレス化ですね。}
+  - {t: 90, d: 6, s: speaker_3, c: 0.9, text: 席は、空き教室の開放とか、テイクアウトを増やすとか。}
+  - {t: 97, d: 5, s: speaker_1, c: 0.9, text: テイクアウトいいですね。外のベンチで食べる人も増えそう。}
+  - {t: 103, d: 5, s: speaker_2, c: 0.88, text: 雨の日はどうするかが課題ですね。}
+  - {t: 109, d: 5, s: speaker_3, c: 0.9, text: 雨の日は空き教室で吸収できるんじゃないかな。}
+  - {t: 116.5, d: 6, s: speaker_1, c: 0.9, text: なるほど、組み合わせるといいですね。}
+  - {t: 140, d: 6, s: speaker_2, c: 0.88, text: どれを優先するかを決めたいですね。}
+  - {t: 146, d: 2, s: speaker_3, c: 0.9, text: そうですね。}
+  - {t: 150, d: 5, s: speaker_1, c: 0.9, text: 僕はキャッシュレス化が一番すぐできると思います。}
+  - {t: 156, d: 2, s: speaker_2, c: 0.88, text: 私もそう思います。}
+  - {t: 160, d: 3, s: speaker_3, c: 0.9, text: じゃあキャッシュレスが第一候補ですかね。}
+checkpoints:
+  - {at: 115.5, expect: [no_intervention], why: 3人で建設的に案が広がっている最中。割り込まない}
+  - {at: 166, expect: [invite_person, invite_all], forbid: [no_intervention], target_any: [speaker_4], why: 優先順位を決める段階でみさきさんが一度も発言していない。確定前に意見を聞く機会をつくる}

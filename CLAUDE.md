@@ -1,0 +1,62 @@
+# AI Facilitator Agent(JPHACKS 2026 MVP)
+
+就活グループディスカッション(GD)で、AI が進行役を自律的に務めるプロトタイプ。開発期間は実質2日間。**動くデモが最優先**で、過剰な設計や汎用化はしない。
+
+## 企画の要点
+- 想定環境: 対面、PC1台、マイク1本を共有、スピーカー、学生3〜4人 + AI。ユーザーは採用担当者(テーマと時間を設定するだけ)。
+- **核となる機能は「介入するか/しないか」の自律判断。** `no_intervention` も正式な行動の1つ。盛り上がっている最中に割り込まない。
+- 議論促進型: 論点整理・対立点の指摘・比較基準・深掘り質問・脱線修正・時間管理・発言機会の調整はする。**解決策・正解・意見は言わず、特定の結論へ誘導しない。**
+- 話者識別は補助情報。不安定でも全体進行は動く二段構え(確信度が低い発話は `unknown`、信頼度が低ければ `invite_person` は使わず `invite_all`)。
+- 個人名で指名するのは、名前の紐づけが確認済みで、かつ信頼度が閾値以上のときだけ。
+- 範囲外: 評価・採点、声の事前登録(方式C)、参加者ごとのマイク(方式B)、録音の保存、認証/DB/デプロイ。
+
+## 設計
+Observe → Understand → Decide → Act の単一エージェント(ルール + LLM のハイブリッド)。
+
+- `facilitator/agent/agent.py`
+  - `_gate()`: ルール層。開始 → 発話中ブロック → 時間切れ(close_gd 強制)→ 時間閾値(time_warning 強制)→ クールダウン → 許可アクション一覧、の順に判定する。
+  - LLM は 1 回の呼び出しで `analysis`(Understand)と `decision`(Decide)を同時に返す(遅延を抑えるため)。
+  - `_validate()`: 許可外のアクション、invite_person の条件(名前確認・信頼度・同一人物クールダウン)、空発話、3文を超える発話を補正する。
+  - LLM 失敗・パース失敗時は `no_intervention`。強制イベントだけはテンプレートの発話で処理する。
+  - `should_tick()`: 実時間ループ用のトリガー(定期 / 沈黙 / 時間閾値 / 時間切れ)。
+- `start_gd` / `time_warning` / `close_gd` はルール層だけが発動する(LLM が自発的に選んでも置換される)。
+- フェーズは前進のみ。LLM の提案と、経過時間の割合による下限(`phase_time_floor`)の大きい方を採用する。
+- 発話データ: `Utterance{id, speaker_id, speaker_label, text, start_time, end_time, speaker_confidence, source}`。`state.update_speaker(id, ...)` でダイアライゼーションの後修正を反映できる。
+- 外部サービスはインターフェースの背後に置く: `facilitator/llm/`(anthropic / mock)。STT・TTS・話者識別も同じ方針で `facilitator/stt/` と `facilitator/tts/` に追加する(Step 2〜)。
+- 設定はすべて `config.py`。
+
+## 技術選定(2026-10 時点の調査。詳細は README)
+- LLM: Claude Opus 5.5(`claude-opus-5-5`)、`effort: low`、構造化出力(`output_config.format` の json_schema)、`fallbacks: "default"`(beta `server-side-fallback-2026-07-01`)。SDK は `anthropic` 1.13。
+- STT + 話者分離: AssemblyAI Universal-3.6 Pro Realtime(`speaker_labels`、`max_speakers`、SpeakerRevision イベント)を予定。日本語 × ストリーミング × 話者分離の組み合わせは**未確認**で、Step 2 で実測する。比較候補は Soniox。
+- TTS: macOS の `say -v Kyoko`(キー不要)を予定。
+- UI: FastAPI + WebSocket + 静的 HTML 1 枚を予定(Step 3)。
+
+## コーディング規約
+- Python 3.14(venv: `.venv`)、型ヒントを付ける。pydantic v2。
+- コメント・ログ・プロンプトは日本語でよい。
+- API キーは `.env` だけに置く。コードやログに出力しない。発話本文はログに残すかどうかを設定で切り替える(既定は残さない)。
+- LLM の出力は JSON スキーマで検証する。失敗したら「介入しない」に倒す。
+- 小さく動かして、ステップごとにコミットする。
+
+## 実行方法
+```
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pytest -q tests                       # ルール層のテスト
+.venv/bin/python scripts/evaluate.py --llm mock           # 配線確認(API なし)
+.venv/bin/python scripts/evaluate.py -v                   # 全10シナリオを Claude で評価
+.venv/bin/python scripts/run_scenario.py scenarios/02_stalled.yaml   # 時系列再生
+```
+
+## 進捗
+- [x] Step 1: エージェント単体(10シナリオ、評価スクリプト、ルール層テスト)
+- [ ] Step 2: 音声入出力 + 話者識別のスパイク(実測値をここに記録する)
+- [ ] Step 3: 統合 + UI + テキスト入力フォールバック
+- [ ] Step 4: 実証・調整
+
+## 評価結果の記録
+(プロンプトを調整するたびに追記する)
+
+## 既知の制約
+- 話者識別は1本のマイクを共有する方式A。重なり発話・距離差・声質の近さで精度が落ちうる(Step 2 で実測予定)。
+- 遮り(`return_to_speaker`)の検出は未実装。`enable_return_to_speaker=False`。
+- シナリオ評価はチェックポイントだけで判断させる。介入後に学生が反応する様子は再現しない(台本は固定)。

@@ -1,0 +1,16 @@
+id: 09_interrupted
+title: 発言を遮られる
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 150
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 150, d: 5, s: speaker_1, c: 0.9, text: やっぱりレジの問題が大きいと思うんですよね。}
+  - {t: 156, d: 4, s: speaker_4, c: 0.86, text: キャッシュレス化は賛成です。}
+  - {t: 161, d: 2.5, s: speaker_3, c: 0.82, text: 私は、混雑の原因って実は席じゃなくて、}
+  - {t: 163, d: 9, s: speaker_1, c: 0.88, text: いや、でもやっぱりレジですよ。レジが遅いのが全部の原因で、そこを直せば席も回るようになるので。}
+  - {t: 173, d: 4, s: speaker_2, c: 0.87, text: そうですね、レジから考えるのがいいと思います。}
+  - {t: 178, d: 5, s: speaker_1, c: 0.9, text: じゃあキャッシュレス化の具体的な方法を考えましょう。}
+  - {t: 184, d: 4, s: speaker_4, c: 0.86, text: 券売機を電子マネー対応にするのが早そうですね。}
+checkpoints:
+  - {at: 190, expect: [return_to_speaker, invite_person, invite_all], forbid: [no_intervention], target_any: [speaker_3], why: けんたさんの発言が途中で遮られ、そのまま話題が進んでいる。話を戻す機会をつくる}

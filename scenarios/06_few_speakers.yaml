@@ -1,0 +1,30 @@
+id: 06_few_speakers
+title: 一部の人しか話していない
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 30
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 30, d: 5, s: speaker_1, c: 0.9, text: まず原因ですが、昼に人が集中するのが一番大きいと思います。}
+  - {t: 36, d: 3, s: speaker_2, c: 0.88, text: そうですね、あと会計の遅さもあります。}
+  - {t: 40, d: 3, s: speaker_1, c: 0.9, text: 会計は現金の人が多いからですかね。}
+  - {t: 44, d: 4, s: speaker_2, c: 0.87, text: たぶんそうです。キャッシュレスにすれば早くなりそう。}
+  - {t: 49, d: 2, s: speaker_3, c: 0.85, text: 席も足りないと思います。}
+  - {t: 52, d: 3, s: speaker_1, c: 0.9, text: 席もありますね。じゃあ対策を考えましょう。}
+  - {t: 56, d: 6, s: speaker_2, c: 0.88, text: 対策なら、まずキャッシュレス化ですね。券売機を電子マネー対応にするとか。}
+  - {t: 63, d: 5, s: speaker_1, c: 0.9, text: それと、僕はモバイルオーダーも入れたいです。}
+  - {t: 150, d: 3, s: speaker_1, c: 0.9, text: 僕はやっぱりモバイルオーダーがいいと思うんです。}
+  - {t: 154, d: 4, s: speaker_2, c: 0.88, text: わかります。並ぶ時間がなくなるのは大きいですよね。}
+  - {t: 159, d: 5, s: speaker_1, c: 0.9, text: しかも受け取りの時間も指定できれば、ピークが分散しますし。}
+  - {t: 165, d: 6, s: speaker_2, c: 0.88, text: それいいですね。時間指定で枠に上限をつければ、混雑そのものを抑えられる。}
+  - {t: 172, d: 4, s: speaker_1, c: 0.9, text: そうそう。受け取り口を分ければ、レジの列も減ります。}
+  - {t: 178, d: 1, s: speaker_3, c: 0.82, text: …なるほど。}
+  - {t: 180, d: 5, s: speaker_2, c: 0.88, text: あとは、アプリを使えない人への対応も考えないとですね。}
+  - {t: 186, d: 3, s: speaker_1, c: 0.9, text: そこは券売機を残せばいいと思います。}
+  - {t: 191, d: 3, s: speaker_2, c: 0.88, text: 確かに。両方用意しておけば安心ですね。}
+  - {t: 195, d: 5, s: speaker_1, c: 0.9, text: じゃあモバイルオーダーと券売機の併用で、時間指定もつける、と。}
+  - {t: 201, d: 1.5, s: speaker_2, c: 0.88, text: いい感じですね。}
+  - {t: 204, d: 2, s: speaker_1, c: 0.9, text: ほかに何かありますかね。}
+checkpoints:
+  - {at: 190.5, expect: [no_intervention], why: 偏りはあるが2人のやり取りが盛り上がっている最中。割り込まない}
+  - {at: 211, expect: [invite_person, invite_all], forbid: [no_intervention], target_any: [speaker_4, speaker_3], why: 区切りがつき、みさきさんは一度も発言していない。名前紐づけ済み・信頼度高なので個人指名が適切}
