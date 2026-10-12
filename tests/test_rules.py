@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+
+import pytest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -109,3 +111,20 @@ def test_speaker_relabel():
     assert st.utterances[0].speaker_id == "speaker_3"
     st.update_speaker(1, "speaker_3", 0.3)
     assert st.utterances[1].speaker_id == "unknown"
+
+
+def test_time_warning_waits_after_recent_intervention():
+    st, ag, _ = make(d("ask_question"))
+    ag.tick(470)  # 質問(残り130秒)
+    rec = ag.tick(482)  # 残り118秒だが直前の介入から12秒
+    assert rec.gate == "blocked:forced_gap"
+    rec = ag.tick(492)
+    assert rec.decision.action.value == "time_warning"
+
+
+def test_time_warning_threshold_scales_for_short_gd():
+    s = load_settings()
+    st = DiscussionState(settings=s, theme="t", duration_sec=180)
+    st.started, st.start_time = True, 0.0
+    ag = FacilitatorAgent(st, StubLLM(d("no_intervention", "")), s)
+    assert ag._warn_thresholds() == [pytest.approx(63.0)]

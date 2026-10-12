@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Facilitator</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb;
+  --accent: #2563eb; --accent-soft: #e8efff; --ai: #7c3aed; --ai-soft: #f3edff;
+  --ok: #059669; --warn: #d97706; --bad: #dc2626; --chip: #eef0f3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1218; --panel: #171b23; --text: #e6e8ec; --muted: #9aa3b2; --line: #2a303b;
+    --accent: #6b9bff; --accent-soft: #1c2740; --ai: #b48cff; --ai-soft: #251d3a;
+    --ok: #34d399; --warn: #fbbf24; --bad: #f87171; --chip: #232934;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: 14px; }
+header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header h1 { font-size: 15px; margin: 0; font-weight: 700; }
+#theme { font-size: 16px; font-weight: 600; flex: 1; min-width: 200px; }
+#timer { font-variant-numeric: tabular-nums; font-size: 28px; font-weight: 700; }
+#timer.low { color: var(--bad); }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--chip); font-size: 12px; color: var(--muted); }
+.chip.on { background: var(--accent-soft); color: var(--accent); }
+.chip.ai { background: var(--ai-soft); color: var(--ai); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; padding: 16px 20px; height: calc(100vh - 64px); }
+.col { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-height: 0; }
+.panel h2 { font-size: 12px; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: .04em; display: flex; justify-content: space-between; align-items: center; }
+#log-panel { flex: 1; display: flex; flex-direction: column; }
+#log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.utt { display: grid; grid-template-columns: 48px 92px 1fr; gap: 8px; align-items: baseline; padding: 4px 6px; border-radius: 8px; }
+.utt .t { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.utt select { font-size: 12px; padding: 1px 2px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); max-width: 92px; }
+.utt.ai { background: var(--ai-soft); }
+.utt.ai .who { color: var(--ai); font-weight: 700; }
+.utt .lowconf { color: var(--warn); font-size: 11px; }
+#partial { color: var(--muted); font-style: italic; min-height: 20px; padding: 4px 6px; }
+#input-row { display: flex; gap: 8px; margin-top: 8px; }
+#input-row select, #input-row input, button, .setup input, .setup select { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+#input-row input { flex: 1; }
+button { cursor: pointer; background: var(--accent); color: #fff; border: none; font-weight: 600; }
+button.ghost { background: var(--chip); color: var(--text); }
+.bar-row { display: grid; grid-template-columns: 80px 1fr 110px; gap: 8px; align-items: center; margin: 6px 0; font-size: 13px; }
+.bar { height: 10px; background: var(--chip); border-radius: 999px; overflow: hidden; }
+.bar > div { height: 100%; background: var(--accent); border-radius: 999px; transition: width .4s; }
+.bar-row .meta { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.state-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.state-grid h3 { font-size: 12px; margin: 0 0 4px; color: var(--muted); font-weight: 600; }
+.state-grid ul { margin: 0; padding-left: 16px; font-size: 13px; }
+#summary { font-size: 13px; margin-bottom: 8px; }
+#decisions-panel { flex: 1; display: flex; flex-direction: column; }
+#decisions { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.dec { border-left: 3px solid var(--line); padding: 4px 10px; }
+.dec.act { border-left-color: var(--ai); background: var(--ai-soft); border-radius: 0 8px 8px 0; }
+.dec.cancel { border-left-color: var(--warn); }
+.dec .head { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.dec .action { font-weight: 700; color: var(--text); }
+.dec.act .action { color: var(--ai); }
+.dec .why { font-size: 13px; margin-top: 2px; }
+.dec .speech { font-size: 13px; margin-top: 4px; font-weight: 600; }
+.health { font-weight: 700; }
+.health.progressing, .health.converging { color: var(--ok); }
+.health.stalled, .health.off_topic, .health.conflicting { color: var(--warn); }
+#events { font-size: 12px; color: var(--muted); max-height: 60px; overflow-y: auto; }
+.setup-wrap { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.setup { background: var(--panel); border-radius: 14px; padding: 22px; width: min(520px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.setup h2 { margin: 0; font-size: 18px; }
+.setup label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.setup .names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.setup .opts { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; }
+.setup .opts label { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
+.err { color: var(--bad); font-size: 13px; min-height: 18px; }
+.hidden { display: none !important; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } #log { max-height: 50vh; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>AI Facilitator</h1>
+  <div id="theme">—</div>
+  <span class="chip" id="chip-phase">待機中</span>
+  <span class="chip" id="chip-listen"><span class="dot"></span>発話検知</span>
+  <span class="chip" id="chip-ai"><span class="dot"></span>AI</span>
+  <div id="timer">--:--</div>
+  <button class="ghost" id="btn-stop">終了</button>
+  <button class="ghost" id="btn-new">新規</button>
+</header>
+
+<main>
+  <div class="col">
+    <section class="panel" id="log-panel">
+      <h2>議論ログ <span id="intro-status"></span></h2>
+      <div id="log"></div>
+      <div id="partial"></div>
+      <div id="input-row">
+        <select id="in-speaker"></select>
+        <input id="in-text" placeholder="テキストで発言を追加(話者を選んで Enter)">
+        <button id="btn-send">送信</button>
+      </div>
+    </section>
+    <section class="panel"><h2>システム</h2><div id="events"></div></section>
+  </div>
+  <div class="col">
+    <section class="panel">
+      <h2>発言量(暫定) <label style="font-weight:400"><input type="checkbox" id="tg-speaker"> 話者情報を使う</label></h2>
+      <div id="stats"></div>
+      <div id="reliability" style="font-size:12px;color:var(--muted);margin-top:6px"></div>
+    </section>
+    <section class="panel">
+      <h2>議論の状態 <span>健全性: <span class="health" id="health">—</span></span></h2>
+      <div id="summary"></div>
+      <div class="state-grid">
+        <div><h3>論点</h3><ul id="issues"></ul></div>
+        <div><h3>対立点</h3><ul id="conflicts"></ul></div>
+        <div><h3>合意事項</h3><ul id="agreements"></ul></div>
+        <div><h3>足りない観点</h3><ul id="missing"></ul></div>
+      </div>
+    </section>
+    <section class="panel" id="decisions-panel">
+      <h2>AIの判断(介入した/しなかった理由) <span id="count"></span></h2>
+      <div id="decisions"></div>
+    </section>
+  </div>
+</main>
+
+<div class="setup-wrap" id="setup">
+  <form class="setup" id="setup-form">
+    <h2>グループディスカッションの設定</h2>
+    <label>テーマ<input id="f-theme" value="大学の学食の混雑を改善するには？" required></label>
+    <label>制限時間(分)<input id="f-min" type="number" min="1" max="60" step="0.5" value="8"></label>
+    <label>参加者(話す順・ニックネーム可)
+      <div class="names">
+        <input class="f-name" placeholder="1人目"><input class="f-name" placeholder="2人目">
+        <input class="f-name" placeholder="3人目"><input class="f-name" placeholder="4人目(任意)">
+      </div>
+    </label>
+    <div class="opts">
+      <label><input type="radio" name="mode" value="voice" checked> 音声</label>
+      <label><input type="radio" name="mode" value="text"> テキスト入力のみ</label>
+      <label><input type="checkbox" id="f-intro" checked> 自己紹介で声を登録</label>
+      <label><input type="checkbox" id="f-tts" checked> AIの声を出す</label>
+      <label><input type="checkbox" id="f-spk" checked> 話者情報を使う</label>
+    </div>
+    <div class="err" id="f-err"></div>
+    <button type="submit">開始</button>
+  </form>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ACTION_JA = {
+  no_intervention: "見守り", start_gd: "開始", ask_question: "質問", redirect_topic: "軌道修正",
+  organize_issues: "論点整理", compare_criteria: "比較基準", invite_all: "全体へ発言促進",
+  invite_person: "個人へ発言促進", return_to_speaker: "発言を戻す", time_warning: "時間告知", close_gd: "終了",
+};
+const PHASE_JA = { opening: "開始", ideation: "案出し", comparison: "比較検討", conclusion: "結論", closing: "終了" };
+const HEALTH_JA = { progressing: "順調", stalled: "停滞", off_topic: "脱線", conflicting: "対立", converging: "収束中" };
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const mmss = (s) => `${String(Math.floor(Math.max(0, s) / 60)).padStart(2, "0")}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, "0")}`;
+const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then((r) => r.json());
+
+let seen = false, snap = null, lastLogKey = "", lastDecKey = "", speakerOptsKey = "";
+
+$("setup-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const names = [...document.querySelectorAll(".f-name")].map((e) => e.value.trim()).filter(Boolean);
+  $("f-err").textContent = "起動中…";
+  const r = await post("/api/start", {
+    theme: $("f-theme").value, minutes: parseFloat($("f-min").value), names,
+    mode: document.querySelector("input[name=mode]:checked").value,
+    intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
+  });
+  if (!r.ok) { $("f-err").textContent = r.error; return; }
+  $("f-err").textContent = ""; $("setup").classList.add("hidden");
+});
+$("btn-stop").onclick = () => post("/api/stop");
+$("btn-new").onclick = () => $("setup").classList.remove("hidden");
+$("tg-speaker").onchange = (e) => post("/api/toggle", { use_speaker_info: e.target.checked });
+const send = () => {
+  const text = $("in-text").value.trim(); if (!text) return;
+  post("/api/text", { speaker_id: $("in-speaker").value, text }); $("in-text").value = "";
+};
+$("btn-send").onclick = send;
+$("in-text").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) send(); });
+
+function speakerOptions(sel) {
+  const names = snap.names || {};
+  return Object.entries(names).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${esc(n)}</option>`).join("")
+    + `<option value="unknown" ${sel === "unknown" ? "selected" : ""}>不明</option>`;
+}
+
+function render() {
+  const s = snap; if (!s || !s.theme) return;
+  $("theme").textContent = s.theme;
+  const t = s.started ? s.remaining : s.duration;
+  $("timer").textContent = mmss(t); $("timer").classList.toggle("low", s.started && s.remaining <= 120);
+  $("chip-phase").textContent = s.status === "intro" ? "自己紹介" : s.status === "finished" ? "終了" : (PHASE_JA[s.phase] || s.phase);
+  $("chip-listen").classList.toggle("on", s.speaking);
+  $("chip-listen").lastChild.textContent = s.mode === "voice" ? (s.speaking ? "発話中" : "沈黙 " + Math.floor(s.silence) + "秒") : "テキスト";
+  $("chip-ai").classList.toggle("ai", s.ai_speaking || s.thinking);
+  $("chip-ai").lastChild.textContent = s.ai_speaking ? "AI発話中" : s.thinking ? "AI判断中…" : "AI待機";
+  $("tg-speaker").checked = s.use_speaker_info;
+  $("intro-status").textContent = s.intro.current ? `自己紹介: ${s.intro.current}さん` : (s.intro.enrolled.length ? `声の登録: ${s.intro.enrolled.join("・")}` : "");
+
+  // 入力欄の話者
+  const optKey = JSON.stringify(s.names);
+  if (optKey !== speakerOptsKey) { $("in-speaker").innerHTML = speakerOptions(Object.keys(s.names)[0]); speakerOptsKey = optKey; }
+
+  // 議論ログ(変化があったときだけ描き直す。select 操作中は保持)
+  const logKey = JSON.stringify(s.utterances.map((u) => [u.id, u.speaker_id, u.text]));
+  if (logKey !== lastLogKey && !document.activeElement?.classList?.contains("relabel")) {
+    const box = $("log"); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.innerHTML = s.utterances.map((u) => u.source === "ai"
+      ? `<div class="utt ai"><span class="t">${mmss(u.t)}</span><span class="who">AI</span><span>${esc(u.text)}</span></div>`
+      : `<div class="utt"><span class="t">${mmss(u.t)}</span><span><select class="relabel" data-id="${u.id}">${speakerOptions(u.speaker_id)}</select>${u.speaker_id === "unknown" ? "" : ""}</span><span>${esc(u.text)}${u.conf < 0.7 && u.speaker_id !== "unknown" ? ' <span class="lowconf">(低確信)</span>' : ""}</span></div>`).join("");
+    box.querySelectorAll(".relabel").forEach((el) => el.onchange = () => { post("/api/relabel", { id: +el.dataset.id, speaker_id: el.value }); el.blur(); });
+    if (atBottom) box.scrollTop = box.scrollHeight;
+    lastLogKey = logKey;
+  }
+  $("partial").textContent = s.partial ? "… " + s.partial : "";
+
+  // 発言量
+  const max = Math.max(1, ...s.stats.map((x) => x.total_speech_sec));
+  $("stats").innerHTML = s.stats.map((x) => `<div class="bar-row"><span>${esc(x.label || x.speaker_id)}</span>
+    <div class="bar"><div style="width:${(x.total_speech_sec / max) * 100}%"></div></div>
+    <span class="meta">${Math.round(x.total_speech_sec)}秒・${x.turns}回${x.since_last_spoke_sec == null ? "・未発言" : ""}</span></div>`).join("");
+  $("reliability").textContent = `話者識別の信頼度 ${Math.round(s.reliability * 100)}%(直近の発話のうち話者を特定できた割合)` + (s.use_speaker_info ? "" : " / 話者情報オフ: 全体への呼びかけのみ");
+
+  // 議論の状態
+  const a = s.analysis;
+  $("health").textContent = HEALTH_JA[a.health] || a.health; $("health").className = "health " + a.health;
+  $("summary").textContent = a.recent_summary || "";
+  const li = (arr) => (arr || []).map((x) => `<li>${esc(x)}</li>`).join("") || '<li style="list-style:none;color:var(--muted)">—</li>';
+  $("issues").innerHTML = li(a.issues); $("conflicts").innerHTML = li(a.conflicts);
+  $("agreements").innerHTML = li(a.agreements); $("missing").innerHTML = li(a.missing_perspectives);
+
+  // AI の判断
+  const decKey = JSON.stringify(s.ticks.map((d) => [d.t, d.action, d.overridden]));
+  if (decKey !== lastDecKey) {
+    $("decisions").innerHTML = s.ticks.slice().reverse().filter((d) => !d.gate.startsWith("blocked")).map((d) => {
+      const acted = d.action !== "no_intervention" && !(d.overridden || "").startsWith("発話取りやめ");
+      const cls = acted ? "act" : (d.overridden || "").startsWith("発話取りやめ") ? "cancel" : "";
+      return `<div class="dec ${cls}"><div class="head"><span>${mmss(d.t)}</span><span class="action">${ACTION_JA[d.action] || d.action}</span>
+        <span>${esc(d.trigger)}</span><span>${d.latency ? d.latency.toFixed(1) + "s" : ""}</span></div>
+        <div class="why">${esc(d.reasoning)}</div>${d.speech ? `<div class="speech">「${esc(d.speech)}」</div>` : ""}
+        ${d.overridden ? `<div class="head">ルール層: ${esc(d.overridden)}</div>` : ""}</div>`;
+    }).join("");
+    lastDecKey = decKey;
+  }
+  $("count").textContent = `介入 ${s.interventions} 回`;
+  $("events").innerHTML = s.events.map(esc).join("<br>");
+}
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onmessage = (ev) => {
+    snap = JSON.parse(ev.data);
+    if (!seen && snap.status && snap.status !== "idle") $("setup").classList.add("hidden");
+    seen = true;
+    render();
+  };
+  ws.onclose = () => setTimeout(connect, 1000);
+}
+connect();
+</script>
+</body>
+</html>

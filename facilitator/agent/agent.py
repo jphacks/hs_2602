@@ -70,15 +70,17 @@ class FacilitatorAgent:
         remaining = st.remaining(now)
         if remaining <= 0:
             return "forced:close_gd", [Action.close_gd], "制限時間になりました。close_gd を選んでください。"
-        for th in sorted(s.time_warnings_remaining_sec):
+        since = st.since_last_intervention(now)
+        for th in self._warn_thresholds():
             if remaining <= th and th not in st.warned_thresholds:
+                if since is not None and since < s.forced_min_gap_sec:
+                    return "blocked:forced_gap", [], None
                 return (
                     "forced:time_warning",
                     [Action.time_warning],
                     f"残り約{int(remaining // 60)}分{int(remaining % 60)}秒です。time_warning を選んでください。",
                 )
 
-        since = st.since_last_intervention(now)
         if since is not None and since < s.cooldown_sec:
             return "blocked:cooldown", [], None
         if st.silence_sec(now) < s.min_silence_for_intervention_sec:
@@ -90,6 +92,10 @@ class FacilitatorAgent:
         if s.enable_return_to_speaker:
             allowed.append(Action.return_to_speaker)
         return "llm", allowed, None
+
+    def _warn_thresholds(self) -> list[float]:
+        cap = self.state.duration_sec * self.settings.time_warning_max_fraction
+        return sorted(min(th, cap) for th in self.settings.time_warnings_remaining_sec)
 
     def _context(self, now: float, trigger: str, allowed: list[Action], note: str | None) -> dict:
         st = self.state
@@ -187,14 +193,16 @@ class FacilitatorAgent:
         remaining_before = st.remaining(now)
         st.record_intervention(now, d)
         if d.action == Action.time_warning:
-            for th in self.settings.time_warnings_remaining_sec:
+            for th in self._warn_thresholds():
                 if remaining_before <= th:
                     st.warned_thresholds.add(th)
         dur = self.speak(d.speech) if self.speak else len(d.speech) / self.settings.tts_chars_per_sec
         st.add_utterance(AI_SPEAKER, d.speech, now, now + dur, 1.0, source="ai")
 
     # ================= 1 サイクル =================
-    def tick(self, now: float, trigger: str = "periodic") -> TickRecord:
+    def tick(self, now: float, trigger: str = "periodic", act: bool = True) -> TickRecord:
+        """1サイクル実行する。act=False のときは判断だけ行い、発話は commit() で確定させる
+        (実時間モードで、LLM の応答待ちの間に誰かが話し始めていないかを確認するため)。"""
         self.last_tick_time = now
         st = self.state
         gate, allowed, note = self._gate(now)
@@ -240,11 +248,27 @@ class FacilitatorAgent:
             overridden=overridden,
             latency_sec=round(latency, 2),
         )
-        self._act(decision, now)
+        if act:
+            self._act(decision, now)
         self.history.append(record)
         if self.logger:
             self.logger.log_tick(record)
         return record
+
+    def commit(self, record: TickRecord, now: float, duration: float | None = None) -> None:
+        """tick(act=False) の判断を実行済みとして状態に反映する。"""
+        d = record.decision
+        if d.action == Action.no_intervention:
+            return
+        speak, self.speak = self.speak, (lambda _t: duration) if duration is not None else None
+        try:
+            self._act(d, now)
+        finally:
+            self.speak = speak
+
+    def cancel(self, record: TickRecord, reason: str) -> None:
+        """発話直前に取りやめた判断を記録する(介入回数・クールダウンには数えない)。"""
+        record.overridden = f"発話取りやめ: {reason}"
 
     # ================= 実時間ループ用のトリガー判定 =================
     def should_tick(self, now: float) -> str | None:
@@ -260,7 +284,10 @@ class FacilitatorAgent:
         remaining = st.remaining(now)
         if remaining <= 0:
             return "time_up"
-        if any(remaining <= th and th not in st.warned_thresholds for th in s.time_warnings_remaining_sec):
+        since = st.since_last_intervention(now)
+        if any(remaining <= th and th not in st.warned_thresholds for th in self._warn_thresholds()) and (
+            since is None or since >= s.forced_min_gap_sec
+        ):
             return "time_threshold"
         silence = st.silence_sec(now)
         if silence < s.min_silence_for_intervention_sec:

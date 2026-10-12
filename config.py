@@ -28,6 +28,8 @@ class Settings:
     cooldown_sec: float = 45.0  # 直前の介入からの最低間隔
     person_cooldown_sec: float = 120.0  # 同一人物への連続指名を避ける間隔
     time_warnings_remaining_sec: list[float] = field(default_factory=lambda: [120.0])
+    time_warning_max_fraction: float = 0.35  # 短いGDでは「残り○秒」を制限時間のこの割合までに抑える
+    forced_min_gap_sec: float = 20.0  # 時間告知などの強制イベントも、直前の介入からこの秒数はあける(終了は除く)
 
     # --- 話者識別 ---
     speaker_conf_threshold: float = 0.7  # これ未満の発話は個人別集計から除外

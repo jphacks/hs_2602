@@ -7,3 +7,6 @@ sounddevice
 numpy
 websocket-client
 sherpa-onnx>=1.13
+fastapi
+uvicorn
+websockets
