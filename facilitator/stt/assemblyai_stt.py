@@ -32,8 +32,18 @@ class AssemblyAIStream:
         max_speakers: int | None = 4,
         revision_interval_ms: int | None = 120000,
         extra_params: dict[str, str] | None = None,
+        keyterms: list[str] | None = None,
     ) -> None:
-        params: dict[str, Any] = {"sample_rate": sample_rate, "speech_model": speech_model, "format_turns": "true"}
+        params: dict[str, Any] = {
+            "sample_rate": sample_rate,
+            "speech_model": speech_model,
+            "format_turns": "true",
+            # 短い発話が英語と誤判定されたため日本語に寄せる(2026-10-12 実測。形式 ["ja"] で受理を確認)
+            "language_codes": '["ja"]',
+            "prompt": "日本語で行われる就職活動のグループディスカッションの会話",
+        }
+        if keyterms:
+            params["keyterms_prompt"] = json.dumps(keyterms[:100], ensure_ascii=False)
         if speaker_labels:
             params["speaker_labels"] = "true"  # urlencode に bool を渡すと "True" になるため文字列で
             if max_speakers:
@@ -58,7 +68,7 @@ class AssemblyAIStream:
             header={"Authorization": key},
             on_open=lambda ws: self._open.set(),
             on_message=self._handle,
-            on_error=lambda ws, err: on_event(TranscriptEvent("error", text=str(err))),
+            on_error=lambda ws, err: None if "code 1000" in str(err) else on_event(TranscriptEvent("error", text=str(err))),
             on_close=lambda ws, code, msg: on_event(TranscriptEvent("end", text=f"close {code} {msg or ''}")),
         )
         self._thread = threading.Thread(target=self._ws.run_forever, daemon=True)

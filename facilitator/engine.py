@@ -133,7 +133,7 @@ class Engine:
         self._vid = VoiceIdentifier()
         self._buf = AudioBuffer()
         self._vad = EnergyVAD()
-        self._stt = AssemblyAIStream(speaker_labels=False)
+        self._stt = AssemblyAIStream(speaker_labels=False, keyterms=list(self.cfg.names) if self.cfg else None)
         self._stt.start(self._on_stt)
         self._q = queue.Queue()
         self._mic = Mic(self._q.put)
