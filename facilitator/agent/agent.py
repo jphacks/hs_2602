@@ -263,6 +263,8 @@ class FacilitatorAgent:
         if any(remaining <= th and th not in st.warned_thresholds for th in s.time_warnings_remaining_sec):
             return "time_threshold"
         silence = st.silence_sec(now)
+        if silence < s.min_silence_for_intervention_sec:
+            return None  # 短い間では分析しない(定期分析のタイマーを無駄に消費しない)
         if silence >= s.silence_trigger_sec and (last is None or now - last >= s.silence_trigger_sec):
             return "silence"
         if last is None or now - last >= s.analysis_interval_sec:
