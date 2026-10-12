@@ -49,7 +49,7 @@ class Settings:
     transcript_window: int = 40  # LLM に渡す直近発話数
 
     # --- AI 発話 ---
-    tts_chars_per_sec: float = 7.0  # 発話時間の見積もり(日本語のおおよその読み上げ速度)
+    tts_chars_per_sec: float = 5.6  # 発話時間の見積もり(say -v Kyoko -r 210 の実測値)
 
     # --- ログ ---
     log_dir: Path = ROOT / "logs"
