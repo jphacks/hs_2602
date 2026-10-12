@@ -128,11 +128,15 @@ def main() -> None:
     mic.start()
     t_end = time.monotonic() + args.seconds if args.seconds else None
     n_blocks, levels = 0, []
+    warned, t_begin = False, time.monotonic()
     try:
         while (t_end is None or time.monotonic() < t_end) and not getattr(mic, "done", threading.Event()).is_set():
             try:
                 block = q.get(timeout=0.5)
             except queue.Empty:
+                if not n_blocks and not warned and time.monotonic() - t_begin > 3:
+                    warned = True
+                    print("\n  ⚠ マイクから音声が届いていません。macOS の マイクの権限(システム設定 > プライバシーとセキュリティ > マイク)を確認してください")
                 continue
             if not t0[0]:
                 t0[0] = time.monotonic()
