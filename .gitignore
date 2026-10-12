@@ -7,3 +7,4 @@ recordings/
 *.wav
 .pytest_cache/
 .DS_Store
+models/
