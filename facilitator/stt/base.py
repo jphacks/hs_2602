@@ -27,3 +27,13 @@ class STTStream(Protocol):
         ...
 
     def stop(self) -> None: ...
+
+
+# 相づち・物音が中国語の感動詞などに誤認識されることがある(実測で「嗯。」が多発)
+_NOISE_TOKENS = {"嗯", "呃", "啊", "哦", "噢", "唔"}
+
+
+def is_noise_text(text: str) -> bool:
+    """意味のない誤認識ターンなら True。"""
+    core = "".join(ch for ch in text if ch not in "。、,.!?！？ 　…")
+    return not core or core in _NOISE_TOKENS

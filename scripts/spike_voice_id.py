@@ -26,7 +26,7 @@ from facilitator.audio.mic import Mic  # noqa: E402
 from facilitator.audio.vad import EnergyVAD  # noqa: E402
 from facilitator.speaker.voice_id import AudioBuffer, VoiceIdentifier  # noqa: E402
 from facilitator.stt.assemblyai_stt import AssemblyAIStream  # noqa: E402
-from facilitator.stt.base import TranscriptEvent  # noqa: E402
+from facilitator.stt.base import TranscriptEvent, is_noise_text  # noqa: E402
 
 
 def enroll_all(q: queue.Queue, names: list[str], sec: float, vid: VoiceIdentifier) -> None:
@@ -83,6 +83,8 @@ def main() -> None:
             if e.kind == "partial":
                 with lock:
                     print(f"\r  … {e.text[-50:]:<50}", end="", flush=True)
+            return
+        if is_noise_text(e.text):
             return
         t0 = time.monotonic()
         r = vid.identify(buf.segment(e.start - 0.1, e.end + 0.1))
