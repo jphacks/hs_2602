@@ -3,3 +3,7 @@ pydantic>=2.14
 pyyaml
 python-dotenv
 pytest
+sounddevice
+numpy
+websocket-client
+sherpa-onnx>=1.13

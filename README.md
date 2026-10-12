@@ -9,7 +9,11 @@ cd ai-facilitator
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env   # ANTHROPIC_API_KEY / ASSEMBLYAI_API_KEY を記入
+# 話者照合モデル(約28MB)
+mkdir -p models && curl -L -o models/campplus_zh_en_advanced.onnx \
+  https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx
 ```
+マイクを使うスクリプトは、macOS の「ターミナル」アプリで実行してください(初回はマイクの許可を求められます)。
 
 ## Step 1: エージェント単体の検証(音声なし)
 ```bash
