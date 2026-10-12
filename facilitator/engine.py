@@ -27,6 +27,8 @@ ECHO_TAIL_SEC = 0.6  # AI の発話終了後もしばらくマイクを無視す
 INTRO_MIN_VOICED_SEC = 2.0
 INTRO_END_SILENCE_SEC = 2.5
 INTRO_TIMEOUT_SEC = 25.0
+FORCED_PAUSE_SEC = 0.6  # 強制イベントはこの長さの間で話し始める
+FORCED_WAIT_MAX_SEC = 12.0  # これ以上間がなければ、割り込んででも話す
 
 
 @dataclass
@@ -242,19 +244,32 @@ class Engine:
             now = self.now()
             st = self.state
             forced = rec.gate.startswith("forced")
+            if forced:
+                # 時間告知・終了は取りやめない。次の短い間を待って話し、それでも間がなければ話す
+                deadline = now + FORCED_WAIT_MAX_SEC
+                while d.action != Action.start_gd and not self._stop.is_set():
+                    now = self.now()
+                    if not st.speaking_now and st.silence_sec(now) >= FORCED_PAUSE_SEC:
+                        break
+                    if now >= deadline:
+                        self._note(f"{d.action.value}: 間がないため発話を優先")
+                        break
+                    time.sleep(0.1)
+                self._speak_decision(rec)
+                if d.action == Action.close_gd:
+                    self.status = "finished"
+                    self._note("GD を終了しました")
+                    self.stop()
+                return
             if st.is_speaking(now):
                 self.agent.cancel(rec, "誰かが話し始めた")
                 self._note(f"{d.action.value} を取りやめ(誰かが話している)")
                 return
-            if not forced and st.silence_sec(now) < self.settings.min_silence_for_intervention_sec:
+            if st.silence_sec(now) < self.settings.min_silence_for_intervention_sec:
                 self.agent.cancel(rec, "沈黙が短い")
                 self._note(f"{d.action.value} を取りやめ(会話が続いている)")
                 return
             self._speak_decision(rec)
-            if d.action == Action.close_gd:
-                self.status = "finished"
-                self._note("GD を終了しました")
-                self.stop()
         finally:
             self._agent_busy = False
 
