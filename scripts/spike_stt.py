@@ -127,6 +127,7 @@ def main() -> None:
         mic = Mic(on_block, device=int(args.device) if args.device and args.device.isdigit() else args.device)
     mic.start()
     t_end = time.monotonic() + args.seconds if args.seconds else None
+    n_blocks, levels = 0, []
     try:
         while (t_end is None or time.monotonic() < t_end) and not getattr(mic, "done", threading.Event()).is_set():
             try:
@@ -137,6 +138,13 @@ def main() -> None:
                 t0[0] = time.monotonic()
             stt.send_audio(block.tobytes())
             ev = vad.process(block)
+            n_blocks += 1
+            levels.append(vad.level_db)
+            if n_blocks == 40:  # 最初の2秒で入力レベルを確認
+                avg = sum(levels) / len(levels)
+                with lock:
+                    print(f"\r  入力レベル(最初の2秒の平均): {avg:.0f} dB", end="")
+                    print("  ← ほぼ無音です。マイクの選択・権限・距離を確認してください" if avg < -60 else "  (OK)")
             if ev:
                 with lock:
                     mark = "🎤 発話開始" if ev == "start" else "   発話終了"
