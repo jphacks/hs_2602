@@ -34,6 +34,12 @@ def main() -> None:
     sc = load_scenario(args.scenario)
     s = load_settings(**({"llm_provider": args.llm} if args.llm else {}))
     print(f"=== {sc['title']} ===")
+    lines: list[str] = []
+
+    def out(line: str) -> None:
+        print(line)
+        lines.append(line)
+
     vs = VirtualSession(
         s,
         RecordingLLM(make_llm(s)),
@@ -45,6 +51,7 @@ def main() -> None:
         title=sc["title"],
         report_kind="AI 参加者入りシミュレーション(scripts/simulate.py)",
         report_name=sc["id"],
+        out=out,
     )
     pending = sorted(sc["utterances"], key=lambda u: u["t"] + u["d"])
     end = args.until or sc.get("until") or max(u["t"] + u["d"] for u in pending) + 20
@@ -58,7 +65,9 @@ def main() -> None:
     vs.t = t
     print()
     print(vs.summary())
-    print(f"\n📄 まとめログ: {vs.report.write(s.log_dir)}")
+    path = vs.report.write(s.log_dir)
+    path.with_suffix(".txt").write_text("\n".join(lines) + "\n\n" + vs.summary() + "\n", encoding="utf-8")
+    print(f"\n📄 まとめログ: {path}\n📄 テキスト版: {path.with_suffix('.txt')}")
 
 
 if __name__ == "__main__":
