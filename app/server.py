@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import CUSTOM_KEYS, PRESETS, load_settings  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
+from facilitator.discussion_types import DISCUSSION_TYPES, SELECTABLE_TYPES, resolve_session_type  # noqa: E402
 
 STATIC = Path(__file__).parent / "static"
 app = FastAPI()
@@ -36,6 +37,7 @@ class StartReq(BaseModel):
     purpose: str = "job"
     preset: str = "A"
     custom: dict[str, float] = {}
+    discussion_type: str | None = None  # 就活GDは必須(problem_solving / idea_generation / decision_making / planning)
 
 
 class TextReq(BaseModel):
@@ -62,6 +64,13 @@ def start(req: StartReq) -> dict:
     names = [n.strip() for n in req.names if n.strip()][:4]
     if len(names) < 2:
         return {"ok": False, "error": "参加者は2〜4人を入力してください"}
+    purpose = req.purpose if req.purpose in ("job", "general") else "job"
+    if purpose == "job" and not req.theme.strip():
+        return {"ok": False, "error": "テーマを入力してください"}
+    try:  # 議論タイプは開始前に検証する(就活GDは選択必須。暗黙に割り当てない)
+        resolve_session_type(req.discussion_type, purpose)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
     try:
         engine.start(
             SessionConfig(
@@ -72,9 +81,10 @@ def start(req: StartReq) -> dict:
                 req.intro,
                 req.tts,
                 req.use_speaker_info,
-                purpose=req.purpose if req.purpose in ("job", "general") else "job",
+                purpose=purpose,
                 preset=req.preset if req.preset in ("A", "B", "custom") else "A",
                 custom=req.custom,
+                discussion_type=req.discussion_type or None,
             )
         )
     except Exception as e:  # マイク・STT の起動失敗を UI に伝える(キー等の秘匿情報は含まれない)
@@ -93,6 +103,10 @@ def info() -> dict:
         "llm": "mock" if mock else base.llm_model,
         "default_mode": "text" if mock else "voice",
         "presets": {name: {**defaults, **vals} for name, vals in PRESETS.items()},
+        "discussion_types": [  # 画面で選べる議論タイプ
+            {"key": k, "label": DISCUSSION_TYPES[k].label, "phases": [p.label for p in DISCUSSION_TYPES[k].phases]}
+            for k in SELECTABLE_TYPES
+        ],
     }
 
 

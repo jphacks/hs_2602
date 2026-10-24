@@ -84,14 +84,16 @@ PURPOSE_RULES = {
 # 就活GDでの追加ルール
 選考の場であり、参加者自身の考える力が見られています。進行役の発言が評価を左右しないよう、次を守ってください。
 - 比較基準や観点の例を挙げるなら、参加者がすでに口にしたものだけにします。参加者が出していない基準や観点を持ち込まないでください。
+- アイデア・選択肢・作業や計画についても同じく、参加者が出していないものを持ち込まないでください(どの議論タイプでも共通)。
 - 議論の進め方や結論の出来を評価・称賛しないでください(close_gd を含む)。採点と受け取られるためです。
 """,
     "general": "",
 }
 
 def build_phase_block(dtype: DiscussionType) -> str:
-    lines = [f"\n# 議論タイプ: {dtype.label}", "フェーズ(key / 名前: 判断の目安 → 介入を検討する状況の例)"]
-    lines += [f"- {p.key} / {p.label}: {p.signs} → {p.policy}" for p in dtype.phases]
+    lines = [f"\n# 議論タイプ: {dtype.label}"] + ([dtype.guidance] if dtype.guidance else [])
+    lines.append("フェーズ(key / 名前: 判断の目安 → 介入を検討する状況の例)")
+    lines += [f"- {p.key} / {p.label}{f'(目的: {p.description})' if p.description else ''}: {p.signs} → {p.policy}" for p in dtype.phases]
     return "\n".join(lines) + "\n"
 
 

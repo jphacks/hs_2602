@@ -44,13 +44,14 @@ class SimClock:
 class SimSession:
     """疑似時計で動くエンジン(テキストモード)。play() で台本を流し、VAD の発話中・声の終わりも模擬する。"""
 
-    def __init__(self, monkeypatch, llm, minutes: float = 10.0, names=("A", "B", "C"), **overrides) -> None:
+    def __init__(self, monkeypatch, llm, minutes: float = 10.0, names=("A", "B", "C"),
+                 discussion_type: str = "problem_solving", **overrides) -> None:
         self.clock = SimClock()
         if hasattr(llm, "clock"):
             llm.clock = self.clock
         monkeypatch.setattr(engine_mod, "make_llm", lambda settings: llm)
         self.eng = Engine(load_settings(), clock=self.clock, **overrides)
-        self.eng.start(SessionConfig(THEME, minutes, list(names), mode="text", intro=False, tts=False), background=False)
+        self.eng.start(SessionConfig(THEME, minutes, list(names), mode="text", intro=False, tts=False, discussion_type=discussion_type), background=False)
         self.spans: list[tuple[float, float]] = []  # 人が話していた区間(エンジン時刻)
 
     def now(self) -> float:

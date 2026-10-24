@@ -1,0 +1,28 @@
+id: 16_decision_making
+title: 意思決定型(基準の設定 → 比較が平行線 → 基準の設定に戻る)
+theme: 新入社員研修を、対面・オンライン・両方の組み合わせのどれで行うかを決める
+discussion_type: decision_making
+duration_sec: 600
+start_elapsed: 150
+initial_phase: options_review
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 150, d: 5, s: speaker_1, c: 0.9, text: 選択肢は、対面、オンライン、その組み合わせの3つですね。}
+  - {t: 156, d: 6, s: speaker_2, c: 0.88, text: 組み合わせは、最初の週だけ対面で、残りはオンラインという形ですよね。}
+  - {t: 163, d: 5, s: speaker_3, c: 0.9, text: そうです。じゃあ、何を重視して選ぶかを先に決めませんか。}
+  - {t: 169, d: 4, s: speaker_4, c: 0.86, text: 同期とのつながりができるかは大事だと思います。}
+  - {t: 174, d: 5, s: speaker_1, c: 0.9, text: 費用も無視できないですね。会場代や交通費がかかるので。}
+  - {t: 180, d: 6, s: speaker_2, c: 0.88, text: つながり、費用、あと研修内容の身につきやすさ、の3つでどうでしょう。}
+  - {t: 192, d: 3, s: speaker_3, c: 0.9, text: つながりなら対面が一番ですね。}
+  - {t: 196, d: 3, s: speaker_4, c: 0.86, text: でも費用ならオンラインです。}
+  - {t: 200, d: 3, s: speaker_1, c: 0.9, text: やっぱり対面がいいと思います。}
+  - {t: 204, d: 3, s: speaker_4, c: 0.86, text: いや、オンラインの方がいいですよ。}
+  - {t: 208, d: 3, s: speaker_1, c: 0.9, text: うーん、対面だと思うんですけどね…。}
+  - {t: 240, d: 5, s: speaker_2, c: 0.88, text: そもそも、3つの基準のどれを一番重視するかを決めていませんでしたね。}
+  - {t: 246, d: 4, s: speaker_3, c: 0.9, text: 確かに。新人研修なら、つながりを一番にしたいです。}
+  - {t: 251, d: 5, s: speaker_4, c: 0.86, text: 私は費用も同じくらい大事だと思います。予算が決まっているので。}
+  - {t: 257, d: 5, s: speaker_1, c: 0.9, text: じゃあ、つながりと費用を同じくらい重視する、でどうでしょう。}
+checkpoints:
+  - {at: 188.5, expect: [no_intervention], require_llm: true, expect_phase: [criteria_setting], why: 選択肢を確認したあと、参加者自身が評価基準(つながり・費用・身につきやすさ)を出し合っている。順調なので見守る}
+  - {at: 214, expect: [compare_criteria, organize_issues], forbid: [no_intervention], expect_phase: [comparison], why: 基準はあるのに、どの基準を重視するかを決めないまま同じ主張の繰り返しで平行線。参加者が出した基準を使って比べ方を問う。AI は基準や結論を示さない}
+  - {at: 264.5, expect: [no_intervention], require_llm: true, expect_phase: [criteria_setting], why: 参加者自身が基準の優先度を決め直す段階に戻り、自分たちで進めている。見守る}

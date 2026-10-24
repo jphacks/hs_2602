@@ -78,7 +78,8 @@ def run_scenario(
     state = DiscussionState(settings=settings, theme=sc["theme"], duration_sec=sc["duration_sec"])
     for sid, name in (sc.get("participants") or {}).items():
         state.set_speaker_name(sid, name, confirmed=sc.get("names_confirmed", True))
-    agent = FacilitatorAgent(state, llm, settings, logger=logger)
+    # 議論タイプはシナリオで指定する(省略時は就活GDの既定=課題解決型。既存シナリオとの互換)
+    agent = FacilitatorAgent(state, llm, settings, logger=logger, discussion_type=sc.get("discussion_type"))
     if sc.get("start_elapsed", 0) > 0:
         state.started = True
         state.start_time = 0.0

@@ -1,0 +1,29 @@
+id: 15_idea_generation
+title: アイデア創出型(発散 → 整理中に発散へ戻る → 選べずに停滞)
+theme: 地元の商店街に大学生を呼び込むイベントのアイデアを考える
+discussion_type: idea_generation
+duration_sec: 600
+start_elapsed: 120
+initial_phase: purpose_check
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 120, d: 5, s: speaker_1, c: 0.9, text: 目的は、大学生が週末に商店街へ来るきっかけを作ること、でいいですかね。}
+  - {t: 126, d: 4, s: speaker_2, c: 0.88, text: はい。お金をあまりかけずにできる案がいいですね。}
+  - {t: 131, d: 5, s: speaker_3, c: 0.9, text: じゃあアイデアを出していきましょう。スタンプラリーはどうですか。}
+  - {t: 137, d: 5, s: speaker_4, c: 0.86, text: 商店街の空き店舗で、学生の作品展をやるのも面白そう。}
+  - {t: 143, d: 5, s: speaker_1, c: 0.9, text: 夜にキャンドルを並べるイベントとか。写真を撮りたくなりますよね。}
+  - {t: 149, d: 4, s: speaker_2, c: 0.88, text: お店の人に教わる料理教室もありですね。}
+  - {t: 154, d: 5, s: speaker_3, c: 0.9, text: スタンプラリーと料理教室を組み合わせても楽しそう。}
+  - {t: 170, d: 5, s: speaker_4, c: 0.86, text: 出た案を、体験型と展示型に分けてみませんか。}
+  - {t: 176, d: 6, s: speaker_1, c: 0.9, text: 体験型はスタンプラリーと料理教室。展示型は作品展とキャンドルですね。}
+  - {t: 183, d: 4, s: speaker_2, c: 0.88, text: 体験型の方が、学生は参加しやすいかも。}
+  - {t: 188, d: 5, s: speaker_3, c: 0.9, text: あ、もう一つ思いつきました。古着の交換会も体験型に入りますね。}
+  - {t: 194, d: 4, s: speaker_4, c: 0.86, text: いいですね。ほかにも体験型で何かあるかな。}
+  - {t: 199, d: 5, s: speaker_1, c: 0.9, text: 商店街の人と一緒に謎解きをするのはどうでしょう。}
+  - {t: 210, d: 3, s: speaker_2, c: 0.88, text: うーん、どれがいいんだろう。}
+  - {t: 216, d: 2, s: speaker_3, c: 0.9, text: どれも良さそうで…。}
+  - {t: 222, d: 1.5, s: speaker_4, c: 0.86, text: うーん。}
+checkpoints:
+  - {at: 161.5, expect: [no_intervention], require_llm: true, expect_phase: [divergence], why: 目的を確認したうえで、評価せずに次々と案が出て、他の人の案に乗っている。順調な発散なので見守る}
+  - {at: 206.5, expect: [no_intervention], require_llm: true, expect_phase: [divergence, development], why: 整理(体験型と展示型)の途中で新しい案が出て、体験型の発散に戻った。参加者が自分たちで進めているので見守る}
+  - {at: 255, expect: [ask_question, organize_issues, invite_all, compare_criteria], forbid: [no_intervention], expect_phase: [development, wrap_up], why: 案を選べずに沈黙が続いている。参加者の案や目的(週末に来るきっかけ・低予算)を手がかりに、どう選ぶかを問う。AI は案を出したり選んだりしない。案を出し終えて整理・発展の段階で選べずにいるため、参加者自身が挙げた観点(目的・低予算・参加しやすさ)を使って何を重視して比べるかを問う compare_criteria も適切。ただし AI が新しい評価基準を持ち込むのは不可で、発散の段階での性急な比較は求めない}
