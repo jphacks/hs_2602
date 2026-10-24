@@ -22,7 +22,7 @@ def _wait(cond, timeout: float) -> bool:
 
 
 def _session(eng: Engine, minutes: float) -> None:
-    eng.start(SessionConfig("テーマ", minutes, ["A", "B"], mode="text", intro=False, tts=False))
+    eng.start(SessionConfig("テーマ", minutes, ["A", "B"], mode="text", intro=False, tts=False, discussion_type="problem_solving"))
 
 
 def test_consecutive_sessions_on_same_engine():

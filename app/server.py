@@ -23,6 +23,7 @@ from config import CUSTOM_KEYS, PRESETS, STYLE_KNOBS, load_settings  # noqa: E40
 from facilitator.llm.base import LLMError  # noqa: E402
 from facilitator.llm.factory import make_llm  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
+from facilitator.discussion_types import DISCUSSION_TYPES, SELECTABLE_TYPES, resolve_session_type  # noqa: E402
 
 STATIC = Path(__file__).parent / "static"
 app = FastAPI()
@@ -40,6 +41,7 @@ class StartReq(BaseModel):
     purpose: str = "job"
     preset: str = "A"
     custom: dict[str, float] = {}
+    discussion_type: str | None = None  # 就活GDは必須(problem_solving / idea_generation / decision_making / planning)
     ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
     ai_level: int = 2  # AI 参加者のレベル(1〜3)
     knobs: dict[str, int] = {}  # 詳細の5項目(0=控えめ / 1=標準 / 2=積極的)
@@ -80,6 +82,13 @@ def start(req: StartReq) -> dict:
     ai_count = max(0, min(3, req.ai_count))
     if not names or len(names) + ai_count < 2:
         return {"ok": False, "error": "人間1人以上、合計2人以上にしてください"}
+    purpose = req.purpose if req.purpose in ("job", "general") else "job"
+    if purpose == "job" and not req.theme.strip():
+        return {"ok": False, "error": "テーマを入力してください"}
+    try:  # 議論タイプは開始前に検証する(就活GDは選択必須。暗黙に割り当てない)
+        resolve_session_type(req.discussion_type, purpose)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
     try:
         engine.start(
             SessionConfig(
@@ -90,9 +99,10 @@ def start(req: StartReq) -> dict:
                 req.intro,
                 req.tts,
                 req.use_speaker_info,
-                purpose=req.purpose if req.purpose in ("job", "general") else "job",
+                purpose=purpose,
                 preset=req.preset if req.preset in ("A", "B", "custom") else "A",
                 custom=req.custom,
+                discussion_type=req.discussion_type or None,
                 ai_count=ai_count,
                 ai_level=req.ai_level if req.ai_level in (1, 2, 3) else 2,
                 knobs={k: v for k, v in req.knobs.items() if k in STYLE_KNOBS and v in (0, 1, 2)},
@@ -115,6 +125,10 @@ def info() -> dict:
         "default_mode": "text" if mock else "voice",
         "presets": {name: {**defaults, **vals} for name, vals in PRESETS.items()},
         "knobs": {k: v["label"] for k, v in STYLE_KNOBS.items()},
+        "discussion_types": [  # 画面で選べる議論タイプ
+            {"key": k, "label": DISCUSSION_TYPES[k].label, "phases": [p.label for p in DISCUSSION_TYPES[k].phases]}
+            for k in SELECTABLE_TYPES
+        ],
     }
 
 

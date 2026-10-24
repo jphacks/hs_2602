@@ -225,7 +225,7 @@ def test_forced_events_unaffected_by_phase():
 def test_scenario_phase_keys_are_valid():
     for p in sorted((ROOT / "scenarios").glob("*.yaml")):
         sc = yaml.safe_load(p.read_text(encoding="utf-8"))
-        keys = set(PROBLEM_SOLVING.keys)
+        keys = set(get_discussion_type(sc.get("discussion_type")).keys)
         assert sc.get("initial_phase", "") in keys | {""}, p.name
         for cp in sc["checkpoints"]:
             assert set(cp.get("expect_phase", [])) <= keys, (p.name, cp["at"])
@@ -233,7 +233,7 @@ def test_scenario_phase_keys_are_valid():
 
 def test_engine_snapshot_exposes_type_phases():
     eng = Engine(load_settings(), llm_provider="mock")
-    eng.start(SessionConfig("テーマ", 1, ["A", "B"], mode="text", intro=False, tts=False))
+    eng.start(SessionConfig("テーマ", 1, ["A", "B"], mode="text", intro=False, tts=False, discussion_type="problem_solving"))
     try:
         deadline = time.monotonic() + 5
         while not eng.snapshot().get("started") and time.monotonic() < deadline:
