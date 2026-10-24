@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import queue
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -97,9 +98,14 @@ class Engine:
         self._t0 = time.monotonic()
         self._tts = None
         if cfg.tts:
-            from facilitator.tts.say_tts import SayTTS
+            if sys.platform == "win32":
+                from facilitator.tts.windows_tts import WindowsTTS
 
-            self._tts = SayTTS()
+                self._tts = WindowsTTS()
+            else:
+                from facilitator.tts.say_tts import SayTTS
+
+                self._tts = SayTTS()
 
         if cfg.mode == "voice":
             self._start_audio()
@@ -286,9 +292,15 @@ class Engine:
             self.state.add_utterance(AI_SPEAKER, text, now, now + len(text) / 5.6, 1.0, source="ai")
         self.ai_speaking = True
         try:
+            spoken = False
             if self._tts:
-                self._tts.speak(text)
-            else:
+                try:
+                    self._tts.speak(text)
+                    spoken = True
+                except Exception as e:  # TTS が使えなくても進行は止めない(以降は声なしで続ける)
+                    self._note(f"音声出力に失敗したため、声なしで続けます({type(e).__name__})")
+                    self._tts = None
+            if not spoken:
                 time.sleep(min(3.0, len(text) / self.settings.tts_chars_per_sec))
         finally:
             self.ai_speaking = False
