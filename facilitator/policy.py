@@ -19,9 +19,17 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from config import CUSTOM_KEYS, JOB_MAX_LEVEL, LEVEL_SETTINGS, POLICY_PRESETS, PRESETS, PURPOSE_PRESET, STYLE_KNOBS
+from config import (
+    JOB_MAX_LEVEL,
+    LEVEL_SETTINGS,
+    POLICY_PRESET_LABELS,
+    POLICY_PRESETS,
+    PURPOSE_PRESET,
+    STYLE_KNOBS,
+    Settings,
+)
 from facilitator.models import Action
 
 
@@ -106,11 +114,13 @@ class InterventionPolicy(BaseModel):
         return list(CONTENT_ACTIONS_BY_SCOPE[self.content_scope])
 
     def notices(self, purpose: str) -> list[str]:
-        """画面に出す注意(第4段階の UI で使う)。"""
-        out = []
-        if purpose == "job" and self.content_support:
-            out.append("内容支援が有効なため、厳格な就活GD向けの中立設定ではありません")
-        return out
+        """画面に出す注意。"""
+        return [JOB_CONTENT_NOTICE] if purpose == "job" and self.content_support else []
+
+    def overrides_from(self, base: InterventionPolicy) -> dict[str, str]:
+        """base(プリセット)から変えた項目だけ(画面の再読み込みで、変更した項目を復元するため)。"""
+        mine, theirs = self.model_dump(mode="json"), base.model_dump(mode="json")
+        return {k: v for k, v in mine.items() if v != theirs[k]}
 
     def summary(self) -> str:
         """まとめログ用の1行表示。"""
@@ -189,9 +199,68 @@ def legacy_knobs(policy: InterventionPolicy) -> dict[str, int]:
     return out
 
 
-def session_overrides(preset: str, custom: dict[str, float] | None) -> dict[str, Any]:
-    """旧進行スタイル(A/B)と旧カスタムによる数値設定の上書き(第4段階で廃止する)。①〜⑥の効果は含まない。"""
-    overrides: dict[str, Any] = dict(PRESETS.get(preset, {}))
-    if preset == "custom":
-        overrides.update({k: float(v) for k, v in (custom or {}).items() if k in CUSTOM_KEYS})
-    return overrides
+# ---------- 画面と API ----------
+JOB_CONTENT_NOTICE = "内容支援が有効なため、厳格な就活GD向けの中立設定ではありません(選考の場では「なし」を推奨)"
+# 旧進行スタイル(A / B / custom)。数値の上書きは廃止し、B は「⑤停滞への介入: 積極的」として扱う
+LEGACY_STYLE = {"A": {}, "B": {"stall": "high"}, "custom": {}}
+OPTION_LABELS: dict[str, list[tuple[str, str]]] = {
+    **{k: [("low", "控えめ"), ("standard", "標準"), ("high", "積極的")] for k in LEVEL_ITEMS},
+    "content_scope": [("none", "なし"), ("hint", "ヒントまで"), ("concrete", "具体案まで")],
+    "content_initiative": [("none", "なし"), ("stalled", "停滞時のみ"), ("proactive", "積極的")],
+}
+# 選択肢の説明(画面に出す)。実際の動作(FacilitatorAgent._content_actions と config の値)と合わせること
+OPTION_HELP: dict[str, dict[str, str]] = {
+    "content_scope": {
+        "none": "進行の支援だけ。新しい案や観点は出しません",
+        "hint": "考える視点のヒントを、問いの形で1つずつ示せます。答えや解決策は言いません",
+        "concrete": "ヒントに加えて、具体的なアイデアの例も示せます。決めるのは参加者です",
+    },
+    "content_initiative": {
+        "none": "参加者から進行役に頼まれたとき(「AIさん、ヒントありますか?」など)だけ",
+        "stalled": "頼まれたときに加えて、停滞が続くと 質問 → ヒント → 具体案(具体案まで のとき)の順に段階的に",
+        "proactive": "停滞時に加えて、必要と判断すればヒントを自発的に。具体案は頼まれたときか停滞時の段階を踏んだときだけ",
+    },
+}
+
+
+def ui_spec() -> dict[str, Any]:
+    """画面の設定項目・プリセット・説明。画面はこれを表示するだけにする(値を画面側に持たない)。"""
+    return {
+        "items": [
+            {"key": k, "label": ITEM_LABELS[k], "options": [{"v": v, "label": lb} for v, lb in OPTION_LABELS[k]],
+             "help": OPTION_HELP.get(k, {})}
+            for k in ITEM_LABELS
+        ],
+        "presets": {name: {"label": POLICY_PRESET_LABELS[name], "values": dict(values)} for name, values in POLICY_PRESETS.items()},
+        "purpose_preset": dict(PURPOSE_PRESET),
+        "notices": {"job_content": JOB_CONTENT_NOTICE},
+        "spontaneous_limits": {"gap_sec": Settings.content_cooldown_sec, "max_per_session": Settings.content_max_spontaneous},
+    }
+
+
+def request_policy(
+    purpose: str,
+    policy_preset: str | None = None,
+    overrides: dict[str, Any] | None = None,
+    legacy_style: str | None = None,
+    knobs: dict[str, Any] | None = None,
+) -> tuple[InterventionPolicy, list[str]]:
+    """画面・API の入力からセッションのポリシーを決める。(ポリシー, 注意) を返す。不正な値は ValueError。
+    優先順位: プリセット(policy_preset、省略時は用途の既定)< 旧進行スタイル B < 変更した項目(overrides)< 旧「詳細」(knobs)。"""
+    if policy_preset and policy_preset not in POLICY_PRESETS:
+        raise ValueError(f"不明なプリセットです: {policy_preset}")
+    unknown = set(overrides or {}) - set(ITEM_LABELS)
+    if unknown:
+        raise ValueError(f"不明な設定項目です: {', '.join(sorted(unknown))}")
+    warnings: list[str] = []
+    changes = dict(LEGACY_STYLE.get(legacy_style or "A", {}))
+    if legacy_style == "B":
+        warnings.append("旧進行スタイル B は「⑤停滞への介入: 積極的」として扱います(数値の変更は廃止)")
+    elif legacy_style == "custom":
+        warnings.append("旧進行スタイル custom の数値の変更は廃止しました(介入ポリシーの項目で調整してください)")
+    changes.update(overrides or {})
+    try:
+        policy = resolve_policy(purpose, preset=policy_preset, overrides=changes, knobs=knobs)
+    except ValidationError as e:
+        raise ValueError(f"設定の値が正しくありません: {e.errors()[0].get('loc')} {e.errors()[0].get('msg')}") from e
+    return policy, warnings + policy.notices(purpose)

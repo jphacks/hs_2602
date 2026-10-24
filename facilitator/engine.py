@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 
-from config import Settings, load_settings
+from config import POLICY_PRESET_LABELS, PURPOSE_PRESET, Settings, load_settings
 from facilitator.agent.agent import FacilitatorAgent
 from facilitator.agent.topic_return import detect_topic_return
 from facilitator.discussion_types import resolve_session_type
@@ -24,7 +24,7 @@ from facilitator.llm.factory import make_llm
 from facilitator.logging import TickLogger
 from facilitator.llm.base import LLMError
 from facilitator.models import AI_SPEAKER, UNKNOWN, Action, TickRecord
-from facilitator.policy import InterventionPolicy, from_knobs, session_overrides, session_policy
+from facilitator.policy import InterventionPolicy, from_knobs, preset_policy, request_policy
 from facilitator.participants import (
     LEVELS,
     Persona,
@@ -62,12 +62,13 @@ class SessionConfig:
     use_speaker_info: bool = True
     purpose: str = "job"  # job(就活) | general(就活以外)
     discussion_type: str | None = None  # 議論タイプ。就活GDは必須(4種類から選択)、一般GWは省略時に汎用型
-    preset: str = "A"  # A | B | custom
-    custom: dict[str, float] = field(default_factory=dict)
+    preset: str = "A"  # 旧進行スタイル A | B | custom(互換のため受け付ける。B は「⑤停滞への介入: 積極的」)
+    custom: dict[str, float] = field(default_factory=dict)  # 旧カスタムの数値(廃止。受け付けるが使わない)
     ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
     ai_level: int | None = 2  # AI 参加者のレベル(1〜3)。思考力と発言の間隔が変わる。None なら従来の間隔
     knobs: dict[str, int] = field(default_factory=dict)  # 詳細の5項目(0=控えめ / 1=標準 / 2=積極的)
-    policy: InterventionPolicy | None = None  # 介入ポリシー。None なら用途のプリセットと knobs から作る(knobs は上に重ねる)
+    policy: InterventionPolicy | None = None  # 介入ポリシー。None ならプリセットと旧設定(preset / knobs)から作る(knobs は上に重ねる)
+    policy_preset: str | None = None  # 介入ポリシーのプリセット(job_gd / general_gw)。None なら用途の既定
 
 
 @dataclass
@@ -90,6 +91,7 @@ class Engine:
         self.state: DiscussionState | None = None
         self.agent: FacilitatorAgent | None = None
         self.policy: InterventionPolicy | None = None
+        self.policy_preset = PURPOSE_PRESET["job"]
         self.partial = ""
         self.level_db = -100.0
         self.ai_speaking = False
@@ -144,9 +146,13 @@ class Engine:
             self._agent_busy = False  # 前のセッションの判断が残っていても、このセッションの判断は止めない
         self.cfg = cfg
         # 介入ポリシー: 指定がなければ用途と画面の「詳細」から作る。①〜⑥の効果は進行役(FacilitatorAgent)がポリシーから決める
-        self.policy = policy = from_knobs(cfg.knobs, cfg.policy, cfg.purpose) if cfg.policy else session_policy(cfg.purpose, cfg.knobs)
-        overrides = session_overrides(cfg.preset, cfg.custom)  # 旧進行スタイル(第4段階で廃止)
-        self.settings = s = load_settings(**{**self._base_overrides, **overrides})
+        if cfg.policy is not None:
+            policy = from_knobs(cfg.knobs, cfg.policy, cfg.purpose)
+        else:
+            policy, _ = request_policy(cfg.purpose, cfg.policy_preset, None, cfg.preset, cfg.knobs)
+        self.policy = policy
+        self.policy_preset = cfg.policy_preset or PURPOSE_PRESET.get(cfg.purpose, PURPOSE_PRESET["job"])
+        self.settings = s = load_settings(**self._base_overrides)
         self.paused = False
         self._ended_at = None
         humans, bots = len(cfg.names), max(0, min(3, cfg.ai_count))
@@ -178,8 +184,9 @@ class Engine:
             "テーマ": cfg.theme,
             "用途": "就活" if cfg.purpose == "job" else "就活以外",
             "入力方法": "音声" if cfg.mode == "voice" else "テキスト",
-            "進行スタイル": cfg.preset,
+            "介入プリセット": POLICY_PRESET_LABELS.get(self.policy_preset, self.policy_preset),
             "介入ポリシー": policy.summary(),
+            **({"注意": " / ".join(policy.notices(cfg.purpose))} if policy.notices(cfg.purpose) else {}),
             "人数": f"人間 {humans}人 / AI参加者 {bots}人",
             "AI参加者のモード": {"active": "練習相手モード", "reserved": "控えめモード"}.get(self.bot_mode, "なし"),
             **({"AI参加者のレベル": LEVELS[self.ai_level]["label"]} if bots and self.ai_level else {}),
@@ -612,7 +619,7 @@ class Engine:
                 threading.Thread(target=self._bot_turn, args=(persona, reason, addressed_id, gen), daemon=True).start()
 
     def _bot_pick(self, now: float) -> tuple[Persona, str, int] | None:
-        if self.agent and self.agent.pending_request is not None:
+        if self.agent and self.agent.has_pending_request(now):
             return None  # 進行役への依頼には進行役が答える(AI 参加者が先に答えない)
         return pick_bot(
             self.state, self.personas, self.bot_mode, now, self._last_bot_end, self._bot_answered_id, len(self.cfg.names),
@@ -745,6 +752,10 @@ class Engine:
             "paused": self.paused,
             "purpose": cfg.purpose,
             "preset": cfg.preset,
+            "policy_preset": self.policy_preset,
+            "policy_overrides": self.policy.overrides_from(preset_policy(self.policy_preset)),  # 再読み込みで画面を復元する
+            "policy": self.policy.model_dump(mode="json"),
+            "policy_notices": self.policy.notices(cfg.purpose),
             "active_speaker": self._active_speaker(now),
             "llm": agent.llm.name,
             "mode": cfg.mode,

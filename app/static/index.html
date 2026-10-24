@@ -140,6 +140,12 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .setup-actions .btn { padding: 14px 24px; font-size: 16px; }
 .err { color: var(--text); font-weight: 600; font-size: 13.5px; }
 .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+/* 介入の設定 */
+#policy-items .knob + .knob { border-top: .5px solid var(--line); }
+.knob .changed { color: var(--accent); font-size: 12px; font-weight: 600; margin-left: 6px; }
+.knob .opt-help { flex-basis: 100%; color: var(--muted); font-size: 12.5px; }
+.policy-notice { margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: var(--fill); color: var(--text); font-weight: 600; font-size: 13.5px; }
+.policy-notice:empty { display: none; }
 
 /* ---------- 3. 進行 ---------- */
 .bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 14px; padding: 10px 16px 10px 20px;
@@ -444,6 +450,15 @@ body { font-size: 17px; }
       <div class="hint" id="type-hint"></div>
     </div>
 
+    <div class="tile span-4" id="policy-tile">
+      <span class="label">介入の設定</span>
+      <div class="choice2" id="seg-policy-preset"></div>
+      <div class="hint" id="policy-preset-hint"></div>
+      <div id="policy-items"></div>
+      <div class="policy-notice" id="policy-notice"></div>
+      <button type="button" class="btn" id="policy-reset" style="margin-top:10px">プリセットの初期値に戻す</button>
+    </div>
+
     <div class="tile span-2 detail" id="detail-tile">
       <label class="detail-head">
         <span class="label" style="margin:0">詳細</span>
@@ -451,8 +466,7 @@ body { font-size: 17px; }
       </label>
       <div class="advanced" id="detail-body">
           <div class="adv-inner">
-            <div id="knobs"></div>
-            <h3 style="margin-top:22px">その他</h3>
+            <h3>その他</h3>
             <div class="knob"><span>入力方法</span><div class="seg" id="seg-input"><button type="button" data-v="voice">🎙 音声</button><button type="button" data-v="text">⌨ テキスト</button></div></div>
             <div class="hint" id="mode-hint" style="margin:-4px 0 10px"></div>
             <div class="toggles">
@@ -480,7 +494,7 @@ body { font-size: 17px; }
   </div>
   <div class="bar">
     <div class="theme" id="b-theme">—</div>
-    <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-type"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
+    <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-type"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-policy"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
     <div class="actions">
       <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>開始</button>
       <button class="btn" id="btn-pause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>一時停止</span></button>
@@ -564,7 +578,8 @@ const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Typ
 
 const ui = {
   withAI: false, purpose: "job", dtype: null, minutes: 8, humans: 3, bots: 1, input: "voice", level: 2,
-  knobs: { phase: 1, redirect: 1, organize: 1, turns: 1, suggest: 1 }, info: null, config: null, started: false,
+  // 介入の設定: プリセット(null なら用途の既定)と、そこから変更した項目だけ。表示する値は policyValue() で求める
+  policyPreset: null, overrides: {}, shownPreset: null, info: null, config: null, started: false,
 };
 let snap = null, logKey = "", decKey = "", doneShown = false;
 
@@ -583,7 +598,6 @@ document.querySelectorAll(".purpose").forEach((b) => b.onclick = () => {
 
 /* ---------- 2. 設定 ---------- */
 const LEVEL_NAMES = { 1: "やさしい", 2: "ふつう", 3: "むずかしい" };
-const KNOB_LEVELS = ["控えめ", "標準", "積極的"];
 $("people").innerHTML = [0, 1, 2, 3].map((i) => `<div class="person-in"><span class="dot" style="background:${COLORS[i]}"></span>
   <input class="input f-name" placeholder="${i + 1}人目"></div>`).join("");
 
@@ -630,15 +644,60 @@ seg("seg-input", "input");
 seg("seg-level", "level");
 $("f-detail").onchange = (e) => { $("detail-body").classList.toggle("open", e.target.checked); };
 
-function renderKnobs() {
-  const labels = ui.info?.knobs || {};
-  $("knobs").innerHTML = Object.entries(labels).map(([k, label]) => `<div class="knob"><span>${esc(label)}</span>
-    <div class="seg" data-knob="${k}">${KNOB_LEVELS.map((t, i) => `<button type="button" data-v="${i}">${t}</button>`).join("")}</div></div>`).join("")
-    + '<div class="hint" id="knob-hint"></div>';
-  $("knobs").querySelectorAll(".seg").forEach((g) => g.querySelectorAll("button").forEach((b) => b.onclick = () => {
-    if (b.disabled) return;
-    ui.knobs[g.dataset.knob] = +b.dataset.v; syncSetup();
+/* 介入の設定(項目・選択肢・説明・プリセットはサーバーの /api/info の policy から。値は画面に持たない) */
+function policySpec() { return ui.info?.policy; }
+function presetName() { return ui.policyPreset || policySpec()?.purpose_preset[ui.purpose]; }
+function presetValues() { return policySpec()?.presets[presetName()]?.values || {}; }
+function policyValue(k) {
+  if (k === "content_initiative" && policyValue("content_scope") === "none") return "none";  // ⑥-A が なし なら ⑥-B も なし
+  return k in ui.overrides ? ui.overrides[k] : presetValues()[k];
+}
+function choosePreset(name) { ui.policyPreset = name; syncSetup(); }
+// 表示するプリセットが変わったら(プリセットの選択、またはプリセットを用途に任せているときのスタイルの変更)、
+// 変更した項目は新しいプリセットの初期値に戻す。同じプリセットのままなら変更を残す
+function followPreset() {
+  const cur = presetName();
+  if (ui.shownPreset && cur && cur !== ui.shownPreset) ui.overrides = {};
+  ui.shownPreset = cur;
+}
+// 送る内容: プリセットと、変更した項目だけ(未変更の項目はサーバーでプリセットの値になる)
+function policyPayload() { return { policy_preset: presetName(), policy: { ...ui.overrides } }; }
+function setPolicy(k, v) {
+  if (v === presetValues()[k]) delete ui.overrides[k]; else ui.overrides[k] = v;  // 初期値と同じなら「未変更」に戻す
+  syncSetup();
+}
+function renderPolicy() {
+  const spec = policySpec(); if (!spec) return;
+  followPreset();
+  const cur = presetName();
+  $("seg-policy-preset").innerHTML = Object.entries(spec.presets).map(([name, p]) =>
+    `<button type="button" data-v="${esc(name)}" class="${name === cur ? "on" : ""}">${esc(p.label)}</button>`).join("");
+  $("seg-policy-preset").querySelectorAll("button").forEach((b) => b.onclick = () => choosePreset(b.dataset.v));
+  const n = Object.keys(ui.overrides).length;
+  $("policy-preset-hint").textContent = (ui.policyPreset ? "" : "スタイルに合わせたプリセットです。") +
+    (n ? `${n}項目を変更しています。プリセットを切り替えると初期値に戻ります。` : "プリセットを選んだあと、各項目を変更できます。");
+  const scopeNone = policyValue("content_scope") === "none";
+  $("policy-items").innerHTML = spec.items.map((it) => {
+    const v = policyValue(it.key), locked = it.key === "content_initiative" && scopeNone;
+    const help = it.help?.[v] ? `<span class="opt-help">${esc(locked ? "⑥-A が「なし」のため、なしに固定されます" : it.help[v])}</span>` : "";
+    return `<div class="knob"><span>${esc(it.label)}${it.key in ui.overrides && !locked ? '<span class="changed">変更</span>' : ""}</span>
+      <div class="seg" data-item="${it.key}">${it.options.map((o) =>
+        `<button type="button" data-v="${o.v}" class="${o.v === v ? "on" : ""}" ${locked ? "disabled" : ""}>${esc(o.label)}</button>`).join("")}</div>${help}</div>`;
+  }).join("");
+  $("policy-items").querySelectorAll(".seg").forEach((g) => g.querySelectorAll("button").forEach((b) => b.onclick = () => {
+    if (!b.disabled) setPolicy(g.dataset.item, b.dataset.v);
   }));
+  // 就活GDで内容支援を有効にした場合は、中立設定ではなくなることを明示する
+  $("policy-notice").textContent = ui.purpose === "job" && !scopeNone ? spec.notices.job_content : "";
+  $("policy-reset").disabled = !n;
+}
+$("policy-reset").onclick = () => { ui.overrides = {}; syncSetup(); };
+function policyChip(preset, overrides, notices) {
+  const p = policySpec()?.presets[preset];
+  const n = Object.keys(overrides || {}).length;
+  $("b-policy").textContent = p ? `${p.label}${n ? `(変更${n})` : ""}` : "";
+  $("b-policy").title = (notices || []).join(" / ");
+  $("b-policy").classList.toggle("warn", (notices || []).length > 0);
 }
 function syncSetup() {
   document.querySelectorAll(".numrow").forEach((row) => {
@@ -651,14 +710,7 @@ function syncSetup() {
   document.querySelectorAll(".ai-only").forEach((el) => el.classList.toggle("hidden", !ui.withAI));
   const on = (id, v) => $(id).querySelectorAll("button").forEach((b) => b.classList.toggle("on", String(v) === b.dataset.v));
   on("purpose", ui.purpose); on("seg-input", ui.input); on("seg-level", ui.level);
-  // 就活では選考の公平性のため、AI が参加者の出していない観点を持ち込まない(提案度合いは標準まで)
-  const jobCap = ui.purpose === "job";
-  if (jobCap && ui.knobs.suggest > 1) ui.knobs.suggest = 1;
-  $("knobs").querySelectorAll(".seg").forEach((g) => g.querySelectorAll("button").forEach((b) => {
-    b.classList.toggle("on", +b.dataset.v === (ui.knobs[g.dataset.knob] ?? 1));
-    b.disabled = jobCap && g.dataset.knob === "suggest" && +b.dataset.v === 2;
-  }));
-  if ($("knob-hint")) $("knob-hint").textContent = jobCap ? "就活では提案度合いは標準までです" : "";
+  renderPolicy();
   $("mode-hint").textContent = ui.input === "voice"
     ? "マイクで聞き取ります" : "発言を入力します";
 }
@@ -688,7 +740,8 @@ $("setup-form").onsubmit = (ev) => {
   ui.config = {
     theme: $("f-theme").value.trim(), minutes: ui.minutes, names, mode: ui.input,
     intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
-    purpose: ui.purpose, preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level, knobs: { ...ui.knobs },
+    purpose: ui.purpose, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level,
+    ...policyPayload(),
   };
   snap = null; logKey = ""; decKey = ""; doneShown = false; ui.started = false;
   renderReady();
@@ -727,6 +780,8 @@ function renderReady() {
   $("b-type").textContent = typeLabel(c.discussion_type);
   $("b-preset").textContent = c.ai_count ? "AI参加者あり" : "人間だけ";
   $("b-level").textContent = c.ai_count ? `AI ${LEVEL_NAMES[c.ai_level] || ""}` : "";
+  const scope = c.policy?.content_scope ?? policySpec()?.presets[c.policy_preset]?.values.content_scope;
+  policyChip(c.policy_preset, c.policy, c.purpose === "job" && scope && scope !== "none" ? [policySpec().notices.job_content] : []);
   llmChip(ui.info?.llm);
   $("c-limit").textContent = c.minutes; showClock(0, c.minutes * 60);
   $("c-bar").style.width = "0"; $("clock").classList.remove("low", "over");
@@ -814,6 +869,7 @@ function render() {
   $("b-type").textContent = s.discussion_type || "";
   $("b-preset").textContent = (s.participants || []).length ? "AI参加者あり" : "人間だけ";
   $("b-level").textContent = s.ai_level ? `AI ${LEVEL_NAMES[s.ai_level] || ""}` : "";
+  policyChip(s.policy_preset, s.policy_overrides, s.policy_notices);
   llmChip(s.llm);
 
   // 時計
@@ -916,7 +972,7 @@ $("in-text").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.is
 
 /* ---------- 起動 ---------- */
 fetch("/api/info").then((r) => r.json()).then((info) => {
-  ui.info = info; ui.input = info.default_mode; renderKnobs(); renderTypes(); syncSetup();
+  ui.info = info; ui.input = info.default_mode; renderTypes(); syncSetup();
 });
 let first = true;
 function connect() {
@@ -926,7 +982,7 @@ function connect() {
     if (first) {
       first = false;
       if (s.status === "running" || s.status === "intro") {  // 再読み込み時は進行画面に戻る
-        ui.config = { theme: s.theme, minutes: s.duration / 60, names: (s.humans || []).map((id) => s.names[id]), ai_count: (s.participants || []).length, purpose: s.purpose, preset: s.preset, discussion_type: s.discussion_type_key };
+        ui.config = { theme: s.theme, minutes: s.duration / 60, names: (s.humans || []).map((id) => s.names[id]), ai_count: (s.participants || []).length, purpose: s.purpose, discussion_type: s.discussion_type_key, policy_preset: s.policy_preset, policy: s.policy_overrides || {} };
         ui.started = true; snap = s; renderReady(); show("s-session");
       } else show("s-purpose");
     }

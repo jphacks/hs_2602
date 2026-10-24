@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from config import CUSTOM_KEYS, POLICY_PRESETS, PRESETS, PURPOSE_PRESET, STYLE_KNOBS, load_settings  # noqa: E402
+from config import POLICY_PRESETS, PURPOSE_PRESET, STYLE_KNOBS, load_settings  # noqa: E402
 from facilitator.agent.prompts import build_system_prompt  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
 from facilitator.policy import (  # noqa: E402
@@ -29,7 +29,6 @@ from facilitator.policy import (  # noqa: E402
     preset_policy,
     purpose_preset,
     resolve_policy,
-    session_overrides,
     session_policy,
 )
 
@@ -154,22 +153,11 @@ def test_legacy_knobs_round_trip():
         assert legacy_knobs(from_knobs(knobs, InterventionPolicy())) == knobs
 
 
-def test_knobs_no_longer_touch_settings():
-    """「詳細」は数値設定の上書き・末尾への指示を作らない(効果は進行役がポリシーから決める)。
-    特に turns がクールダウン・分析間隔・沈黙トリガーを変えないこと。"""
-    assert session_overrides("A", {}) == {}
+def test_settings_have_no_legacy_numeric_presets():
+    """旧進行スタイル(A/B/custom)の数値の上書きは廃止した(B は「⑤停滞への介入: 積極的」に変換。tests/test_ui_policy.py)。"""
+    import config
 
-
-@pytest.mark.parametrize(
-    "preset,custom",
-    [("B", {}), ("custom", {"cooldown_sec": 50, "silence_trigger_sec": 9, "bogus": 1}), ("A", {})],
-)
-def test_old_presets_still_apply(preset, custom):
-    """旧進行スタイル(B / custom)は第4段階で廃止するまで従来どおり効く。"""
-    expected = dict(PRESETS.get(preset, {}))
-    if preset == "custom":
-        expected.update({k: float(v) for k, v in custom.items() if k in CUSTOM_KEYS})
-    assert session_overrides(preset, custom) == expected
+    assert not hasattr(config, "PRESETS") and not hasattr(config, "CUSTOM_KEYS")
 
 
 # ---------- 就活GDの標準: システムプロンプトと数値設定が従来どおり ----------

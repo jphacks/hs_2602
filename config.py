@@ -72,23 +72,9 @@ class Settings:
     log_transcript_text: bool = False  # 個人情報保護のためデフォルトで発話本文はログに残さない
 
 
-# 画面で選ぶ進行スタイル。A は Step 1 で評価した既定値
-PRESETS: dict[str, dict[str, float]] = {
-    "A": {},  # 標準(推奨)
-    "B": {  # 積極サポート: 沈黙や停滞により早く介入する
-        "cooldown_sec": 30.0,
-        "silence_trigger_sec": 8.0,
-        "analysis_interval_sec": 15.0,
-        "min_silence_for_intervention_sec": 1.5,
-    },
-}
-# カスタム設定で画面から変更できる項目
-CUSTOM_KEYS = {"cooldown_sec", "silence_trigger_sec", "analysis_interval_sec", "min_silence_for_intervention_sec"}
-
-
-# 画面の「詳細」の5項目(0=控えめ / 1=標準 / 2=積極的)。label は画面に出す名前
-# phase / redirect / organize / turns は介入ポリシーの①〜④に変換し、効果は LEVEL_SETTINGS とプロンプト(prompts.LEVEL_TEXT)で決める。
-# suggest は⑥に変換する(0 → 内容支援なし / 1 → プリセットのまま / 2 → ヒントまで・積極的)。facilitator/policy.py の from_knobs
+# 旧画面の「詳細」の5項目(knobs: 0=控えめ / 1=標準 / 2=積極的)。旧 API の互換のため受け付けて介入ポリシーに変換する
+# (現在の画面は介入ポリシーの項目を直接送る)。phase / redirect / organize / turns → ①〜④、
+# suggest → ⑥(0 → 内容支援なし / 1 → プリセットのまま / 2 → ヒントまで・積極的)。facilitator/policy.py の from_knobs
 STYLE_KNOBS: dict[str, dict[str, Any]] = {
     "phase": {"label": "次のフェーズへの進行度合い"},
     "redirect": {"label": "脱線修正の積極度"},
@@ -98,8 +84,8 @@ STYLE_KNOBS: dict[str, dict[str, Any]] = {
 }
 
 
-# 現在の画面の「詳細」では、就活の「AIからの提案度合い」を標準までに抑えている(画面側でも 2 を選べない)。
-# 就活GDで内容支援を有効にできるようにするのは、中立設定ではない旨を表示する第4段階の画面から
+# 旧「詳細」(knobs)で送られた就活の「AIからの提案度合い」は、旧画面と同じく標準までに抑える(旧 API の互換)。
+# 現在の画面は介入ポリシーの⑥を直接送り、就活GDでも内容支援を有効にできる(中立設定ではない旨を表示する)
 JOB_MAX_LEVEL = {"suggest": 1}
 
 
@@ -151,6 +137,7 @@ POLICY_PRESETS: dict[str, dict[str, str]] = {
     },
 }
 PURPOSE_PRESET = {"job": "job_gd", "general": "general_gw"}  # 用途ごとの既定のプリセット
+POLICY_PRESET_LABELS = {"job_gd": "GD用(就活)", "general_gw": "GW用(一般)"}  # 画面に出す名前
 
 
 def load_settings(**overrides) -> Settings:

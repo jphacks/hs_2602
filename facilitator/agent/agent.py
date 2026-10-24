@@ -162,6 +162,14 @@ class FacilitatorAgent:
             return [Action.offer_hint], "proactive"
         return [], None
 
+    def has_pending_request(self, now: float) -> bool:
+        """応じていない依頼の候補があるか(AI 参加者が先に答えないようにするため)。古い候補はここでも見送るので、
+        参加者が話し続けて判断が始まらない場合も、待ちは request_expire_sec で必ず解ける。"""
+        r = self.pending_request
+        if r is not None and now - r.end_time > self.settings.request_expire_sec:
+            self.pending_request = None
+        return self.pending_request is not None
+
     def _scan_requests(self, now: float) -> None:
         """新しい人間の発言から、進行役への依頼の候補を探す(内容支援が有効なときだけ)。古い依頼は見送る。"""
         st = self.state
@@ -174,9 +182,7 @@ class FacilitatorAgent:
             self._scanned_id = max(self._scanned_id, u.id)
             if u.source == "human" and detect_request(u.text, bots):
                 self.pending_request = u
-        r = self.pending_request
-        if r is not None and now - r.end_time > self.settings.request_expire_sec:
-            self.pending_request = None
+        self.has_pending_request(now)  # 古い候補は見送る
 
     def _spontaneous_ok(self, now: float) -> bool:
         spont = [t for t, _a, reason in self.content_log if reason != "request"]
