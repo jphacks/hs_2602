@@ -170,7 +170,7 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .people-row { display: flex; gap: var(--gap); min-height: 0; align-items: stretch; }
 .pcard { background: color-mix(in srgb, var(--c) 10%, #fff); box-shadow: none; flex: 1 1 0; min-width: 84px; padding: 22px 14px 18px; position: relative; text-align: center; overflow: hidden;
   transition: flex-grow .8s cubic-bezier(.2,.8,.2,1), box-shadow .3s, transform .3s; }
-.pcard .name, .pcard .stance { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.pcard .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .pcard.active { box-shadow: inset 0 0 0 2px var(--c); transform: translateY(-2px); }
 /* 参加者のアイコン: アプリアイコン風の角の丸い正方形(大きさは固定) */
 .avatar { width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 15px; display: grid; place-items: center;
@@ -183,10 +183,6 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--fill); color: var(--muted); }
 .badge.ai { color: var(--ai); background: var(--ai-soft); }
 .pcard.bot .avatar svg { width: 32px; height: 32px; }
-.stance { display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 500; padding: 2px 10px; border-radius: 999px; color: var(--muted);
-  background: var(--fill); }
-.opinion { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical; overflow: hidden; }
 /* 会話ログ: メッセージアプリ風の吹き出し */
 .logbox { display: flex; flex-direction: column; min-height: 0; padding: 18px 18px 14px; }
 .logbox .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -323,8 +319,6 @@ body { font-size: 17px; }
 #s-session .pcard.active .avatar::after { border-radius: 16px; }
 #s-session .pcard.bot .avatar svg { width: 24px; height: 24px; }
 #s-session .pcard .name { font-size: 14px; }
-#s-session .stance { font-size: 10.5px; margin-top: 3px; }
-#s-session .opinion { display: none; }
 #s-session .badges { top: 6px; right: 6px; }
 #s-session .badge { font-size: 9.5px; padding: 1px 6px; }
 #s-session .logbox { min-height: 0; padding: 12px 12px 10px; }
@@ -343,6 +337,20 @@ body { font-size: 17px; }
   #s-session .rotate-hint svg { width: 56px; height: 56px; color: var(--text); }
   #s-session .rotate-hint b { color: var(--text); }
 }
+/* 時計はタップで経過時間と残り時間を入れ替える */
+.clock { cursor: pointer; user-select: none; -webkit-user-select: none; }
+.clock .limit .dot-sep { margin: 0 8px; color: var(--faint); }
+#s-session .clock .lab { display: block; font-size: 11.5px; margin-bottom: 2px; }
+/* 会話ログはタップで画面いっぱいに広げる */
+.logbox { cursor: zoom-in; }
+.logbox .head-r { display: flex; align-items: center; gap: 8px; }
+.logbox .zoom { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--fill); color: var(--muted); }
+.logbox .zoom svg { width: 14px; height: 14px; }
+.logbox.expanded { position: fixed; inset: 8px; z-index: 15; cursor: zoom-out; box-shadow: inset 0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.15) !important; }
+.logbox.expanded .zoom svg { transform: rotate(180deg); }
+#s-session .logbox.expanded .head h2 { font-size: 20px; }
+#s-session .logbox.expanded .msg .bubble { font-size: 17px; padding: 9px 15px; }
+#s-session .logbox.expanded .msg .who { font-size: 13px; }
 </style>
 </head>
 <body>
@@ -474,17 +482,17 @@ body { font-size: 17px; }
   </div>
   <div class="stage">
     <div class="left">
-      <div class="glass clock" id="clock">
-        <div class="lab">経過時間</div>
+      <div class="glass clock" id="clock" title="タップで経過時間と残り時間を入れ替え">
+        <div class="lab" id="c-big-lab">経過時間</div>
         <div class="time" id="c-time">00:00</div>
-        <div class="limit">制限時間 <b id="c-limit">8</b> 分 <span id="c-remain" style="margin-left:14px"></span></div>
+        <div class="limit"><span id="c-small-lab">残り</span> <b id="c-remain">--:--</b><span class="dot-sep">·</span>制限時間 <b id="c-limit">8</b> 分</div>
         <div class="progress"><div id="c-bar"></div></div>
         <div class="phases" id="phases"></div>
       </div>
       <div class="people-row" id="pcards"></div>
     </div>
-    <div class="glass logbox">
-      <div class="head"><h2>会話ログ</h2><span class="chip" id="silence"></span></div>
+    <div class="glass logbox" id="logbox" title="タップで大きく表示">
+      <div class="head"><h2>会話ログ</h2><span class="head-r"><span class="chip" id="silence"></span><span class="zoom" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></span></span></div>
       <div class="log" id="log"><div class="empty">発言がここに表示されます</div></div>
       <div class="partial" id="partial"></div>
       <div class="composer">
@@ -687,7 +695,7 @@ function renderReady() {
   $("b-preset").textContent = c.ai_count ? "AI参加者あり" : "人間だけ";
   $("b-level").textContent = c.ai_count ? `AI ${LEVEL_NAMES[c.ai_level] || ""}` : "";
   llmChip(ui.info?.llm);
-  $("c-limit").textContent = c.minutes; $("c-time").textContent = "00:00"; $("c-remain").textContent = "";
+  $("c-limit").textContent = c.minutes; showClock(0, c.minutes * 60);
   $("c-bar").style.width = "0"; $("clock").classList.remove("low", "over");
   $("btn-start").disabled = false; $("btn-pause").disabled = true; $("btn-stop").disabled = true;
 
@@ -718,6 +726,24 @@ function cardGrow(sec, sum, n) {
   return 1 + (target - 1) * Math.min(1, sum / 90);
 }
 
+// 時計: 既定は経過時間を大きく、残り時間を小さく表示する。タップで入れ替える
+function showClock(elapsed, remaining) {
+  ui.clock = { elapsed, remaining };
+  const big = ui.swapClock ? remaining : elapsed, small = ui.swapClock ? elapsed : remaining;
+  $("c-big-lab").textContent = ui.swapClock ? "残り時間" : "経過時間";
+  $("c-small-lab").textContent = ui.swapClock ? "経過" : "残り";
+  $("c-time").textContent = (big < 0 ? "-" : "") + mmss(Math.abs(big));
+  $("c-remain").textContent = (small < 0 ? "-" : "") + mmss(Math.abs(small));
+}
+$("clock").onclick = () => { ui.swapClock = !ui.swapClock; if (ui.clock) showClock(ui.clock.elapsed, ui.clock.remaining); };
+
+// 会話ログ: タップで画面いっぱいに広げる / 戻す(発言者の選択や入力欄の操作は除く)
+$("logbox").onclick = (e) => {
+  if (e.target.closest("select, input, button, .composer")) return;
+  if (window.getSelection && String(window.getSelection())) return;
+  $("logbox").classList.toggle("expanded");
+};
+
 function renderPeople() {
   const ps = people(), n = names(), ids = ps.map((p) => p.id), botOf = Object.fromEntries(ps.map((p) => [p.id, p.bot]));
   const box = $("pcards");
@@ -730,7 +756,6 @@ function renderPeople() {
         <div class="badges"></div>
         <div class="avatar">${bot ? ROBOT : esc(n[id].slice(0, 1))}</div>
         <div class="name">${esc(n[id])}</div>
-        ${bot ? `<div class="stance">${esc(bot.stance)}</div>${bot.opinion ? `<div class="opinion" title="${esc(bot.opinion)}">${esc(bot.opinion)}</div>` : ""}` : ""}
       </div>`;
     }).join("");
     box.dataset.key = key;
@@ -758,9 +783,8 @@ function render() {
   llmChip(s.llm);
 
   // 時計
-  $("c-time").textContent = mmss(s.elapsed);
   $("c-limit").textContent = +(s.duration / 60).toFixed(1);
-  $("c-remain").textContent = s.started ? `残り ${mmss(s.remaining)}` : "";
+  showClock(s.elapsed, s.started ? s.remaining : s.duration);
   $("c-bar").style.width = `${Math.min(100, (s.elapsed / s.duration) * 100)}%`;
   $("clock").classList.toggle("low", s.started && s.remaining <= 60 && s.remaining > 0);
   $("clock").classList.toggle("over", s.started && s.remaining <= 0);
