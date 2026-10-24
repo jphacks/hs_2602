@@ -24,7 +24,8 @@ class MockLLM:
             action, speech = "ask_question", "ここまでの案の中で、一番効果が大きそうなのはどれだと思いますか?"
         return {
             "analysis": {
-                "phase": context["phase"],
+                "phase": context["observed_phase"] or context["target_phase"],
+                "phase_reason": "(mock)",
                 "health": "stalled" if silence >= 12 else "progressing",
                 "issues": [],
                 "opinions": [],

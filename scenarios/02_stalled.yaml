@@ -3,6 +3,7 @@ title: 途中で沈黙・停滞
 theme: 大学の学食の混雑を改善するには？
 duration_sec: 600
 start_elapsed: 120
+initial_phase: cause_analysis
 participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
 utterances:
   - {t: 120, d: 4, s: speaker_1, c: 0.9, text: 混雑の原因は、やっぱりお昼に人が集中することだと思います。}
@@ -17,6 +18,6 @@ utterances:
   - {t: 212, d: 3, s: speaker_3, c: 0.9, text: 券売機を増やすのもありですね。}
 checkpoints:
   - {at: 137.5, expect: [no_intervention], why: まだ議論が動いている。短い間で介入しない}
-  - {at: 175, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention], why: 16秒の沈黙で停滞。具体的な切り口を示す質問か論点整理が必要}
+  - {at: 175, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention], expect_phase: [cause_analysis, solution_ideation], why: 16秒の沈黙で停滞。具体的な切り口を示す質問か論点整理が必要}
   - {at: 205, expect: [no_intervention], why: 直前の介入から30秒でクールダウン中}
   - {at: 216.5, expect: [no_intervention], why: 議論が再開した。見守る}

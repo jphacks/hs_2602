@@ -139,3 +139,30 @@ def test_pause_excludes_time():
     st.resume(160)
     assert st.elapsed(200) == pytest.approx(140)
     assert st.remaining(200) == pytest.approx(460)
+
+
+def test_close_gd_keeps_final_announcement_when_truncated():
+    speech = "時間になりました。結論はAです。理由はBです。発表はCさんです。お疲れさまでした。"
+    _, ag, _ = make(d("close_gd", speech))
+    rec = ag.tick(601)
+    assert rec.decision.speech == "時間になりました。結論はAです。お疲れさまでした。"
+    assert rec.overridden == "発話を3文に短縮"
+
+
+def test_short_close_gd_unchanged():
+    speech = "時間になりました。結論はAですね。お疲れさまでした。"
+    _, ag, _ = make(d("close_gd", speech))
+    rec = ag.tick(601)
+    assert rec.decision.speech == speech and rec.overridden is None
+
+
+def test_other_actions_keep_first_sentences():
+    _, ag, _ = make(d("ask_question", "一。二。三。四。"))
+    rec = ag.tick(200)
+    assert rec.decision.speech == "一。二。三。" and rec.overridden == "発話を3文に短縮"
+
+
+def test_empty_forced_speech_uses_template_without_truncation_note():
+    _, ag, _ = make(d("close_gd", ""))
+    rec = ag.tick(601)
+    assert rec.decision.speech.startswith("時間になりました") and rec.overridden is None
