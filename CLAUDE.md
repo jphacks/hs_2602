@@ -47,6 +47,7 @@ Observe → Understand → Decide → Act の単一エージェント(ルール 
    - 就活では「AIからの提案度合い」は標準まで(`JOB_MAX_LEVEL`)。就活の追加ルール「参加者が出していない観点を持ち込まない」と矛盾させないため
    - その他: 入力方法、AI参加者のレベル、自己紹介での声の登録、AIの声、話者情報。旧来の進行スタイル A/B/カスタムは画面からは使わない(サーバーは preset を受け付ける)
 3. 進行: 参加者カードの幅が発言量に応じて伸び縮みする
+- 見た目は Apple(iOS / iPadOS)風: システムフォント・システムカラー、明暗は OS の設定に従う(prefers-color-scheme)
 
 ## チャット経由モード(handoff)
 - `LLM_PROVIDER=handoff`: `facilitator/llm/handoff_llm.py`。プロンプトを `exchange/request_NNN.md` に書き出し、`exchange/response_NNN.json` を待つ(既定のタイムアウト 900 秒、`HANDOFF_TIMEOUT_SEC`)。`exchange/` は gitignore 済み。
