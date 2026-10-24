@@ -107,6 +107,8 @@ class FacilitatorAgent:
                 continue
             if u.source == "ai":
                 who = "AI(ファシリテーター)"
+            elif u.source == "bot":
+                who = f"{st.speaker_names.get(u.speaker_id, u.speaker_id)}(AI参加者・{u.speaker_id})"
             elif u.speaker_id == UNKNOWN or not self.settings.use_speaker_info:
                 who = "不明"
             elif u.speaker_id in st.names_confirmed:
@@ -178,10 +180,12 @@ class FacilitatorAgent:
         st = self.state
         if action == Action.start_gd:
             mins = int(st.duration_sec // 60)
+            bots = "、".join(f"{st.speaker_names[b]}さん" for b in sorted(st.bot_ids))
             return (
                 f"それでは、グループディスカッションを始めます。テーマは「{st.theme}」です。"
                 f"制限時間は{mins}分で、最後にグループとしての結論をまとめてください。"
-                "私は進行役として、ときどき論点の整理や質問をします。では、どなたからでもどうぞ。"
+                + (f"今回はAI参加者の{bots}も一緒に議論します。" if bots else "")
+                + "私は進行役として、ときどき論点の整理や質問をします。では、どなたからでもどうぞ。"
             )
         if action == Action.time_warning:
             return f"残り約{max(1, round(st.remaining(now) / 60))}分です。そろそろ結論に向けてまとめていきましょう。"

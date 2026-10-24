@@ -57,6 +57,7 @@ SYSTEM_PROMPT = PURPOSE_INTRO["job"] + """\
 
 # 入力について
 - 発話ログの話者は、名前 / speaker_N / 不明(話者を特定できなかった発話)/ AI(あなた自身の過去の発話)のいずれかです。
+- 「AI参加者」と書かれた人は、議論に加わっている AI の参加者です。ほかの参加者と同じように扱い、指名してもかまいません。ただし発言機会の調整では、人間の参加者が考えを示す機会を優先してください。
 - 話者識別は暫定的で誤りを含みます。「不明」が多い場合や話者情報が利用不可の場合は、個人を特定した判断をしないでください。
 - 「許可されたアクション」以外は選ばないでください(ルール層が過剰介入を防ぐため制限しています)。
 
@@ -152,6 +153,8 @@ def build_user_prompt(ctx: dict[str, Any]) -> str:
         lines.append(f"話者識別の信頼度: {ctx['speaker_reliability']:.0%}")
         for s in ctx["speaker_stats"]:
             name = f"{s['label']}(confirmed)" if s["label_confirmed"] else "名前未確認"
+            if s.get("is_bot"):
+                name += "・AI参加者"
             last = "一度も発言なし" if s["since_last_spoke_sec"] is None else f"最後の発言から{s['since_last_spoke_sec']:.0f}秒"
             lines.append(
                 f"- {s['speaker_id']} / {name}: 発話{s['turns']}回, 計{s['total_speech_sec']:.0f}秒, {last}"

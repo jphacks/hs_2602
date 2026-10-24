@@ -139,3 +139,20 @@ def test_pause_excludes_time():
     st.resume(160)
     assert st.elapsed(200) == pytest.approx(140)
     assert st.remaining(200) == pytest.approx(460)
+
+
+@pytest.mark.parametrize(
+    "humans,bots,mode",
+    [(1, 1, "active"), (2, 1, "active"), (3, 3, "active"), (3, 1, "reserved"), (4, 2, "reserved"), (3, 0, "")],
+)
+def test_bot_mode_by_headcount(humans, bots, mode):
+    from facilitator.engine import Engine, SessionConfig
+
+    e = Engine(load_settings(), llm_provider="mock")  # セッションごとの設定にもモックを引き継ぐ
+    e.start(SessionConfig("t", 1, [f"h{i}" for i in range(humans)], mode="text", tts=False, ai_count=bots))
+    try:
+        assert e.bot_mode == mode
+        assert len(e.personas) == bots
+        assert e.state.bot_ids == {f"speaker_{humans + i + 1}" for i in range(bots)}
+    finally:
+        e.stop()
