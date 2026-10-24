@@ -111,6 +111,7 @@ class Engine:
         self.intro = IntroState()
         self.events = []
         self._t0 = time.monotonic()
+        self._ai_mute_until = 0.0  # 時計を0に戻すので、前のセッションの時計でのミュート時刻を持ち越さない
         self._tts = None
         if cfg.tts:
             if sys.platform == "win32":
