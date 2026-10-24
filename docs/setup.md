@@ -15,6 +15,12 @@ mkdir -p models && curl -L -o models/campplus_zh_en_advanced.onnx \
 ```
 マイクを使うスクリプトは、macOS の「ターミナル」アプリで実行してください(初回はマイクの許可を求められます)。
 
+## mock-test ブランチ(トークンを消費しないテスト用)
+- AI の判断は既定で**モック**(ルールベース)になり、Claude API を呼びません。画面右上に「モックAI(トークン消費なし)」と表示されます。
+- 画面の初期モードは「テキスト入力のみ」です。音声モードを選ぶと文字起こし(AssemblyAI)の従量課金が発生します。
+- モックの判断は単純です(12秒以上の沈黙で質問、時間告知、終了のみ)。UI や進行の流れの確認に使い、判断の質は main ブランチの Claude で確認してください。
+- 一時的に Claude を使う場合は `LLM_PROVIDER=anthropic` を付けて起動します。
+
 ## Step 1: エージェント単体の検証(音声なし)
 ```bash
 .venv/bin/python -m pytest -q tests                                 # ルール層のテスト

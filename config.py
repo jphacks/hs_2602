@@ -43,7 +43,7 @@ class Settings:
     )
 
     # --- LLM ---
-    llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic")  # anthropic | mock
+    llm_provider: str = os.getenv("LLM_PROVIDER", "mock")  # mock-test ブランチ: 既定はモック(Claude のトークンを消費しない)
     llm_model: str = os.getenv("LLM_MODEL", "claude-opus-5-5")
     llm_effort: str = os.getenv("LLM_EFFORT", "low")
     llm_max_tokens: int = 8000
