@@ -136,7 +136,8 @@ JOB_MAX_LEVEL = {"suggest": 1}
 
 
 def knob_overrides(knobs: dict[str, int] | None, purpose: str = "job") -> tuple[dict[str, Any], list[str]]:
-    """詳細の選択から、数値設定の上書きと進行役への追加の指示を作る。"""
+    """詳細の選択から、数値設定の上書きと進行役への追加の指示を作る。
+    介入ポリシー(facilitator/policy.py)の①〜④の効果として使う(第2段階でポリシーの項目ごとの効果に置き換える)。"""
     overrides: dict[str, Any] = {}
     notes: list[str] = []
     for key, level in (knobs or {}).items():
@@ -150,6 +151,33 @@ def knob_overrides(knobs: dict[str, int] | None, purpose: str = "job") -> tuple[
         if choice["prompt"]:
             notes.append(f"- {spec['label']}: {choice['prompt']}")
     return overrides, notes
+
+
+# 介入ポリシーのプリセット(facilitator/policy.py の InterventionPolicy の初期値)。利用者は選んだ後に各項目を変更できる
+# ①〜⑤: low=控えめ / standard=標準(現行の就活GD相当) / high=積極的
+# ⑥-A content_scope: none=なし / hint=ヒントまで / concrete=具体案まで
+# ⑥-B content_initiative: none=依頼されたときだけ / stalled=停滞時のみ / proactive=積極的(content_scope が none なら none に固定)
+POLICY_PRESETS: dict[str, dict[str, str]] = {
+    "job_gd": {  # 就活GD用: 参加者の自主性を重視し、必要なときだけ進行を支援する。内容は出さない
+        "progress": "standard",
+        "drift": "standard",
+        "organize": "standard",
+        "turns": "standard",
+        "stall": "standard",
+        "content_scope": "none",
+        "content_initiative": "none",
+    },
+    "general_gw": {  # 一般GW用: 話しやすい場をつくり、人間の発言を引き出す。必要に応じて考え方のヒントを出せる
+        "progress": "standard",
+        "drift": "standard",
+        "organize": "high",
+        "turns": "high",
+        "stall": "high",
+        "content_scope": "hint",
+        "content_initiative": "stalled",
+    },
+}
+PURPOSE_PRESET = {"job": "job_gd", "general": "general_gw"}  # 用途ごとの既定のプリセット
 
 
 def load_settings(**overrides) -> Settings:

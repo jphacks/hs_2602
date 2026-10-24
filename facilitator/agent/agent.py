@@ -14,6 +14,7 @@ from facilitator.discussion_types import get_discussion_type
 from facilitator.llm.base import LLMClient, LLMError
 from facilitator.logging import TickLogger
 from facilitator.models import AI_SPEAKER, UNKNOWN, UNLIMITED_SEC, Action, AgentOutput, Decision, TickRecord
+from facilitator.policy import InterventionPolicy, session_policy
 from facilitator.state import DiscussionState
 
 # ルール層だけが発動させるアクション(LLM が自発的に選ぶことはできない)
@@ -55,8 +56,10 @@ class FacilitatorAgent:
         discussion_type: str | None = None,  # 省略時は用途の既定(就活GD=課題解決型、一般=汎用型)
         clock: Any = None,  # 応答時間の計測に使う時計(テストでは疑似時計)
         style_notes: list[str] | None = None,  # 画面の「詳細」で選んだ進行の調整
+        policy: InterventionPolicy | None = None,  # 介入ポリシー。省略時は用途の既定(第1段階では保持するだけで判断には使わない)
     ) -> None:
         self.clock = clock or time
+        self.policy = policy or session_policy(purpose)
         self.dtype = get_discussion_type(discussion_type, purpose)
         self.system_prompt = build_system_prompt(purpose, self.dtype.key, style_notes)
         self.output_schema = build_output_schema(self.dtype)
