@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- SHIKAI(司会)のアプリアイコン: 青い角丸の正方形に、白い吹き出しと AI を表す紫のきらめき -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4aa3ff"/>
+      <stop offset="1" stop-color="#007aff"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c77dff"/>
+      <stop offset="1" stop-color="#9b3fd6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <!-- 吹き出し -->
+  <path d="M352 268h320c106 0 192 86 192 192v40c0 106-86 192-192 192H470l-150 112c-14 10-33-1-31-18l14-100c-82-22-143-97-143-186v-40c0-106 86-192 192-192z" fill="#fff"/>
+  <!-- 話す順番を回す3つの点 -->
+  <circle cx="392" cy="480" r="46" fill="#007aff" opacity=".45"/>
+  <circle cx="512" cy="480" r="46" fill="#007aff" opacity=".7"/>
+  <circle cx="632" cy="480" r="46" fill="#007aff"/>
+  <!-- AI のきらめき -->
+  <path d="M800 150c12 70 44 102 114 114-70 12-102 44-114 114-12-70-44-102-114-114 70-12 102-44 114-114z" fill="url(#spark)" stroke="#fff" stroke-width="22" stroke-linejoin="round"/>
+</svg>

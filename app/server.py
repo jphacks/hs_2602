@@ -64,6 +64,16 @@ def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
 
 
+@app.get("/icon.svg")
+def icon() -> FileResponse:
+    return FileResponse(STATIC / "icon.svg", media_type="image/svg+xml")
+
+
+@app.get("/icon.png")
+def icon_png() -> FileResponse:
+    return FileResponse(STATIC / "icon.png", media_type="image/png")
+
+
 @app.post("/api/start")
 def start(req: StartReq) -> dict:
     names = [n.strip() for n in req.names if n.strip()][:4]
