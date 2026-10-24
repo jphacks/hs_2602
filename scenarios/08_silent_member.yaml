@@ -3,6 +3,7 @@ title: 1人だけ一度も発言していない
 theme: 大学の学食の混雑を改善するには？
 duration_sec: 600
 start_elapsed: 60
+initial_phase: problem_definition
 participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
 utterances:
   - {t: 60, d: 5, s: speaker_1, c: 0.9, text: 原因は大きく、時間の集中と会計の遅さだと思います。}
@@ -21,5 +22,5 @@ utterances:
   - {t: 156, d: 2, s: speaker_2, c: 0.88, text: 私もそう思います。}
   - {t: 160, d: 3, s: speaker_3, c: 0.9, text: じゃあキャッシュレスが第一候補ですかね。}
 checkpoints:
-  - {at: 116.5, expect: [no_intervention], why: 3人で建設的に案が広がっている最中。割り込まない}
-  - {at: 166, expect: [invite_person, invite_all], forbid: [no_intervention], target_any: [speaker_4], why: 優先順位を決める段階でみさきさんが一度も発言していない。確定前に意見を聞く機会をつくる}
+  - {at: 116.5, expect: [no_intervention], require_llm: true, expect_phase: [solution_ideation], why: 3人で建設的に案が広がっている最中。割り込まない}
+  - {at: 166, expect: [invite_person, invite_all], forbid: [no_intervention], target_any: [speaker_4], expect_phase: [evaluation], why: 優先順位を決める段階でみさきさんが一度も発言していない。確定前に意見を聞く機会をつくる}

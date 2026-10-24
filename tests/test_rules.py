@@ -193,3 +193,30 @@ def test_bot_chain_resets_after_facilitator():
     assert pick_bot(st, ps, "active", 30, 20, -1, 1) is None  # AI が2回続いた
     st.add_utterance("ai", "どんな基準で比べますか？", 40, 45, 1.0, source="ai")
     assert pick_bot(st, ps, "active", 48, 20, -1, 1) is not None  # 進行役の問いかけでリセット
+
+
+def test_close_gd_keeps_final_announcement_when_truncated():
+    speech = "時間になりました。結論はAです。理由はBです。発表はCさんです。お疲れさまでした。"
+    _, ag, _ = make(d("close_gd", speech))
+    rec = ag.tick(601)
+    assert rec.decision.speech == "時間になりました。結論はAです。お疲れさまでした。"
+    assert rec.overridden == "発話を3文に短縮"
+
+
+def test_short_close_gd_unchanged():
+    speech = "時間になりました。結論はAですね。お疲れさまでした。"
+    _, ag, _ = make(d("close_gd", speech))
+    rec = ag.tick(601)
+    assert rec.decision.speech == speech and rec.overridden is None
+
+
+def test_other_actions_keep_first_sentences():
+    _, ag, _ = make(d("ask_question", "一。二。三。四。"))
+    rec = ag.tick(200)
+    assert rec.decision.speech == "一。二。三。" and rec.overridden == "発話を3文に短縮"
+
+
+def test_empty_forced_speech_uses_template_without_truncation_note():
+    _, ag, _ = make(d("close_gd", ""))
+    rec = ag.tick(601)
+    assert rec.decision.speech.startswith("時間になりました") and rec.overridden is None

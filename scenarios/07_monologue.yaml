@@ -3,6 +3,7 @@ title: 特定の1人が長時間話し続ける
 theme: 大学の学食の混雑を改善するには？
 duration_sec: 600
 start_elapsed: 200
+initial_phase: solution_ideation
 participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
 utterances:
   - {t: 200, d: 25, s: speaker_1, c: 0.92, text: 僕が思うに、一番の問題はレジなんですよ。僕は毎日学食に行ってるんですけど、12時10分くらいに行くと必ずレジで5分は待たされるんです。現金で小銭を探してる人がいたり、ポイントカードを出したりで、一人あたりの時間が長い。だからまずレジを全部キャッシュレスにするべきで、それは絶対に効果があると思います。他の大学でもやってるところがあるって聞きましたし。}

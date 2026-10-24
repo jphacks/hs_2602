@@ -27,17 +27,6 @@ class Utterance(BaseModel):
         return max(0.0, self.end_time - self.start_time)
 
 
-class Phase(str, Enum):
-    opening = "opening"
-    ideation = "ideation"
-    comparison = "comparison"
-    conclusion = "conclusion"
-    closing = "closing"
-
-
-PHASE_ORDER = [p.value for p in Phase]
-
-
 class Action(str, Enum):
     no_intervention = "no_intervention"
     start_gd = "start_gd"
@@ -58,7 +47,8 @@ HEALTH_VALUES = ["progressing", "stalled", "off_topic", "conflicting", "convergi
 class Analysis(BaseModel):
     """Understand の結果(LLM が更新する議論状態)。"""
 
-    phase: str = Phase.opening.value
+    phase: str = ""  # 議論タイプのフェーズの key(facilitator/discussion_types.py)
+    phase_reason: str = ""  # そのフェーズだと判断した根拠(短く)
     health: str = "progressing"
     issues: list[str] = Field(default_factory=list)
     opinions: list[str] = Field(default_factory=list)
@@ -96,7 +86,10 @@ class TickRecord(BaseModel):
 
     time: float
     trigger: str
-    phase: str
+    observed_phase: str  # LLM が判断した実際のフェーズ(この判断後の値)
+    target_phase: str  # 経過時間から計算した目標フェーズ
+    phase_gap: int | None = None  # 目標 - 判断前の実際のフェーズ(段階数)。判断前のフェーズがなければ None
+    phase_behind: bool = False  # 判断前のフェーズで見て、移行を促してよい程度に遅れていたか
     remaining_sec: float
     silence_sec: float
     gate: str  # ルール層の判定(llm / forced:... / blocked:...)
@@ -106,3 +99,6 @@ class TickRecord(BaseModel):
     llm_raw_action: str | None = None
     overridden: str | None = None  # ルール層で書き換えた場合の理由
     latency_sec: float = 0.0
+    llm_called: bool = False  # この判断で LLM を呼んだか(失敗も含む)
+    llm_usage: dict[str, int] | None = None  # 使用トークン数(Claude のみ)
+    context_last_utt_id: int | None = None  # LLM に渡した発話ログの最後の発言 id(判断後に増えた発言を数えるため)

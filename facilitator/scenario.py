@@ -26,6 +26,9 @@ class CheckResult:
     record: TickRecord
     passed: bool
     fail_reason: str = ""
+    expect_phase: list[str] | None = None
+    phase_ok: bool | None = None  # フェーズ認識の評価(行動の評価とは別)。LLM が判断していない/期待なしなら None
+    judged_by: str = "rule"  # rule(ルール層の見送り) / llm(LLM の判断) / llm_overridden(LLM の選択を検証で書き換え)
 
 
 @dataclass
@@ -39,7 +42,18 @@ def load_scenario(path: Path) -> dict[str, Any]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def judged_by(rec: TickRecord) -> str:
+    """判断の出どころ。介入しない判断が LLM 自身のものか、ルール層の見送りかを区別する。"""
+    if not rec.llm_called:
+        return "rule"
+    if rec.llm_raw_action is not None and rec.llm_raw_action != rec.decision.action.value:
+        return "llm_overridden"
+    return "llm"
+
+
 def judge(cp: dict[str, Any], rec: TickRecord) -> tuple[bool, str]:
+    if cp.get("require_llm") and not rec.llm_called:  # LLM 自身の判断を評価したい時点で、ルール層が先に処理した
+        return False, f"評価条件不成立: LLM 未実行({rec.gate})"
     action = rec.decision.action.value
     if action in cp.get("forbid", []):
         return False, f"禁止アクション {action}"
@@ -51,6 +65,13 @@ def judge(cp: dict[str, Any], rec: TickRecord) -> tuple[bool, str]:
     return True, ""
 
 
+def judge_phase(cp: dict[str, Any], rec: TickRecord) -> bool | None:
+    """LLM がこのチェックポイントで判断した実際のフェーズが、期待(expect_phase)のいずれかか。"""
+    if not cp.get("expect_phase") or rec.llm_raw_action is None:
+        return None
+    return rec.observed_phase in cp["expect_phase"]
+
+
 def run_scenario(
     sc: dict[str, Any], llm: LLMClient, settings: Settings, logger: TickLogger | None = None, section: Any = None
 ) -> ScenarioResult:
@@ -58,12 +79,13 @@ def run_scenario(
     state = DiscussionState(settings=settings, theme=sc["theme"], duration_sec=sc["duration_sec"])
     for sid, name in (sc.get("participants") or {}).items():
         state.set_speaker_name(sid, name, confirmed=sc.get("names_confirmed", True))
+    agent = FacilitatorAgent(state, llm, settings, logger=logger)
     if sc.get("start_elapsed", 0) > 0:
         state.started = True
         state.start_time = 0.0
-        state.phase = sc.get("initial_phase", "ideation")
-
-    agent = FacilitatorAgent(state, llm, settings, logger=logger)
+        # 途中から始めるシナリオは、それまでの LLM 判断を initial_phase として与える(省略時は未判断)
+        state.observed_phase = sc.get("initial_phase", "")
+        state.phase_observed_at = 0.0 if state.observed_phase else None
     if section is not None:
         section.state, section.info = state, {"テーマ": sc["theme"]}
     pending = sorted(sc["utterances"], key=lambda u: u["t"] + u["d"])
@@ -94,6 +116,9 @@ def run_scenario(
                 }
             )
         result.checks.append(
-            CheckResult(now, cp["expect"], cp.get("forbid", []), cp.get("target_any"), cp.get("why", ""), rec, ok, reason)
+            CheckResult(
+                now, cp["expect"], cp.get("forbid", []), cp.get("target_any"), cp.get("why", ""), rec, ok, reason,
+                cp.get("expect_phase"), judge_phase(cp, rec), judged_by(rec),
+            )
         )
     return result

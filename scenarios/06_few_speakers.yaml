@@ -3,6 +3,7 @@ title: 一部の人しか話していない
 theme: 大学の学食の混雑を改善するには？
 duration_sec: 600
 start_elapsed: 30
+initial_phase: problem_definition
 participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
 utterances:
   - {t: 30, d: 5, s: speaker_1, c: 0.9, text: まず原因ですが、昼に人が集中するのが一番大きいと思います。}
@@ -26,5 +27,5 @@ utterances:
   - {t: 201, d: 1.5, s: speaker_2, c: 0.88, text: いい感じですね。}
   - {t: 204, d: 2, s: speaker_1, c: 0.9, text: ほかに何かありますかね。}
 checkpoints:
-  - {at: 191.5, expect: [no_intervention], why: 偏りはあるが2人のやり取りが盛り上がっている最中。割り込まない}
-  - {at: 211, expect: [invite_person, invite_all], forbid: [no_intervention], target_any: [speaker_4, speaker_3], why: 区切りがつき、みさきさんは一度も発言していない。名前紐づけ済み・信頼度高なので個人指名が適切}
+  - {at: 191.5, expect: [no_intervention], require_llm: true, expect_phase: [solution_ideation], why: 偏りはあるが2人のやり取りが盛り上がっている最中。割り込まない}
+  - {at: 211, expect: [invite_person, invite_all], forbid: [no_intervention], target_any: [speaker_4, speaker_3], expect_phase: [solution_ideation, evaluation], why: 区切りがつき、みさきさんは一度も発言していない。名前紐づけ済み・信頼度高なので個人指名が適切}
