@@ -37,8 +37,8 @@ MAX_FOLLOW_SEC = 60.0  # 1回の発言のあとに AI だけで進める時間�
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--theme", required=True)
-    ap.add_argument("--humans", required=True, help="人間の参加者名(カンマ区切り)")
-    ap.add_argument("--ai", type=int, default=0, help="AI 参加者の人数(0〜3)")
+    ap.add_argument("--humans", default="", help="人間の参加者名(カンマ区切り。空なら AI 参加者だけで議論)")
+    ap.add_argument("--ai", type=int, default=0, help="AI 参加者の人数(0〜4)")
     ap.add_argument("--minutes", type=float, default=5)
     ap.add_argument("--purpose", choices=["job", "general"], default="job")
     ap.add_argument("--llm", choices=["handoff", "mock", "anthropic"], default="handoff")
@@ -58,6 +58,8 @@ def main() -> None:
     status("busy")
     s = load_settings(llm_provider=args.llm)
     names = [n.strip() for n in args.humans.split(",") if n.strip()]
+    if len(names) + args.ai < 2:
+        sys.exit("参加者は合計2人以上にしてください")
     humans = {f"speaker_{i + 1}": n for i, n in enumerate(names)}
     by_name = {n: sid for sid, n in humans.items()}
     vs = VirtualSession(
@@ -65,7 +67,7 @@ def main() -> None:
         RecordingLLM(make_llm(s)),
         theme=args.theme,
         humans=humans,
-        ai_count=max(0, min(3, args.ai)),
+        ai_count=max(0, min(4, args.ai)),
         duration_sec=args.minutes * 60,
         purpose=args.purpose,
         title=args.theme,
@@ -88,6 +90,10 @@ def main() -> None:
         status("busy")
         st = vs.st
         if cmd["type"] == "say":
+            if not humans:
+                out("  (人間の参加者がいないため、発言は受け付けません)")
+                status("idle")
+                continue
             sid = by_name.get(cmd.get("speaker", ""), next(iter(humans)))
             text = cmd["text"]
             start = max(vs.t, vs.busy_until)  # AI が話し終わってから話す
