@@ -85,6 +85,7 @@ button.ghost { background: var(--chip); color: var(--text); }
 <header>
   <h1>AI Facilitator</h1>
   <div id="theme">—</div>
+  <span class="chip" id="chip-llm" title="判断に使っている AI">—</span>
   <span class="chip" id="chip-phase">待機中</span>
   <span class="chip" id="chip-listen"><span class="dot"></span>発話検知</span>
   <span class="chip" id="chip-ai"><span class="dot"></span>AI</span>
@@ -199,6 +200,9 @@ function speakerOptions(sel) {
 function render() {
   const s = snap; if (!s || !s.theme) return;
   $("theme").textContent = s.theme;
+  const mock = s.llm === "mock";
+  $("chip-llm").textContent = mock ? "モックAI(トークン消費なし)" : s.llm.replace("anthropic:", "");
+  $("chip-llm").style.color = mock ? "var(--warn)" : "";
   const t = s.started ? s.remaining : s.duration;
   $("timer").textContent = mmss(t); $("timer").classList.toggle("low", s.started && s.remaining <= 120);
   $("chip-phase").textContent = s.status === "intro" ? "自己紹介" : s.status === "finished" ? "終了" : (PHASE_JA[s.phase] || s.phase);

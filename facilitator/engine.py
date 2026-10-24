@@ -347,6 +347,7 @@ class Engine:
             )
         return {
             "status": self.status,
+            "llm": agent.llm.name,
             "mode": cfg.mode,
             "theme": cfg.theme,
             "names": names,
