@@ -14,7 +14,8 @@ from facilitator.discussion_types import get_discussion_type
 from facilitator.llm.base import LLMClient, LLMError
 from facilitator.logging import TickLogger
 from facilitator.models import AI_SPEAKER, UNKNOWN, UNLIMITED_SEC, Action, AgentOutput, Decision, TickRecord
-from facilitator.policy import InterventionPolicy, level_settings, levels, session_policy
+from facilitator.agent.content_check import content_flags
+from facilitator.policy import CONTENT_ACTIONS, ContentInitiative, InterventionPolicy, level_settings, levels, session_policy
 from facilitator.state import DiscussionState
 
 # ルール層だけが発動させるアクション(LLM が自発的に選ぶことはできない)
@@ -29,6 +30,8 @@ FREE_ACTIONS = [
 ]
 INVITE_ALL_FALLBACK = "まだお話しされていない方も、ここまでの議論についてどう考えているか聞かせてもらえますか?"
 REDIRECT_MAX_SENTENCES = 2  # 軌道修正は短い区切りで話すので短くする
+# 発話の文数の上限(既定は3文)。ヒントは問いの形の短いものにする
+MAX_SENTENCES = {Action.redirect_topic: REDIRECT_MAX_SENTENCES, Action.offer_hint: 2, Action.propose_idea: 3}
 
 
 def _mmss(sec: float) -> str:
@@ -63,8 +66,11 @@ class FacilitatorAgent:
         # ①〜⑤の段階で変わる判断条件。標準の項目は settings の値をそのまま使う(_param)
         self.level_settings = level_settings(self.policy)
         self.dtype = get_discussion_type(discussion_type, purpose)
-        self.system_prompt = build_system_prompt(purpose, self.dtype.key, style_notes, levels(self.policy))
-        self.output_schema = build_output_schema(self.dtype)
+        scope = self.policy.content_scope.value
+        self.system_prompt = build_system_prompt(
+            purpose, self.dtype.key, style_notes, levels(self.policy), (scope, self.policy.content_initiative.value)
+        )
+        self.output_schema = build_output_schema(self.dtype, scope)
         self.state = state
         self.llm = llm
         self.settings = settings
@@ -75,6 +81,8 @@ class FacilitatorAgent:
         self.last_tick_time: float | None = None
         self.skipped_due: str | None = None  # 直近の should_tick で、定期分析の時刻なのに見送った理由
         self.off_topic_streak = 0  # 直近の LLM 判断で、続けて脱線(off_topic)と判断した回数
+        self.content_log: list[tuple[float, Action, str | None]] = []  # 内容支援を行った (時刻, アクション, 許可の理由)
+        self.content_reason: str | None = None  # 直近の _gate で内容支援を許可した理由
 
     def _param(self, key: str) -> Any:
         """介入ポリシーの段階で変わる判断条件。段階が上書きしていなければ settings の値。"""
@@ -117,7 +125,28 @@ class FacilitatorAgent:
             allowed.append(Action.invite_person)
         if s.enable_return_to_speaker:
             allowed.append(Action.return_to_speaker)
+        content, self.content_reason = self._content_actions(now)
+        allowed += content
         return "llm", allowed, None
+
+    # ================= 内容支援(介入ポリシー⑥) =================
+    def _content_actions(self, now: float) -> tuple[list[Action], str | None]:
+        """いま許可する内容支援のアクションと、その理由。範囲(⑥-A)の外のアクションはどの理由でも許可しない。
+        - proactive: 自発的な支援が「積極的」なら offer_hint だけ(具体案は依頼か停滞の段階を踏んだときだけ)
+        自発的な支援には、内容支援どうしの間隔と、1回の GD での上限をかける。"""
+        p = self.policy
+        if not p.content_support:
+            return [], None
+        if p.content_initiative == ContentInitiative.proactive and self._spontaneous_ok(now):
+            return [Action.offer_hint], "proactive"
+        return [], None
+
+    def _spontaneous_ok(self, now: float) -> bool:
+        spont = [t for t, _a, reason in self.content_log if reason != "request"]
+        if len(spont) >= self.settings.content_max_spontaneous:
+            return False
+        last = max((t for t, _a, _r in self.content_log), default=None)
+        return last is None or now - last >= self.settings.content_cooldown_sec
 
     def _warn_thresholds(self) -> list[float]:
         cap = self.state.duration_sec * self.settings.time_warning_max_fraction
@@ -245,7 +274,7 @@ class FacilitatorAgent:
                 return self._invite_all_instead(d, reason, now)
 
         # 終了は最後の一文で終了を告げるので、切り詰めても締めの告知を残す
-        n = REDIRECT_MAX_SENTENCES if d.action == Action.redirect_topic else 3
+        n = MAX_SENTENCES.get(d.action, 3)
         speech = _limit_sentences(d.speech, n, keep_last=d.action == Action.close_gd)
         note = f"発話を{n}文に短縮" if speech and speech != d.speech.strip() else None
         if not speech:
@@ -297,12 +326,14 @@ class FacilitatorAgent:
         return "時間になりました。皆さんの結論を最後に確認させてください。お疲れさまでした。"
 
     # ================= Act =================
-    def _act(self, d: Decision, now: float) -> None:
+    def _act(self, d: Decision, now: float, content_reason: str | None = None) -> None:
         st = self.state
         if d.action == Action.no_intervention:
             return
         remaining_before = st.remaining(now)
         st.record_intervention(now, d)
+        if d.action in CONTENT_ACTIONS:
+            self.content_log.append((now, d.action, content_reason))
         if d.action == Action.time_warning:
             for th in self._warn_thresholds():
                 if remaining_before <= th:
@@ -372,9 +403,11 @@ class FacilitatorAgent:
             llm_called=llm_called,
             llm_usage=usage,
             context_last_utt_id=last_utt,
+            content_reason=self.content_reason if any(a in CONTENT_ACTIONS for a in allowed) else None,
+            content_flags=content_flags(decision.action, decision.speech),
         )
         if act:
-            self._act(decision, now)
+            self._act(decision, now, record.content_reason)
         self.history.append(record)
         if self.logger:
             self.logger.log_tick(record)
@@ -387,7 +420,7 @@ class FacilitatorAgent:
             return
         speak, self.speak = self.speak, (lambda _t: duration) if duration is not None else None
         try:
-            self._act(d, now)
+            self._act(d, now, record.content_reason)
         finally:
             self.speak = speak
 

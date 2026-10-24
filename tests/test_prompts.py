@@ -116,7 +116,9 @@ def test_time_warning_prompt_carries_unresolved_conflict(purpose):
     rec = FacilitatorAgent(st, llm, s, purpose=purpose).tick(482)
     assert rec.gate == "forced:time_warning" and rec.decision.action.value == "time_warning"
     assert llm.context["allowed_actions"] == ["time_warning"]
-    # 用途の既定のプリセットの段階(就活GDはすべて標準。一般GWは③④⑤が積極的)
-    assert llm.system == build_system_prompt(purpose, levels=levels(purpose_preset(purpose)))
+    # 用途の既定のプリセット(就活GDはすべて標準・内容支援なし。一般GWは③④⑤が積極的、内容支援はヒントまで・停滞時のみ)
+    pol = purpose_preset(purpose)
+    content = (pol.content_scope.value, pol.content_initiative.value)
+    assert llm.system == build_system_prompt(purpose, levels=levels(pol), content=content)
     assert "どちらかの意見を前提にせず" in llm.system
     assert "全部実施するか、優先順位をつけるか" in llm.user

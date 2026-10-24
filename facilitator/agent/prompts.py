@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from facilitator.discussion_types import DiscussionType, get_discussion_type
@@ -91,10 +92,18 @@ PURPOSE_RULES = {
     "general": "",
 }
 
-def build_phase_block(dtype: DiscussionType) -> str:
-    lines = [f"\n# 議論タイプ: {dtype.label}"] + ([dtype.guidance] if dtype.guidance else [])
+AI_RESTRICTION = re.compile(r"[（(]AI は[^）)]*[）)]")  # フェーズ定義の「(AI は案を出さない)」などの但し書き
+
+
+def build_phase_block(dtype: DiscussionType, content_scope: str = "none") -> str:
+    """内容支援が有効なら、議論タイプの方針を内容支援用のもの(support_guidance)にし、
+    フェーズ定義の「(AI は〜しない)」の但し書きを外す(内容支援の可否は「内容支援」の節で決める)。"""
+    guidance = dtype.guidance if content_scope == "none" else dtype.support_guidance.get(content_scope, dtype.guidance)
+    lines = [f"\n# 議論タイプ: {dtype.label}"] + ([guidance] if guidance else [])
     lines.append("フェーズ(key / 名前: 判断の目安 → 介入を検討する状況の例)")
-    lines += [f"- {p.key} / {p.label}{f'(目的: {p.description})' if p.description else ''}: {p.signs} → {p.policy}" for p in dtype.phases]
+    for p in dtype.phases:
+        policy = p.policy if content_scope == "none" else AI_RESTRICTION.sub("", p.policy)
+        lines.append(f"- {p.key} / {p.label}{f'(目的: {p.description})' if p.description else ''}: {p.signs} → {policy}")
     return "\n".join(lines) + "\n"
 
 
@@ -157,12 +166,57 @@ for _item, _texts in LEVEL_TEXT.items():  # 標準の文は COMMON_PROMPT にち
     assert COMMON_PROMPT.count(_texts["standard"]) == 1, _item
 
 
-def build_common_prompt(levels: dict[str, str] | None = None) -> str:
-    """共通方針。levels(項目 → low / standard / high)の low / high の項目だけ、判断基準の箇所を差し替える。"""
+# ---------- 内容支援(介入ポリシー⑥)。範囲が none のときは何も差し替えない(従来の中立の方針のまま) ----------
+ROLE_DONT = {
+    "none": "- やってはいけないこと: 解決策・正解・あなた自身の意見を示すこと、特定の結論や多数派の意見へ誘導すること、案の良し悪しを評価すること。参加者自身の思考を尊重してください。",
+    "hint": "- やってはいけないこと: 解決策・正解・あなた自身の意見を示すこと、特定の結論や多数派の意見へ誘導すること、案の良し悪しを評価すること。新しい視点や考え方のヒントを示すのは、下の「内容支援」の方針に従うときだけです。参加者自身の思考を尊重してください。",
+    "concrete": "- やってはいけないこと: 正解やあなた自身の意見を示すこと、特定の結論や多数派の意見へ誘導すること、案の良し悪しを評価すること。ヒントや具体的なアイデアの例を示すのは、下の「内容支援」の方針に従うときだけです(採用するか、どれを選ぶかは参加者が決めます)。参加者自身の思考を尊重してください。",
+}
+JOB_NEUTRAL_RULES = """\
+- 比較基準や観点の例を挙げるなら、参加者がすでに口にしたものだけにします。参加者が出していない基準や観点を持ち込まないでください。
+- アイデア・選択肢・作業や計画についても同じく、参加者が出していないものを持ち込まないでください(どの議論タイプでも共通)。"""
+JOB_CONTENT_RULES = """\
+- この回は主催者の設定で内容支援が有効です(厳格な選考向けの中立設定ではありません)。参加者が出していない観点やアイデアを持ち込むのは、内容支援のアクションが許可されているときだけにしてください。それ以外の発言(質問・整理など)には持ち込まないでください。"""
+assert COMMON_PROMPT.count(ROLE_DONT["none"]) == 1 and PURPOSE_RULES["job"].count(JOB_NEUTRAL_RULES) == 1
+
+CONTENT_LABELS = {"hint": "ヒントまで", "concrete": "具体案まで", "none": "依頼されたときだけ", "stalled": "停滞時のみ", "proactive": "積極的"}
+CONTENT_INITIATIVE_TEXT = {
+    "none": "参加者から進行役のあなたへ明示的に頼まれたとき(状況説明の「進行役への依頼」)だけ許可されます。",
+    "stalled": "頼まれたときに加えて、停滞が続くときにも許可されます。停滞時は段階を踏みます: まず ask_question などの進行支援を行い、それでも止まっているときに offer_hint、さらに止まっているときに propose_idea(許可されたアクションにあるものだけ)。",
+    "proactive": "頼まれたときと停滞が続くときに加えて、議論に大事な視点が欠けているとあなたが判断したときにも offer_hint が許可されます。参加者が自分で考えて進んでいるときは使いません。具体案(propose_idea)は、頼まれたときか停滞が続くときだけです。",
+}
+
+
+def build_content_block(scope: str, initiative: str) -> str:
+    lines = [
+        f"\n# 内容支援(主催者の設定: 範囲={CONTENT_LABELS[scope]} / 自発的な支援={CONTENT_LABELS[initiative]})",
+        "内容支援は、参加者が考えを進めるための材料を補うものです。あなたが議論を主導したり、結論を決めたりしてはいけません。",
+        "- offer_hint: 参加者がまだ考えていない視点や考え方の切り口を、1つだけ問いの形で示します"
+        "(例:「利用する人の立場から見ると、どんな困りごとがありそうでしょう?」)。解決策・正解・どれが良いかは言いません。1〜2文。",
+    ]
+    if scope == "concrete":
+        lines.append(
+            "- propose_idea: 具体的なアイデアや解決策の例を1つだけ、参加者が検討する材料として示し、最後は参加者に返します"
+            "(例:「例えば〜という案も考えられます。皆さんはどう思いますか?」)。勧めたり、評価したり、採用を求めたりはしません。1〜3文。"
+        )
+    lines += [
+        f"- 内容支援のアクションは「許可されたアクション」にあるときだけ使えます。{CONTENT_INITIATIVE_TEXT[initiative]}",
+        "- 内容支援以外のアクション(ask_question・organize_issues など)の発話には、参加者が出していない観点やアイデアを混ぜないでください。",
+        "- 頼まれた内容が設定の範囲を超えるとき(例: ヒントまでの設定で具体案を求められた)は、範囲の中で応じます。",
+        "- 1回に示すのは1つだけです。参加者が考える時間を残し、続けて内容支援をしないでください。",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def build_common_prompt(levels: dict[str, str] | None = None, content_scope: str = "none") -> str:
+    """共通方針。levels(項目 → low / standard / high)の low / high の項目だけ、判断基準の箇所を差し替える。
+    内容支援が有効なら「やってはいけないこと」を内容支援の範囲に合わせる。"""
     text = COMMON_PROMPT
     for item, level in (levels or {}).items():
         if level != "standard":
             text = text.replace(LEVEL_TEXT[item]["standard"], LEVEL_TEXT[item][level])
+    if content_scope != "none":
+        text = text.replace(ROLE_DONT["none"], ROLE_DONT[content_scope])
     return text
 
 
@@ -171,14 +225,19 @@ def build_system_prompt(
     discussion_type: str | None = None,
     style_notes: list[str] | None = None,
     levels: dict[str, str] | None = None,  # 介入ポリシー①〜⑤の段階(省略時はすべて標準)
+    content: tuple[str, str] = ("none", "none"),  # 介入ポリシー⑥(範囲, 自発性)。範囲が none なら従来どおり
 ) -> str:
     p = purpose if purpose in PURPOSE_INTRO else "job"
     dtype = get_discussion_type(discussion_type, p)
+    scope, initiative = content
+    rules = PURPOSE_RULES[p]
+    if scope != "none":
+        rules = rules.replace(JOB_NEUTRAL_RULES, JOB_CONTENT_RULES) + build_content_block(scope, initiative)
     extra = ""
     if style_notes:
         # 主催者が画面の「詳細」で選んだ進行の調整。上の方針(特に答えを与えない)の範囲内で従う
         extra = "\n# 主催者による進行の調整(上の方針の範囲内で従う)\n" + "\n".join(style_notes) + "\n"
-    return PURPOSE_INTRO[p] + build_common_prompt(levels) + build_phase_block(dtype) + PURPOSE_RULES[p] + extra
+    return PURPOSE_INTRO[p] + build_common_prompt(levels, scope) + build_phase_block(dtype, scope) + rules + extra
 
 
 SYSTEM_PROMPT = build_system_prompt("job")
@@ -188,8 +247,14 @@ def _str_list() -> dict[str, Any]:
     return {"type": "array", "items": {"type": "string"}}
 
 
-def build_output_schema(dtype: DiscussionType) -> dict[str, Any]:
-    """analysis.phase の選択肢は議論タイプのフェーズ。"""
+CONTENT_ACTION_VALUES = {"none": [], "hint": ["offer_hint"], "concrete": ["offer_hint", "propose_idea"]}
+
+
+def build_output_schema(dtype: DiscussionType, content_scope: str = "none") -> dict[str, Any]:
+    """analysis.phase の選択肢は議論タイプのフェーズ。action の選択肢には、範囲の外の内容支援のアクションを入れない
+    (範囲が none なら従来と同じ選択肢)。"""
+    allowed = CONTENT_ACTION_VALUES[content_scope]
+    actions = [a.value for a in Action if a.value not in CONTENT_ACTION_VALUES["concrete"] or a.value in allowed]
     return {
         "type": "object",
         "properties": {
@@ -222,7 +287,7 @@ def build_output_schema(dtype: DiscussionType) -> dict[str, Any]:
             "decision": {
                 "type": "object",
                 "properties": {
-                    "action": {"type": "string", "enum": [a.value for a in Action]},
+                    "action": {"type": "string", "enum": actions},
                     "reasoning": {"type": "string"},
                     "speech": {"type": "string"},
                     "urgency": {"type": "number"},

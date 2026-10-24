@@ -3,10 +3,11 @@
 就活GD用・一般GW用のプリセット(config.POLICY_PRESETS)を初期値にし、利用者が各項目を変更できる。
 GD用・GW用で別々の進行役を作らず、共通の進行役がこの設定に応じて動く。
 
-効果(第2段階):
+効果:
 - ①〜⑤ は、項目ごとの判断条件(config.LEVEL_SETTINGS)と判断基準の文(prompts.LEVEL_TEXT)を変える。標準は現行どおり
-- ⑥ 内容支援は値を持つだけで、まだ効果はない(第3段階で反映する)
-- 旧「AIからの提案度合い」(STYLE_KNOBS["suggest"])は⑥と1対1に対応しないので変換せず、legacy_suggest として旧挙動を保つ
+- ⑥-A 内容支援の範囲は、使える内容支援のアクション(offer_hint / propose_idea)とプロンプトの内容支援の方針を決める。
+  「なし」なら内容支援のアクションは出力の選択肢にも入らず、プロンプトも従来の中立の方針のまま
+- ⑥-B 自発的な内容支援は、依頼されていないときに内容支援を許可する条件を決める(FacilitatorAgent._content_actions)
 
 設定の優先順位(resolve_policy): プリセット(指定がなければ用途の既定)< 個別の変更 < 旧画面の「詳細」(knobs)。
 最後に依存関係を補正する。現在の画面は「詳細」の5項目を常に全部送るため、①〜④はプリセットの値ではなく画面の値
@@ -18,9 +19,10 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
-from config import CUSTOM_KEYS, LEVEL_SETTINGS, POLICY_PRESETS, PRESETS, PURPOSE_PRESET, STYLE_KNOBS, knob_overrides
+from config import CUSTOM_KEYS, JOB_MAX_LEVEL, LEVEL_SETTINGS, POLICY_PRESETS, PRESETS, PURPOSE_PRESET, STYLE_KNOBS
+from facilitator.models import Action
 
 
 class Level(str, Enum):
@@ -55,10 +57,17 @@ VALUE_LABELS = {
     "low": "控えめ", "standard": "標準", "high": "積極的",
     "none": "なし", "hint": "ヒントまで", "concrete": "具体案まで", "stalled": "停滞時のみ", "proactive": "積極的",
 }
-# 画面の「詳細」の既存項目(STYLE_KNOBS)と対応する項目。suggest は⑥と1対1に対応しないので含めない
+# 画面の「詳細」の既存項目(STYLE_KNOBS)と対応する項目。suggest は⑥に変換する(from_knobs)
 KNOB_FOR_ITEM = {"progress": "phase", "drift": "redirect", "organize": "organize", "turns": "turns"}
 LEVEL_INDEX = {Level.low: 0, Level.standard: 1, Level.high: 2}  # STYLE_KNOBS の段階番号
 INDEX_LEVEL = {v: k for k, v in LEVEL_INDEX.items()}
+# 範囲ごとに使える内容支援のアクション(ヒント → 具体案の順)
+CONTENT_ACTIONS_BY_SCOPE = {
+    ContentScope.none: [],
+    ContentScope.hint: [Action.offer_hint],
+    ContentScope.concrete: [Action.offer_hint, Action.propose_idea],
+}
+CONTENT_ACTIONS = {Action.offer_hint, Action.propose_idea}
 
 
 class InterventionPolicy(BaseModel):
@@ -71,8 +80,6 @@ class InterventionPolicy(BaseModel):
     stall: Level = Level.standard
     content_scope: ContentScope = ContentScope.none
     content_initiative: ContentInitiative = ContentInitiative.none
-    # 旧「AIからの提案度合い」(0〜2)。⑥に置き換える第3段階までの互換用。None なら指定なし
-    legacy_suggest: int | None = Field(default=None, ge=0, le=2)
 
     @model_validator(mode="before")
     @classmethod
@@ -90,8 +97,13 @@ class InterventionPolicy(BaseModel):
 
     @property
     def content_support(self) -> bool:
-        """⑥の内容支援が有効か(旧 suggest は含めない)。"""
+        """⑥の内容支援が有効か。"""
         return self.content_scope != ContentScope.none
+
+    @property
+    def content_actions(self) -> list[Action]:
+        """範囲の上で使える内容支援のアクション(実際に許可するかは自発性と状況で決まる)。"""
+        return list(CONTENT_ACTIONS_BY_SCOPE[self.content_scope])
 
     def notices(self, purpose: str) -> list[str]:
         """画面に出す注意(第4段階の UI で使う)。"""
@@ -102,10 +114,7 @@ class InterventionPolicy(BaseModel):
 
     def summary(self) -> str:
         """まとめログ用の1行表示。"""
-        parts = [f"{ITEM_LABELS[k].split()[0]}{VALUE_LABELS[getattr(self, k).value]}" for k in ITEM_LABELS]
-        if self.legacy_suggest is not None:
-            parts.append(f"旧提案度合い{self.legacy_suggest}")
-        return " ".join(parts)
+        return " ".join(f"{ITEM_LABELS[k].split()[0]}{VALUE_LABELS[getattr(self, k).value]}" for k in ITEM_LABELS)
 
 
 def preset_policy(name: str) -> InterventionPolicy:
@@ -117,16 +126,24 @@ def purpose_preset(purpose: str) -> InterventionPolicy:
     return preset_policy(PURPOSE_PRESET.get(purpose, PURPOSE_PRESET["job"]))
 
 
-def from_knobs(knobs: dict[str, Any] | None, base: InterventionPolicy) -> InterventionPolicy:
-    """画面の「詳細」の値(0=控えめ / 1=標準 / 2=積極的)を base に重ねる。不明な項目・値は無視する(従来どおり)。"""
+def from_knobs(knobs: dict[str, Any] | None, base: InterventionPolicy, purpose: str = "job") -> InterventionPolicy:
+    """画面の「詳細」の値(0=控えめ / 1=標準 / 2=積極的)を base に重ねる。不明な項目・値は無視する(従来どおり)。
+    「AIからの提案度合い」(suggest)は⑥に変換する: 0 → 内容支援なし / 1 → base のまま / 2 → ヒントまで・積極的
+    (旧来の意味「足りない観点を示してよい。解決策・結論・意見は言わない」に合わせる)。
+    就活では現在の画面と同じく 2 を受け付けない(JOB_MAX_LEVEL。中立でない旨の表示は第4段階の画面で行う)。"""
+    knobs = knobs or {}
     changes: dict[str, Any] = {}
     for item, key in KNOB_FOR_ITEM.items():
-        v = (knobs or {}).get(key)
+        v = knobs.get(key)
         if v in INDEX_LEVEL:
             changes[item] = INDEX_LEVEL[v]
-    v = (knobs or {}).get("suggest")
-    if v in (0, 1, 2):
-        changes["legacy_suggest"] = v
+    v = knobs.get("suggest")
+    if v in (0, 1, 2) and purpose == "job":
+        v = min(v, JOB_MAX_LEVEL["suggest"])
+    if v == 0:
+        changes["content_scope"] = ContentScope.none
+    elif v == 2:
+        changes.update(content_scope=ContentScope.hint, content_initiative=ContentInitiative.proactive)
     return base.updated(**changes) if changes else base
 
 
@@ -141,7 +158,7 @@ def resolve_policy(
     base = preset_policy(preset) if preset else purpose_preset(purpose)
     if overrides:
         base = base.updated(**overrides)
-    return from_knobs(knobs, base)
+    return from_knobs(knobs, base, purpose)
 
 
 def session_policy(purpose: str, knobs: dict[str, Any] | None = None) -> InterventionPolicy:
@@ -163,34 +180,18 @@ def level_settings(policy: InterventionPolicy) -> dict[str, Any]:
 
 
 def legacy_knobs(policy: InterventionPolicy) -> dict[str, int]:
-    """ポリシーを STYLE_KNOBS の形(画面と同じ項目順)に戻す。①〜④と旧 suggest だけで、⑤・⑥は対応する項目がない。"""
+    """ポリシーの①〜④を STYLE_KNOBS の形(画面と同じ項目順)に戻す(第4段階で画面の初期値に使う)。"""
     out: dict[str, int] = {}
     for key in STYLE_KNOBS:
-        if key == "suggest":
-            if policy.legacy_suggest is not None:
-                out[key] = policy.legacy_suggest
-            continue
-        item = next(i for i, k in KNOB_FOR_ITEM.items() if k == key)
-        out[key] = LEVEL_INDEX[getattr(policy, item)]
+        item = next((i for i, k in KNOB_FOR_ITEM.items() if k == key), None)
+        if item:
+            out[key] = LEVEL_INDEX[getattr(policy, item)]
     return out
 
 
-def policy_effects(policy: InterventionPolicy, purpose: str) -> tuple[dict[str, Any], list[str]]:
-    """従来の効果を持つ旧設定(legacy_suggest)から、数値設定の上書きと進行役への追加の指示を作る(就活の上限を含む)。
-    ①〜⑤の効果は進行役(FacilitatorAgent)が level_settings と levels から直接使う。"""
-    if policy.legacy_suggest is None:
-        return {}, []
-    return knob_overrides({"suggest": policy.legacy_suggest}, purpose)
-
-
-def session_overrides(
-    preset: str, custom: dict[str, float] | None, policy: InterventionPolicy, purpose: str
-) -> tuple[dict[str, Any], list[str]]:
-    """セッションの数値設定の上書きと、進行役への追加の指示(①〜⑤の段階の効果は含まない)。
-    優先順位は従来どおり、旧進行スタイル(A/B)< 旧カスタム < 旧 suggest。旧進行スタイルは第4段階で廃止する。"""
+def session_overrides(preset: str, custom: dict[str, float] | None) -> dict[str, Any]:
+    """旧進行スタイル(A/B)と旧カスタムによる数値設定の上書き(第4段階で廃止する)。①〜⑥の効果は含まない。"""
     overrides: dict[str, Any] = dict(PRESETS.get(preset, {}))
     if preset == "custom":
         overrides.update({k: float(v) for k, v in (custom or {}).items() if k in CUSTOM_KEYS})
-    eff, notes = policy_effects(policy, purpose)
-    overrides.update(eff)
-    return overrides, notes
+    return overrides

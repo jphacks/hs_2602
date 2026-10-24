@@ -143,9 +143,9 @@ class Engine:
             self._stop = threading.Event()
             self._agent_busy = False  # 前のセッションの判断が残っていても、このセッションの判断は止めない
         self.cfg = cfg
-        # 介入ポリシー: 指定がなければ用途と画面の「詳細」から作る。数値設定の上書きと進行役への追加の指示はポリシーから決める
-        self.policy = policy = from_knobs(cfg.knobs, cfg.policy) if cfg.policy else session_policy(cfg.purpose, cfg.knobs)
-        overrides, style_notes = session_overrides(cfg.preset, cfg.custom, policy, cfg.purpose)
+        # 介入ポリシー: 指定がなければ用途と画面の「詳細」から作る。①〜⑥の効果は進行役(FacilitatorAgent)がポリシーから決める
+        self.policy = policy = from_knobs(cfg.knobs, cfg.policy, cfg.purpose) if cfg.policy else session_policy(cfg.purpose, cfg.knobs)
+        overrides = session_overrides(cfg.preset, cfg.custom)  # 旧進行スタイル(第4段階で廃止)
         self.settings = s = load_settings(**{**self._base_overrides, **overrides})
         self.paused = False
         self._ended_at = None
@@ -194,7 +194,6 @@ class Engine:
             purpose=cfg.purpose,
             discussion_type=dtype.key,
             clock=self.clock,
-            style_notes=style_notes,
             policy=policy,
         )
         self.intro = IntroState()

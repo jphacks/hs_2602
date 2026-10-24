@@ -51,6 +51,11 @@ class Settings:
     drift_confirm_ticks: int = 0  # 直前にこの回数続けて脱線と判断していなければ redirect_topic を許可しない(0=条件なし)
     quiet_member_sec: float = 0.0  # この秒数以上発言していない人間の参加者を「発言の少ない参加者」として LLM に示す(0=示さない)
 
+    # --- 内容支援(介入ポリシー⑥)。値はすべて仮の値 ---
+    content_cooldown_sec: float = 120.0  # 自発的な内容支援どうしの最低間隔(参加者からの依頼への応答は除く)
+    content_max_spontaneous: int = 3  # 1回の GD で自発的に行う内容支援の上限(依頼への応答は数えない)
+    request_expire_sec: float = 30.0  # 進行役への依頼に、この秒数のうちに応じられなければ見送る
+
     # --- LLM ---
     llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic")  # anthropic | mock | handoff(チャット経由)
     llm_model: str = os.getenv("LLM_MODEL", "claude-opus-5-5")
@@ -83,44 +88,19 @@ CUSTOM_KEYS = {"cooldown_sec", "silence_trigger_sec", "analysis_interval_sec", "
 
 # 画面の「詳細」の5項目(0=控えめ / 1=標準 / 2=積極的)。label は画面に出す名前
 # phase / redirect / organize / turns は介入ポリシーの①〜④に変換し、効果は LEVEL_SETTINGS とプロンプト(prompts.LEVEL_TEXT)で決める。
-# suggest は⑥と1対1に対応しないので、第3段階までは従来の効果(levels: システムプロンプト末尾への指示)のまま
+# suggest は⑥に変換する(0 → 内容支援なし / 1 → プリセットのまま / 2 → ヒントまで・積極的)。facilitator/policy.py の from_knobs
 STYLE_KNOBS: dict[str, dict[str, Any]] = {
     "phase": {"label": "次のフェーズへの進行度合い"},
     "redirect": {"label": "脱線修正の積極度"},
     "organize": {"label": "話題整理の積極度"},
     "turns": {"label": "どれだけ話を回すか"},
-    "suggest": {
-        "label": "AIからの提案度合い",
-        "levels": [
-            {"settings": {}, "prompt": "問いかけだけで進行し、観点や切り口を自分からは示さない。"},
-            {"settings": {}, "prompt": ""},
-            {"settings": {},
-             "prompt": "議論に足りない観点(例: 費用、利用者の立場、実現性)を具体的に示してよい。ただし解決策・結論・自分の意見は言わない。"},
-        ],
-    },
+    "suggest": {"label": "AIからの提案度合い"},
 }
 
 
-# 就活GDでは選考の公平性のため、進行役が参加者の出していない観点を持ち込まない(prompts.PURPOSE_RULES["job"])。
-# そのため「AIからの提案度合い」は就活では標準までに抑える
+# 現在の画面の「詳細」では、就活の「AIからの提案度合い」を標準までに抑えている(画面側でも 2 を選べない)。
+# 就活GDで内容支援を有効にできるようにするのは、中立設定ではない旨を表示する第4段階の画面から
 JOB_MAX_LEVEL = {"suggest": 1}
-
-
-def knob_overrides(knobs: dict[str, int] | None, purpose: str = "job") -> tuple[dict[str, Any], list[str]]:
-    """「詳細」のうち従来の効果を持つ項目(現在は suggest だけ)から、数値設定の上書きと進行役への追加の指示を作る。"""
-    overrides: dict[str, Any] = {}
-    notes: list[str] = []
-    for key, level in (knobs or {}).items():
-        spec = STYLE_KNOBS.get(key)
-        if not spec or "levels" not in spec or level not in (0, 1, 2):
-            continue
-        if purpose == "job":
-            level = min(level, JOB_MAX_LEVEL.get(key, 2))
-        choice = spec["levels"][level]
-        overrides.update(choice["settings"])
-        if choice["prompt"]:
-            notes.append(f"- {spec['label']}: {choice['prompt']}")
-    return overrides, notes
 
 
 # 介入ポリシー①〜⑤の段階ごとの判断条件(Settings の上書き)。標準は上書きなし(=現行の値)。

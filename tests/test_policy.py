@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from config import CUSTOM_KEYS, POLICY_PRESETS, PRESETS, PURPOSE_PRESET, STYLE_KNOBS, knob_overrides, load_settings  # noqa: E402
+from config import CUSTOM_KEYS, POLICY_PRESETS, PRESETS, PURPOSE_PRESET, STYLE_KNOBS, load_settings  # noqa: E402
 from facilitator.agent.prompts import build_system_prompt  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
 from facilitator.policy import (  # noqa: E402
@@ -57,7 +57,7 @@ def test_purpose_selects_preset_and_unknown_falls_back_to_job():
 def test_every_preset_is_valid_and_complete():
     for name, values in POLICY_PRESETS.items():
         assert set(values) == set(ITEM_LABELS), name
-        assert preset_policy(name).model_dump(exclude={"legacy_suggest"}) == values
+        assert preset_policy(name).model_dump() == values
 
 
 # ---------- 検証と依存関係 ----------
@@ -71,7 +71,7 @@ def test_scope_none_fixes_initiative_none():
 
 @pytest.mark.parametrize(
     "bad",
-    [{"stall": "max"}, {"content_scope": "all"}, {"content_initiative": "always"}, {"legacy_suggest": 3}, {"unknown": "low"}],
+    [{"stall": "max"}, {"content_scope": "all"}, {"content_initiative": "always"}, {"legacy_suggest": 1}, {"unknown": "low"}],
 )
 def test_invalid_values_are_rejected(bad):
     with pytest.raises(ValidationError):
@@ -121,36 +121,43 @@ def test_session_policy_with_current_ui_knobs():
     assert (gw.progress, gw.drift, gw.organize, gw.turns) == (Level.standard,) * 4
     assert (gw.stall, gw.content_scope, gw.content_initiative) == (Level.high, ContentScope.hint, ContentInitiative.stalled)
     assert session_policy("general") == preset_policy("general_gw")  # 画面を通さない呼び出しはプリセットのまま
-    assert session_policy("job", UI_DEFAULT_KNOBS) == InterventionPolicy(legacy_suggest=1)
-    assert session_policy("job") == InterventionPolicy()
+    assert session_policy("job", UI_DEFAULT_KNOBS) == session_policy("job") == InterventionPolicy()
 
 
 # ---------- 画面の「詳細」(STYLE_KNOBS)との互換 ----------
 def test_knob_mapping_and_invalid_values_are_ignored():
-    p = from_knobs({"phase": 0, "redirect": 2, "organize": 1, "turns": 2, "suggest": 2}, InterventionPolicy())
+    p = from_knobs({"phase": 0, "redirect": 2, "organize": 1, "turns": 2}, InterventionPolicy())
     assert (p.progress, p.drift, p.organize, p.turns) == (Level.low, Level.high, Level.standard, Level.high)
-    assert p.legacy_suggest == 2
     assert p.stall == Level.standard  # ⑤は画面の項目がないので base のまま
     base = preset_policy("general_gw")
     assert from_knobs({"phase": 5, "nope": 0, "suggest": -1}, base) == base  # 従来どおり不正な値は無視
     assert from_knobs(None, base) == base
 
 
+def test_suggest_knob_maps_to_content_support():
+    """「AIからの提案度合い」: 0 → 内容支援なし / 1 → プリセットのまま / 2 → ヒントまで・積極的。就活では 2 を受け付けない。"""
+    gw = preset_policy("general_gw")
+    assert from_knobs({"suggest": 1}, gw, "general") == gw
+    p = from_knobs({"suggest": 0}, gw, "general")
+    assert (p.content_scope, p.content_initiative) == (ContentScope.none, ContentInitiative.none)
+    p = from_knobs({"suggest": 2}, gw, "general")
+    assert (p.content_scope, p.content_initiative) == (ContentScope.hint, ContentInitiative.proactive)
+    job = preset_policy("job_gd")
+    assert from_knobs({"suggest": 2}, job, "job") == job  # 現在の画面と同じく就活は標準まで(JOB_MAX_LEVEL)
+    assert from_knobs({"suggest": 0}, job, "job") == job
+
+
 def test_legacy_knobs_round_trip():
-    for values in itertools.product((0, 1, 2), repeat=len(KNOB_KEYS)):
-        knobs = dict(zip(KNOB_KEYS, values))
+    keys = [k for k in KNOB_KEYS if k != "suggest"]
+    for values in itertools.product((0, 1, 2), repeat=len(keys)):
+        knobs = dict(zip(keys, values))
         assert legacy_knobs(from_knobs(knobs, InterventionPolicy())) == knobs
 
 
-@pytest.mark.parametrize("purpose", ["job", "general"])
-def test_four_knobs_no_longer_touch_settings_and_suggest_keeps_legacy_effect(purpose):
-    """「詳細」の①〜④は数値設定の上書き・末尾への指示を作らない(効果は進行役の判断条件とプロンプトの差し替え)。
-    旧 suggest だけは従来どおり(就活の上限を含む)。特に turns がクールダウン・分析間隔・沈黙トリガーを変えないこと。"""
-    for values in itertools.product((0, 1, 2), repeat=len(KNOB_KEYS)):
-        knobs = dict(zip(KNOB_KEYS, values))
-        overrides, notes = session_overrides("A", {}, session_policy(purpose, knobs), purpose)
-        assert overrides == {}, knobs
-        assert notes == knob_overrides({"suggest": knobs["suggest"]}, purpose)[1], knobs
+def test_knobs_no_longer_touch_settings():
+    """「詳細」は数値設定の上書き・末尾への指示を作らない(効果は進行役がポリシーから決める)。
+    特に turns がクールダウン・分析間隔・沈黙トリガーを変えないこと。"""
+    assert session_overrides("A", {}) == {}
 
 
 @pytest.mark.parametrize(
@@ -162,8 +169,7 @@ def test_old_presets_still_apply(preset, custom):
     expected = dict(PRESETS.get(preset, {}))
     if preset == "custom":
         expected.update({k: float(v) for k, v in custom.items() if k in CUSTOM_KEYS})
-    for purpose in ("job", "general"):
-        assert session_overrides(preset, custom, session_policy(purpose), purpose)[0] == expected
+    assert session_overrides(preset, custom) == expected
 
 
 # ---------- 就活GDの標準: システムプロンプトと数値設定が従来どおり ----------
@@ -236,12 +242,14 @@ def test_ui_turns_high_keeps_cooldown_and_interval(tmp_path):
         eng.stop()
 
 
-def test_general_session_from_current_ui_applies_preset_stall_only(tmp_path):
-    """一般GW を現在の画面から始めると、⑤だけプリセットの積極的が効き、③④は画面の既定(標準)になる。"""
+def test_general_session_from_current_ui_applies_preset_stall_and_content(tmp_path):
+    """一般GW を現在の画面から始めると、⑤・⑥はプリセットの値が効き、③④は画面の既定(標準)になる。"""
     eng = _start(tmp_path, "general", "generic", UI_DEFAULT_KNOBS)
     try:
         assert eng.agent._param("silence_trigger_sec") == 8.0
         assert eng.agent._param("quiet_member_sec") == 0.0
-        assert eng.agent.system_prompt == build_system_prompt("general", "generic", levels={**STANDARD_LEVELS, "stall": "high"})
+        assert eng.agent.system_prompt == build_system_prompt(
+            "general", "generic", levels={**STANDARD_LEVELS, "stall": "high"}, content=("hint", "stalled")
+        )
     finally:
         eng.stop()
