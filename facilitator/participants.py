@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -158,6 +159,12 @@ BOT_RESERVED_PAUSE_SEC = 9.0
 BOT_RESERVED_GAP_SEC = 40.0
 
 
+def last_sentence(text: str) -> str:
+    """最後の文(名指しの判定に使う。文中で名前に触れただけの発言を名指しとみなさないため)。"""
+    parts = [x for x in re.split(r"(?<=[。！？!?])", text.strip()) if x.strip()]
+    return parts[-1] if parts else text
+
+
 def bot_mode_for(humans: int, bots: int) -> str:
     return "" if not bots else ("active" if humans <= 2 or bots >= humans else "reserved")
 
@@ -187,35 +194,34 @@ def pick_bot(
         iv = st.last_intervention()
         if last.source == "ai" and iv and iv.action == Action.invite_person and iv.target_speaker in by_id:
             target = iv.target_speaker
+        tail = last_sentence(last.text)
         if target is None and last.source != "ai":  # 進行役の発言は個人指名のときだけ名指しとみなす
             for p in personas:
-                if p.name in last.text and last.speaker_id != p.speaker_id:
+                if p.name in tail and last.speaker_id != p.speaker_id:
                     target = p.speaker_id
                     break
         if target:
             who = "進行役" if last.source == "ai" else (st.speaker_names.get(last.speaker_id) or "参加者")
             return by_id[target], f"{who}から名指しで話を振られたので、それに答える", last.id
 
-    # 進行役が人間を指名した直後は、その人が答えるのを待つ
+    # 人間が名指しされた直後(進行役の個人指名、または参加者の発言の最後の文で名前を呼ばれた)は、その人が答えるのを待つ
     iv = st.last_intervention()
-    if (
-        last.source == "ai"
-        and iv
-        and iv.action == Action.invite_person
-        and iv.target_speaker not in by_id
-        and silence < BOT_WAIT_FOR_INVITED_HUMAN_SEC
-    ):
+    human_names = [n for sid, n in st.speaker_names.items() if sid not in by_id and sid not in st.bot_ids]
+    invited_human = (
+        last.source == "ai" and iv and iv.action == Action.invite_person and iv.target_speaker not in by_id
+    ) or (last.source != "ai" and any(n in last_sentence(last.text) for n in human_names))
+    if invited_human and silence < BOT_WAIT_FOR_INVITED_HUMAN_SEC:
         return None
 
     # 2. 間があいた
     if mode == "active":
         if silence < BOT_ACTIVE_PAUSE_SEC or now - last_bot_end < BOT_ACTIVE_GAP_SEC:
             return None
-        chain = 0
+        chain = 0  # 人間か進行役が話してから、AI 参加者が続けて話した回数(進行役の問いかけでリセット)
         for u in reversed(st.utterances):
-            if u.source == "human":
+            if u.source in ("human", "ai"):
                 break
-            chain += u.source == "bot"
+            chain += 1
         if humans and chain >= BOT_ACTIVE_MAX_CHAIN:
             return None
         reason = "会話に間があいたので、直前の流れを受けて自分の立場から意見や質問を出す"
