@@ -40,11 +40,12 @@ def main() -> None:
     for sid, name in (sc.get("participants") or {}).items():
         state.set_speaker_name(sid, name, confirmed=sc.get("names_confirmed", True))
     t = float(sc.get("start_elapsed", 0))
-    if t > 0:
-        state.started, state.start_time, state.phase = True, 0.0, sc.get("initial_phase", "ideation")
-
     llm = RecordingLLM(make_llm(settings))
     agent = FacilitatorAgent(state, llm, settings, logger=TickLogger(settings.log_dir, sc["id"]))
+    if t > 0:
+        state.started, state.start_time = True, 0.0
+        state.observed_phase = sc.get("initial_phase", "")
+        state.phase_observed_at = 0.0 if state.observed_phase else None
     report = TestReport("シナリオ再生(scripts/run_scenario.py)", sc["id"], {"LLM": llm.name})
     sec = report.section(sc["title"])
     sec.state, sec.info = state, {"テーマ": sc["theme"]}
@@ -52,6 +53,7 @@ def main() -> None:
     end = args.until or max(u["t"] + u["d"] for u in pending) + 30
 
     print(f"=== {sc['title']} / テーマ: {sc['theme']} ===")
+    skipped: dict[str, list[float]] = {}  # 定期分析の時刻なのに見送った時刻(理由別)
     while t <= end and not state.finished:
         while pending and pending[0]["t"] + pending[0]["d"] <= t:
             u = pending.pop(0)
@@ -60,6 +62,8 @@ def main() -> None:
             print(f"[{mmss(u['t'])}] {who}: {u['text']}")
         state.speaking_now = any(u["t"] <= t < u["t"] + u["d"] for u in pending)
         trigger = agent.should_tick(t)
+        if agent.skipped_due:
+            skipped.setdefault(agent.skipped_due, []).append(t)
         if trigger:
             m = llm.mark()
             rec = agent.tick(t, trigger)
@@ -73,7 +77,16 @@ def main() -> None:
                 if rec.overridden:
                     print(f"      ルール層: {rec.overridden}")
         t += args.step
-    print(f"=== 終了 phase={state.phase} 介入{len(state.interventions)}回 ===")
+    print(f"=== 終了 phase={state.observed_phase or '-'} 介入{len(state.interventions)}回 "
+          f"LLM呼び出し{sum(r.llm_called for r in agent.history)}回 ===")
+    label = {"speaking": "発話中", "short_silence": "沈黙2秒未満"}
+    for reason, ts in skipped.items():
+        spans, start = [], ts[0]
+        for a, b in zip(ts, ts[1:] + [None]):
+            if b is None or b - a > args.step + 1e-6:
+                spans.append(f"{mmss(start)}-{mmss(a)}")
+                start = b
+        print(f"定期分析の時刻だったが見送り({label.get(reason, reason)}): 計{len(ts) * args.step:.1f}秒 [{', '.join(spans)}]")
     print(f"📄 まとめログ: {report.write(settings.log_dir)}")
 
 

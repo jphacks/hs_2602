@@ -58,6 +58,10 @@ class RecordingLLM:
         finally:
             self.calls.append(call)
 
+    def __getattr__(self, name: str) -> Any:
+        """ラッパーにない属性(last_usage など)は中身の LLM のものを返す。"""
+        return getattr(self.inner, name)
+
     def mark(self) -> int:
         return len(self.calls)
 

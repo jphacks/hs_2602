@@ -19,5 +19,12 @@ class TickLogger:
         data = record.model_dump(mode="json")
         if not self.include_speech:
             data["decision"]["speech"] = f"<{len(record.decision.speech)} chars>"
+        self._write(data)
+
+    def log_event(self, data: dict) -> None:
+        """判断(tick)以外の出来事(軌道修正の発話・取り消しなど)を記録する。"""
+        self._write({"event": data})
+
+    def _write(self, data: dict) -> None:
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(data, ensure_ascii=False) + "\n")

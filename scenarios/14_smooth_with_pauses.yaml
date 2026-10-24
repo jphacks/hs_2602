@@ -1,0 +1,26 @@
+id: 14_smooth_with_pauses
+title: 順調な議論の中の自然な間(LLM 自身の見守り判断を評価する)
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 150
+initial_phase: cause_analysis
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+# 各チェックポイントは2秒以上の沈黙・クールダウン外・発話中でない時点に置き、ルール層を通って LLM が判断するようにしている
+utterances:
+  - {t: 150, d: 5, s: speaker_1, c: 0.9, text: 原因は、昼の12時台に人が集中することと、会計の遅さの2つが大きそうですね。}
+  - {t: 156, d: 6, s: speaker_2, c: 0.88, text: 私、去年の春に学食で20分並んだことがあって。レジで小銭を数えている人が多かったんです。}
+  - {t: 163, d: 5, s: speaker_3, c: 0.9, text: その経験、まさに会計の遅さの具体例ですね。現金だと一人あたりの時間が長くなる。}
+  - {t: 169, d: 4, s: speaker_4, c: 0.86, text: だとすると、会計を速くする対策は効果が大きそうです。}
+  - {t: 176, d: 5, s: speaker_1, c: 0.9, text: じゃあ対策を考えましょう。キャッシュレス専用レジはどうですか。}
+  - {t: 182, d: 6, s: speaker_3, c: 0.9, text: 賛成です。ただ、現金しか使わない人もいるので、全部のレジを変えるのは反対です。}
+  - {t: 189, d: 6, s: speaker_2, c: 0.88, text: 私は全部変えた方がいいと思います。混在すると結局列が分かれて分かりにくいので。}
+  - {t: 196, d: 5, s: speaker_4, c: 0.86, text: なるほど、分かりやすさとアクセスのしやすさのどちらを取るか、ですね。}
+  - {t: 205, d: 6, s: speaker_1, c: 0.9, text: 時間帯で分けるのはどうでしょう。ピークの時だけ全部キャッシュレスにするとか。}
+  - {t: 212, d: 5, s: speaker_2, c: 0.88, text: それなら現金の人も、ピークを外せば使えますね。}
+  - {t: 218, d: 6, s: speaker_1, c: 0.9, text: あと、席の回転の対策も要りますよね。食べ終わった人が座ったまま話していることが多いので。}
+  - {t: 225, d: 6, s: speaker_1, c: 0.9, text: ピーク時だけ、食後は空き教室に移ってもらうよう案内するのはどうでしょう。}
+  - {t: 232, d: 4, s: speaker_3, c: 0.9, text: 空き教室の案内、いいですね。掲示なら費用もかかりません。}
+checkpoints:
+  - {at: 175.5, expect: [no_intervention], require_llm: true, expect_phase: [cause_analysis, solution_ideation], why: テーマに関わる経験談が出て、他の人がそれを原因の具体例として受け止め、対策の方向に進んでいる。考える間(2.5秒)はあるが順調}
+  - {at: 204, expect: [no_intervention], require_llm: true, expect_phase: [solution_ideation, evaluation], why: キャッシュレス化の範囲で意見が分かれているが、根拠を出し合い、論点(分かりやすさ対アクセス)も自分たちで言語化している建設的な対立}
+  - {at: 238.5, expect: [no_intervention], require_llm: true, expect_phase: [solution_ideation], why: たろうさんの発言が続いたが、他の人が応答して案が具体化している。発言量の差だけでは介入しない}

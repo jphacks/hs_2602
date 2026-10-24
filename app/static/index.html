@@ -166,6 +166,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .phases span { font-size: 12.5px; padding: 3px 12px; border-radius: 999px; color: var(--faint); border: 1px solid var(--line); }
 .phases span.done { color: var(--muted); }
 .phases span.now { color: #04202b; background: var(--accent); border-color: var(--accent); font-weight: 700; }
+.phases span.target { color: var(--accent); border: 1px dashed var(--accent); }
 .ai-line { display: flex; gap: 14px; align-items: flex-start; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
 .orb { flex: none; width: 38px; height: 38px; border-radius: 50%; position: relative;
   background: radial-gradient(circle at 35% 30%, #e6dcff, var(--ai) 45%, #5a45b8); box-shadow: 0 0 18px var(--ai-glow); }
@@ -471,7 +472,7 @@ const ACTION_JA = {
   organize_issues: "論点整理", compare_criteria: "比較基準の提示", invite_all: "全体へ発言を促す",
   invite_person: "個人へ発言を促す", return_to_speaker: "発言を戻す", time_warning: "時間の告知", close_gd: "終了・結論の確認",
 };
-const PHASES = [["opening", "開始"], ["ideation", "案出し"], ["comparison", "比較検討"], ["conclusion", "結論"], ["closing", "終了"]];
+let PHASES = [];  // 議論タイプのフェーズ [key, 名前]。サーバーの状態(s.phases)から受け取る
 const SUGGEST = {
   job: ["大学の学食の混雑を改善するには？", "新しい観光名所をつくるなら？", "10年後に残る仕事・なくなる仕事", "地方の若者流出を止めるには？"],
   general: ["次の学園祭の企画を決めよう", "チームの会議を短くするには？", "研究室の共有スペースの使い方", "新歓イベントのアイデア"],
@@ -613,14 +614,19 @@ function renderReady() {
   $("ai-state").textContent = "「開始」を押すと AI が進行を始めます"; $("ai-say").textContent = ""; $("orb").className = "orb";
   $("log").innerHTML = '<div class="empty">発言がここに表示されます</div>'; $("partial").textContent = ""; $("silence").textContent = "";
   $("decs").innerHTML = '<div class="empty">まだ判断はありません</div>';
-  renderPhases("opening");
+  renderPhases("", "");
   renderPeople();
   $("in-speaker").innerHTML = people().filter((p) => !p.bot).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
 }
 
-function renderPhases(phase) {
+// phase: 実際のフェーズ(AI の判断、塗り)/ target: 経過時間から見た目標フェーズ(点線)
+function renderPhases(phase, target) {
   const idx = PHASES.findIndex(([k]) => k === phase);
-  $("phases").innerHTML = PHASES.map(([k, ja], i) => `<span class="${i < idx ? "done" : i === idx ? "now" : ""}">${ja}</span>`).join("");
+  $("phases").innerHTML = PHASES.map(([k, ja], i) => {
+    const cls = i === idx ? "now" : k === target ? "target" : i < idx ? "done" : "";
+    const tip = (i === idx ? "現在のフェーズ(AIの判断)" : "") + (k === target ? " 目標フェーズ(経過時間から)" : "");
+    return `<span class="${cls}" title="${tip.trim()}">${esc(ja)}</span>`;
+  }).join("");
 }
 
 function renderPeople() {
@@ -663,7 +669,8 @@ function render() {
   $("c-bar").style.width = `${Math.min(100, (s.elapsed / s.duration) * 100)}%`;
   $("clock").classList.toggle("low", s.started && s.remaining <= 60 && s.remaining > 0);
   $("clock").classList.toggle("over", s.started && s.remaining <= 0);
-  renderPhases(s.status === "finished" ? "closing" : s.phase);
+  if (s.phases) PHASES = s.phases;
+  renderPhases(s.phase, s.status === "finished" ? "" : s.target_phase);
 
   // ボタン
   $("btn-start").disabled = running || s.status === "finished";
