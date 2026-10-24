@@ -23,7 +23,9 @@ from facilitator.logging import TickLogger
 from facilitator.llm.base import LLMError
 from facilitator.models import AI_SPEAKER, UNKNOWN, Action, TickRecord
 from facilitator.participants import (
+    LEVELS,
     Persona,
+    level_interval,
     bot_mode_for,
     choose_and_generate,
     generate_personas,
@@ -59,6 +61,7 @@ class SessionConfig:
     preset: str = "A"  # A | B | custom
     custom: dict[str, float] = field(default_factory=dict)
     ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
+    ai_level: int | None = 2  # AI 参加者のレベル(1〜3)。思考力と発言の間隔が変わる。None なら従来の間隔
 
 
 @dataclass
@@ -100,6 +103,9 @@ class Engine:
         self._last_bot_end = -1e9
         self._speaking_as: str | None = None  # 今声を出している話者(AI_SPEAKER / AI 参加者の ID)
         self._speak_lock = threading.Lock()
+        self.ai_level: int | None = None
+        self._interval: tuple[float, float] | None = None
+        self._threshold_cache: dict[int, float] = {}
         # まとめログ(セッション終了時に logs/report-*.md へ書き出す)
         self.report: TestReport | None = None
         self._sec = None
@@ -137,7 +143,12 @@ class Engine:
         self._report_written = False
         m = llm.mark()
         # AI 参加者: 人数分の異なる立場を生成して割り当てる
-        self.personas = generate_personas(llm, cfg.theme, cfg.purpose, bots, list(cfg.names), humans + 1)
+        self.ai_level = cfg.ai_level if cfg.ai_level in LEVELS else None
+        self._interval = level_interval(self.ai_level)
+        self._threshold_cache: dict[int, float] = {}
+        self.personas = generate_personas(
+            llm, cfg.theme, cfg.purpose, bots, list(cfg.names), humans + 1, self.ai_level
+        )
         for p in self.personas:
             self.state.set_speaker_name(p.speaker_id, p.name, confirmed=True)
             self.state.bot_ids.add(p.speaker_id)
@@ -151,6 +162,7 @@ class Engine:
             "進行スタイル": cfg.preset,
             "人数": f"人間 {humans}人 / AI参加者 {bots}人",
             "AI参加者のモード": {"active": "練習相手モード", "reserved": "控えめモード"}.get(self.bot_mode, "なし"),
+            **({"AI参加者のレベル": LEVELS[self.ai_level]["label"]} if bots and self.ai_level else {}),
             "制限時間": f"{cfg.minutes:g}分",
         }
         self._bot_busy, self._bot_attempt_at, self._bot_answered_id, self._last_bot_end = False, -1e9, -1, -1e9
@@ -434,7 +446,8 @@ class Engine:
 
     def _bot_pick(self, now: float) -> tuple[Persona, str, int] | None:
         return pick_bot(
-            self.state, self.personas, self.bot_mode, now, self._last_bot_end, self._bot_answered_id, len(self.cfg.names)
+            self.state, self.personas, self.bot_mode, now, self._last_bot_end, self._bot_answered_id, len(self.cfg.names),
+            self._interval, self._threshold_cache,
         )
 
     def _bot_turn(self, p: Persona, reason: str, addressed_id: int) -> None:
@@ -445,13 +458,15 @@ class Engine:
             m = self.agent.llm.mark()
             try:
                 if addressed_id >= 0:  # 名指しされた人が答える
-                    text = generate_utterance(self.agent.llm, p, self.cfg.purpose, st.theme, transcript, reason)
+                    text = generate_utterance(
+                        self.agent.llm, p, self.cfg.purpose, st.theme, transcript, reason, self.ai_level
+                    )
                 else:  # 誰が話すかは文脈で選ぶ(直前の話者は除く)
                     last_sid = st.utterances[-1].speaker_id if st.utterances else ""
                     cands = [x for x in self.personas if x.speaker_id != last_sid] or self.personas
                     counts = {x.speaker_id: x.spoken for x in self.personas}
                     p, text, why = choose_and_generate(
-                        self.agent.llm, cands, self.cfg.purpose, st.theme, transcript, reason, None, counts, p
+                        self.agent.llm, cands, self.cfg.purpose, st.theme, transcript, reason, self.ai_level, counts, p
                     )
                     if why:
                         reason += f" / {p.name}が話した理由: {why}"
@@ -567,6 +582,7 @@ class Engine:
                 {"id": p.speaker_id, "name": p.name, "stance": p.stance, "opinion": p.opinion} for p in self.personas
             ],
             "bot_mode": self.bot_mode,
+            "ai_level": self.ai_level if self.personas else None,
             "started": st.started,
             "elapsed": round(st.elapsed(now), 1),
             "remaining": round(st.remaining(now), 1),
