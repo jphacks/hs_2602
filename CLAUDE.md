@@ -36,6 +36,10 @@ Observe → Understand → Decide → Act の単一エージェント(ルール 
   - 進行役が人間を指名した直後は、その人の応答を6秒待つ。生成を待つ間に人間が話し始めたら取りやめる。
 - 発言は source="bot" で記録する。発言量の集計には含めるが、話者識別の信頼度の計算からは外す。声は AI ごとに変える(mac: Eddy / Shelley / Reed、Windows: Ichiro / Ayumi / Haruka)。発話はロックで1つずつ行う。
 
+## チャット経由モード(handoff)
+- `LLM_PROVIDER=handoff`: `facilitator/llm/handoff_llm.py`。プロンプトを `exchange/request_NNN.md` に書き出し、`exchange/response_NNN.json` を待つ(既定のタイムアウト 900 秒、`HANDOFF_TIMEOUT_SEC`)。`exchange/` は gitignore 済み。
+- ユーザーに「チャット経由で流して」と頼まれたら、評価やシナリオ再生を `--llm handoff` で背景実行し、リクエストを読んで、システムプロンプトの方針どおりに判断した JSON を返事として書く。
+
 ## 技術選定(2026-10 時点の調査。詳細は README)
 - LLM: Claude Opus 5.5(`claude-opus-5-5`)、`effort: low`、構造化出力(`output_config.format` の json_schema)、`fallbacks: "default"`(beta `server-side-fallback-2026-07-01`)。SDK は `anthropic` 1.13。
 - STT + 話者分離: AssemblyAI Universal-3.6 Pro Realtime(`speaker_labels`、`max_speakers`、SpeakerRevision イベント)を予定。日本語 × ストリーミング × 話者分離の組み合わせは**未確認**で、Step 2 で実測する。比較候補は Soniox。

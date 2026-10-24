@@ -28,7 +28,7 @@ def mmss(sec: float) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("scenario", type=Path)
-    ap.add_argument("--llm", choices=["anthropic", "mock"])
+    ap.add_argument("--llm", choices=["anthropic", "mock", "handoff"])
     ap.add_argument("--until", type=float, help="再生終了時刻(経過秒)。省略時は最後の発話+30秒")
     ap.add_argument("--step", type=float, default=0.5, help="仮想時計の刻み(秒)")
     args = ap.parse_args()

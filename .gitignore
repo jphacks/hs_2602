@@ -8,3 +8,4 @@ recordings/
 .pytest_cache/
 .DS_Store
 models/
+exchange/
