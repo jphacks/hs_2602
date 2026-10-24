@@ -351,6 +351,9 @@ body { font-size: 17px; }
 #s-session .logbox.expanded .head h2 { font-size: 20px; }
 #s-session .logbox.expanded .msg .bubble { font-size: 17px; padding: 9px 15px; }
 #s-session .logbox.expanded .msg .who { font-size: 13px; }
+/* 議論タイプ: 2列。数が奇数のときは先頭(指定なし)を横いっぱいに */
+.type-grid button:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
+.type-grid button { font-size: 15px !important; }
 </style>
 </head>
 <body>
@@ -435,6 +438,12 @@ body { font-size: 17px; }
       </div>
     </div>
 
+    <div class="tile span-4">
+      <span class="label">議論タイプ<span id="type-req">(必須)</span></span>
+      <div class="choice2 type-grid" id="seg-type"></div>
+      <div class="hint" id="type-hint"></div>
+    </div>
+
     <div class="tile span-2 detail" id="detail-tile">
       <label class="detail-head">
         <span class="label" style="margin:0">詳細</span>
@@ -471,7 +480,7 @@ body { font-size: 17px; }
   </div>
   <div class="bar">
     <div class="theme" id="b-theme">—</div>
-    <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
+    <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-type"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
     <div class="actions">
       <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>開始</button>
       <button class="btn" id="btn-pause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>一時停止</span></button>
@@ -554,7 +563,7 @@ const mmss = (s) => { s = Math.max(0, Math.floor(s)); return `${String(Math.floo
 const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then((r) => r.json());
 
 const ui = {
-  withAI: false, purpose: "job", minutes: 8, humans: 3, bots: 1, input: "voice", level: 2,
+  withAI: false, purpose: "job", dtype: null, minutes: 8, humans: 3, bots: 1, input: "voice", level: 2,
   knobs: { phase: 1, redirect: 1, organize: 1, turns: 1, suggest: 1 }, info: null, config: null, started: false,
 };
 let snap = null, logKey = "", decKey = "", doneShown = false;
@@ -594,7 +603,29 @@ function seg(id, key, after) {
     ui[key] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; syncSetup(); after && after();
   });
 }
-seg("purpose", "purpose");
+seg("purpose", "purpose", () => {
+  if (ui.purpose === "job" && !ui.dtype) ui.dtype = null;          // 就活GDは毎回選ぶ
+  if (ui.purpose === "general" && ui.dtype == null) ui.dtype = "";  // 就活以外は「指定なし(汎用)」が初期値
+  renderTypes();
+});
+// 議論タイプ: 就活GDは4種類から必須。就活以外は「指定なし(汎用)」も選べる
+const GENERIC_TYPE = { key: "", label: "指定なし(汎用)", phases: ["案出し", "比較検討", "結論"] };
+function typeOptions() {
+  const types = ui.info?.discussion_types || [];
+  return ui.purpose === "general" ? [GENERIC_TYPE, ...types] : types;
+}
+function typeLabel(key) {
+  const t = [GENERIC_TYPE, ...(ui.info?.discussion_types || [])].find((x) => x.key === (key || ""));
+  return t ? (t.key ? t.label : "汎用型") : "";
+}
+function renderTypes() {
+  const opts = typeOptions();
+  $("seg-type").innerHTML = opts.map((t) => `<button type="button" data-v="${esc(t.key)}" class="${t.key === ui.dtype ? "on" : ""}">${esc(t.label)}</button>`).join("");
+  $("seg-type").querySelectorAll("button").forEach((b) => b.onclick = () => { ui.dtype = b.dataset.v; renderTypes(); });
+  const cur = opts.find((t) => t.key === ui.dtype);
+  $("type-hint").textContent = cur ? cur.phases.join(" → ") : "テーマに合う進め方を選んでください";
+  $("type-req").style.display = ui.purpose === "job" ? "" : "none";
+}
 seg("seg-input", "input");
 seg("seg-level", "level");
 $("f-detail").onchange = (e) => { $("detail-body").classList.toggle("open", e.target.checked); };
@@ -649,6 +680,7 @@ $("setup-form").onsubmit = (ev) => {
   ev.preventDefault();
   const names = [...document.querySelectorAll(".f-name")].slice(0, ui.humans).map((e) => e.value.trim());
   if (!$("f-theme").value.trim()) { $("f-err").textContent = "テーマを入力するか、自動生成してください"; return; }
+  if (ui.purpose === "job" && !ui.dtype) { $("f-err").textContent = "議論タイプを選択してください"; return; }
   if (names.some((n) => !n)) { $("f-err").textContent = `参加者の名前を${ui.humans}人分入力してください`; return; }
   const bots = ui.withAI ? ui.bots : 0;
   if (names.length + bots < 2) { $("f-err").textContent = "合計2人以上にしてください(AI参加者ありモードなら AI を加えられます)"; return; }
@@ -656,7 +688,7 @@ $("setup-form").onsubmit = (ev) => {
   ui.config = {
     theme: $("f-theme").value.trim(), minutes: ui.minutes, names, mode: ui.input,
     intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
-    purpose: ui.purpose, preset: "A", custom: {}, ai_count: bots, ai_level: ui.level, knobs: { ...ui.knobs },
+    purpose: ui.purpose, preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level, knobs: { ...ui.knobs },
   };
   snap = null; logKey = ""; decKey = ""; doneShown = false; ui.started = false;
   renderReady();
@@ -692,6 +724,7 @@ function renderReady() {
   const c = ui.config;
   $("b-theme").textContent = c.theme;
   $("b-purpose").textContent = c.purpose === "general" ? "就活以外" : "就活";
+  $("b-type").textContent = typeLabel(c.discussion_type);
   $("b-preset").textContent = c.ai_count ? "AI参加者あり" : "人間だけ";
   $("b-level").textContent = c.ai_count ? `AI ${LEVEL_NAMES[c.ai_level] || ""}` : "";
   llmChip(ui.info?.llm);
@@ -778,6 +811,7 @@ function render() {
   const running = s.status === "running" || s.status === "intro";
   $("b-theme").textContent = s.theme;
   $("b-purpose").textContent = s.purpose === "general" ? "就活以外" : "就活";
+  $("b-type").textContent = s.discussion_type || "";
   $("b-preset").textContent = (s.participants || []).length ? "AI参加者あり" : "人間だけ";
   $("b-level").textContent = s.ai_level ? `AI ${LEVEL_NAMES[s.ai_level] || ""}` : "";
   llmChip(s.llm);
@@ -882,7 +916,7 @@ $("in-text").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.is
 
 /* ---------- 起動 ---------- */
 fetch("/api/info").then((r) => r.json()).then((info) => {
-  ui.info = info; ui.input = info.default_mode; renderKnobs(); syncSetup();
+  ui.info = info; ui.input = info.default_mode; renderKnobs(); renderTypes(); syncSetup();
 });
 let first = true;
 function connect() {
@@ -892,7 +926,7 @@ function connect() {
     if (first) {
       first = false;
       if (s.status === "running" || s.status === "intro") {  // 再読み込み時は進行画面に戻る
-        ui.config = { theme: s.theme, minutes: s.duration / 60, names: (s.humans || []).map((id) => s.names[id]), ai_count: (s.participants || []).length, purpose: s.purpose, preset: s.preset };
+        ui.config = { theme: s.theme, minutes: s.duration / 60, names: (s.humans || []).map((id) => s.names[id]), ai_count: (s.participants || []).length, purpose: s.purpose, preset: s.preset, discussion_type: s.discussion_type_key };
         ui.started = true; snap = s; renderReady(); show("s-session");
       } else show("s-purpose");
     }

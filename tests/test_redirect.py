@@ -262,7 +262,7 @@ def test_real_threads_redirect_smoke(monkeypatch):
     llm = StubLLM(latency=0.3)
     monkeypatch.setattr(engine_mod, "make_llm", lambda settings: llm)
     eng = Engine(load_settings(), tts_chars_per_sec=1000.0, cooldown_sec=0.0, analysis_interval_sec=0.5)
-    eng.start(SessionConfig(THEME, 5, ["A", "B"], mode="text", intro=False, tts=False))
+    eng.start(SessionConfig(THEME, 5, ["A", "B"], mode="text", intro=False, tts=False, discussion_type="problem_solving"))
     try:
         end = time.monotonic() + 3
         while not eng.state.started and time.monotonic() < end:

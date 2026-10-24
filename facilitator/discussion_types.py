@@ -3,7 +3,7 @@
 フェーズは議論の状況を理解するための目安で、順番どおりに進ませるものではない。
 - observed_phase: LLM が議論内容から判断する実際のフェーズ(後戻りあり)
 - target_phase: 経過時間の割合から計算する目標フェーズ(強制的な移行時刻ではない)
-新しい議論タイプ(アイデア創出型・意思決定型・計画立案型など)は DISCUSSION_TYPES に追加する。
+就活GDではユーザーが4種類(課題解決型・アイデア創出型・意思決定型・計画立案型)から選ぶ。一般GWは省略時に汎用型。
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ class PhaseDef:
     signs: str  # このフェーズにいると判断する目安(いま参加者が主に何をしようとしているか)
     policy: str  # 介入を検討する状況の例(このフェーズにいるだけでは介入しない)
     target_end: float  # 目標の終了時点(制限時間に対する割合)
+    description: str = ""  # フェーズの目的(プロンプトに出す。課題解決型・汎用型は従来どおり空)
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class DiscussionType:
     key: str
     label: str
     phases: tuple[PhaseDef, ...]
+    guidance: str = ""  # このタイプで進行を支援するときの要点(プロンプトに出す)
 
     @property
     def keys(self) -> list[str]:
@@ -83,6 +85,67 @@ PROBLEM_SOLVING = DiscussionType(
     ),
 )
 
+
+IDEA_GENERATION = DiscussionType(
+    key="idea_generation",
+    label="アイデア創出型",
+    guidance="アイデアを出すのは参加者です。発散中は量と多様さを大切にし、評価や絞り込みを急がせないでください。",
+    phases=(
+        PhaseDef("purpose_check", "目的確認", "誰のために何を実現したいか、条件や前提を確かめている",
+                 "目的や対象の認識がずれたまま案出しに入ってかみ合わないとき、目的の確認を促す", 0.15,
+                 "アイデアの目的・対象・条件をそろえる"),
+        PhaseDef("divergence", "アイデア発散", "評価せずにアイデアを次々に出し、他の人の案に乗っている",
+                 "案が出ずに止まったとき、参加者の既出の案や目的を手がかりに別の切り口を問う(AI は案を出さない)", 0.55,
+                 "できるだけ多様なアイデアを出す"),
+        PhaseDef("development", "整理・発展", "出た案をまとめたり組み合わせたり、良い案を膨らませている",
+                 "案が散らばったまま整理されず進まないとき、参加者の案をもとに整理の仕方を問う", 0.85,
+                 "出た案を整理し、組み合わせて発展させる"),
+        PhaseDef("wrap_up", "まとめ", "提案する案を選び、内容と理由をまとめている",
+                 "まとめるべき案が決まらないまま時間が迫るとき、未決事項を整理して参加者自身の決定を促す", 1.0,
+                 "グループとして提案する案をまとめる"),
+    ),
+)
+
+DECISION_MAKING = DiscussionType(
+    key="decision_making",
+    label="意思決定型",
+    guidance="選択肢・評価基準・比較・決定はすべて参加者が行います。AI は選択肢や基準を示さず、参加者が自分で基準を立てて比べられるよう支援してください。",
+    phases=(
+        PhaseDef("options_review", "選択肢確認", "選べる選択肢と、それぞれの中身や前提を確かめている",
+                 "選択肢の中身の理解がずれたまま話がかみ合わないとき、各選択肢の確認を促す", 0.2,
+                 "比べる選択肢とその中身をそろえる"),
+        PhaseDef("criteria_setting", "評価基準", "何を重視して選ぶか(基準と優先度)を話し合っている",
+                 "基準がないまま好みの言い合いになるとき、どんな基準で比べるかを参加者に問う(AI は基準を示さない)", 0.45,
+                 "何を基準に選ぶかを決める"),
+        PhaseDef("comparison", "比較", "決めた基準で選択肢の長所・短所を比べている",
+                 "同じ主張の繰り返しで平行線になったとき、参加者が決めた基準に沿って比べ直すよう促す", 0.8,
+                 "基準に沿って選択肢を比べる"),
+        PhaseDef("decision", "決定", "1つに決め、理由と懸念への対応をまとめている",
+                 "決め切れないまま時間が迫るとき、決めるべき事項を中立に示して参加者自身の決定を促す", 1.0,
+                 "グループとしての選択と理由を決める"),
+    ),
+)
+
+PLANNING = DiscussionType(
+    key="planning",
+    label="計画立案型",
+    guidance="作業の洗い出し・担当・日程の具体化は参加者が行います。AI は作業や計画の案を示さず、抜けや順序を参加者自身が確かめられるよう支援してください。",
+    phases=(
+        PhaseDef("goal_setting", "目標整理", "何を、いつまでに、どの水準で達成するかを確かめている",
+                 "目標や期限の認識がずれたまま作業の話に入ってかみ合わないとき、目標の確認を促す", 0.15,
+                 "達成したい目標・期限・制約をそろえる"),
+        PhaseDef("task_listing", "作業洗い出し", "必要な作業を挙げ、抜けがないかを確かめている",
+                 "作業が出ずに止まったとき、参加者が決めた目標を手がかりに必要なことを問う(AI は作業を挙げない)", 0.45,
+                 "必要な作業を漏れなく挙げる"),
+        PhaseDef("plan_detailing", "計画具体化", "作業の順序・担当・日程・必要な資源を決めている",
+                 "担当や順序が決まらず堂々巡りになるとき、決めるべき項目を参加者の言葉で整理するよう促す", 0.85,
+                 "順序・担当・日程を決める"),
+        PhaseDef("review", "確認", "計画全体を見直し、無理や抜け、リスクを確かめている",
+                 "見直しが不十分なまま時間が迫るとき、未確認の点を中立に示して参加者自身の確認を促す", 1.0,
+                 "計画全体の実現可能性を確かめる"),
+    ),
+)
+
 # 一般モード用。既存の3段階(案出し・比較検討・結論)をそのまま残した汎用型
 GENERIC = DiscussionType(
     key="generic",
@@ -94,12 +157,26 @@ GENERIC = DiscussionType(
     ),
 )
 
-DISCUSSION_TYPES = {t.key: t for t in (PROBLEM_SOLVING, GENERIC)}
+DISCUSSION_TYPES = {t.key: t for t in (PROBLEM_SOLVING, IDEA_GENERATION, DECISION_MAKING, PLANNING, GENERIC)}
+SELECTABLE_TYPES = [PROBLEM_SOLVING.key, IDEA_GENERATION.key, DECISION_MAKING.key, PLANNING.key]  # ユーザーが選べる4種類
 DEFAULT_TYPE_BY_PURPOSE = {"job": PROBLEM_SOLVING.key, "general": GENERIC.key}
 
 
 def get_discussion_type(key: str | None = None, purpose: str = "job") -> DiscussionType:
-    """key を省略すると用途の既定タイプ(就活GDは課題解決型、一般は汎用型)を返す。"""
+    """key を省略すると用途の既定タイプ(就活GDは課題解決型、一般は汎用型)を返す(評価・内部用)。"""
     if key in DISCUSSION_TYPES:
         return DISCUSSION_TYPES[key]
     return DISCUSSION_TYPES[DEFAULT_TYPE_BY_PURPOSE.get(purpose, PROBLEM_SOLVING.key)]
+
+
+def resolve_session_type(key: str | None, purpose: str) -> DiscussionType:
+    """セッション開始時の議論タイプ。就活GDは4種類からの明示的な選択が必須(暗黙に割り当てない)。
+    一般GWは省略時に汎用型(従来どおり)。不明な値はエラー。"""
+    if not key:
+        if purpose == "job":
+            raise ValueError("就活GDでは議論タイプを選択してください")
+        return GENERIC
+    allowed = SELECTABLE_TYPES + ([] if purpose == "job" else [GENERIC.key])
+    if key not in allowed:
+        raise ValueError(f"選択できない議論タイプです: {key}")
+    return DISCUSSION_TYPES[key]
