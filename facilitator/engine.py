@@ -22,7 +22,14 @@ from facilitator.llm.factory import make_llm
 from facilitator.logging import TickLogger
 from facilitator.llm.base import LLMError
 from facilitator.models import AI_SPEAKER, UNKNOWN, Action, TickRecord
-from facilitator.participants import Persona, generate_personas, generate_utterance
+from facilitator.participants import (
+    Persona,
+    bot_mode_for,
+    generate_personas,
+    generate_utterance,
+    pick_bot,
+    transcript_for_bot,
+)
 from facilitator.state import DiscussionState
 from facilitator.stt.base import TranscriptEvent, is_noise_text
 
@@ -33,16 +40,6 @@ INTRO_TIMEOUT_SEC = 25.0
 FORCED_PAUSE_SEC = 0.6  # 強制イベントはこの長さの間で話し始める
 FORCED_WAIT_MAX_SEC = 12.0  # これ以上間がなければ、割り込んででも話す
 
-# ---- AI 参加者の話すタイミング ----
-# active(練習相手): 人間が2人以下、または AI が人間と同数以上のとき。間があれば積極的に話す
-# reserved(控えめ): 人間が主役のとき。名指しされたときと長い沈黙のときだけ話す
-BOT_ADDRESSED_PAUSE_SEC = 1.2  # 名指しされたら、この間のあとに答える
-BOT_ACTIVE_PAUSE_SEC = 2.5
-BOT_ACTIVE_GAP_SEC = 6.0  # AI 参加者どうしの発言の最低間隔
-BOT_ACTIVE_MAX_CHAIN = 2  # 人間の発言を挟まずに AI 参加者が続けて話す上限
-BOT_WAIT_FOR_INVITED_HUMAN_SEC = 6.0  # 進行役が人間を指名した直後は、その人の応答を待つ
-BOT_RESERVED_PAUSE_SEC = 9.0
-BOT_RESERVED_GAP_SEC = 40.0
 MAC_BOT_VOICES = ["Eddy (日本語（日本）)", "Shelley (日本語（日本）)", "Reed (日本語（日本）)"]
 WIN_BOT_VOICES = ["Microsoft Ichiro Desktop", "Microsoft Ayumi Desktop", "Microsoft Haruka Desktop"]
 
@@ -134,7 +131,7 @@ class Engine:
         for p in self.personas:
             self.state.set_speaker_name(p.speaker_id, p.name, confirmed=True)
             self.state.bot_ids.add(p.speaker_id)
-        self.bot_mode = "" if not bots else ("active" if humans <= 2 or bots >= humans else "reserved")
+        self.bot_mode = bot_mode_for(humans, bots)
         self._bot_busy, self._bot_attempt_at, self._bot_answered_id, self._last_bot_end = False, -1e9, -1, -1e9
         self.agent = FacilitatorAgent(
             self.state,
@@ -401,78 +398,15 @@ class Engine:
                 threading.Thread(target=self._bot_turn, args=(persona, reason, addressed_id), daemon=True).start()
 
     def _bot_pick(self, now: float) -> tuple[Persona, str, int] | None:
-        """今 AI 参加者が話すべきなら (誰が, 理由, 名指しされた発言 ID or -1) を返す。"""
-        st = self.state
-        if not st.started or st.speaking_now or st.elapsed(now) < 3.0 or not st.utterances:
-            return None
-        silence = st.silence_sec(now)
-        last = st.utterances[-1]
-        by_id = {p.speaker_id: p for p in self.personas}
-
-        # 1. 名指しされた(進行役の個人指名、または発言の中で名前を呼ばれた)
-        if silence >= BOT_ADDRESSED_PAUSE_SEC and last.id != self._bot_answered_id:
-            target = None
-            iv = st.last_intervention()
-            if last.source == "ai" and iv and iv.action == Action.invite_person and iv.target_speaker in by_id:
-                target = iv.target_speaker
-            if target is None and last.source != "ai":  # 進行役の発言は個人指名のときだけ名指しとみなす
-                for p in self.personas:
-                    if p.name in last.text and last.speaker_id != p.speaker_id:
-                        target = p.speaker_id
-                        break
-            if target:
-                who = "進行役" if last.source == "ai" else (st.speaker_names.get(last.speaker_id) or "参加者")
-                return by_id[target], f"{who}から名指しで話を振られたので、それに答える", last.id
-
-        # 進行役が人間を指名した直後は、その人が答えるのを待つ
-        iv = st.last_intervention()
-        if (
-            last.source == "ai"
-            and iv
-            and iv.action == Action.invite_person
-            and iv.target_speaker not in by_id
-            and silence < BOT_WAIT_FOR_INVITED_HUMAN_SEC
-        ):
-            return None
-
-        # 2. 間があいた
-        if self.bot_mode == "active":
-            if silence < BOT_ACTIVE_PAUSE_SEC or now - self._last_bot_end < BOT_ACTIVE_GAP_SEC:
-                return None
-            chain = 0
-            for u in reversed(st.utterances):
-                if u.source == "human":
-                    break
-                chain += u.source == "bot"
-            humans = len(self.cfg.names)
-            if humans and chain >= BOT_ACTIVE_MAX_CHAIN:
-                return None
-            reason = "会話に間があいたので、直前の流れを受けて自分の立場から意見や質問を出す"
-        else:
-            if silence < BOT_RESERVED_PAUSE_SEC or now - self._last_bot_end < BOT_RESERVED_GAP_SEC:
-                return None
-            reason = "しばらく沈黙が続いたので、議論が進むように自分の考えを短く述べる"
-        # 最近話していない AI 参加者を選ぶ(直前の話者は避ける)
-        last_spoke = {
-            p.speaker_id: max((u.end_time for u in st.utterances if u.speaker_id == p.speaker_id), default=-1e9)
-            for p in self.personas
-        }
-        cands = [p for p in self.personas if p.speaker_id != last.speaker_id] or self.personas
-        return min(cands, key=lambda p: last_spoke[p.speaker_id]), reason, -1
+        return pick_bot(
+            self.state, self.personas, self.bot_mode, now, self._last_bot_end, self._bot_answered_id, len(self.cfg.names)
+        )
 
     def _bot_turn(self, p: Persona, reason: str, addressed_id: int) -> None:
         st = self.state
         try:
             last_id = st.utterances[-1].id if st.utterances else -1
-            transcript = []
-            for u in st.utterances[-20:]:
-                if u.source == "ai":
-                    who = "進行役(AI)"
-                elif u.source == "bot":
-                    who = f"{st.speaker_names.get(u.speaker_id, u.speaker_id)}(AI参加者)"
-                else:
-                    who = st.speaker_names.get(u.speaker_id) or "不明"
-                transcript.append(f"{who}: {u.text}")
+            transcript = transcript_for_bot(st)
             try:
                 text = generate_utterance(self.agent.llm, p, self.cfg.purpose, st.theme, transcript, reason)
             except LLMError as e:

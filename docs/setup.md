@@ -27,6 +27,13 @@ mkdir -p models && curl -L -o models/campplus_zh_en_advanced.onnx \
 - ルール層(発話中・クールダウン・短い沈黙など)で止まった場面ではリクエストは出ません。AI が判断する場面だけ、何が渡され何を返したかをファイルで確認できます。
 - 返事を待つ間は処理が止まるため、仮想時計で進むシナリオ再生向けです(実時間のアプリでは使いません)。
 
+### AI 参加者入りのシミュレーション
+```bash
+.venv/bin/python scripts/simulate.py scenarios/bots/b1_practice.yaml --llm handoff   # 人間1人 + AI 2人(練習相手モード)
+.venv/bin/python scripts/simulate.py scenarios/bots/b2_reserved.yaml --llm handoff   # 人間3人 + AI 1人(控えめモード)
+```
+人間の発言は台本どおりに流れ、AI 参加者の「立場の生成」「発言」と進行役の判断が、アプリと同じロジック(`participants.pick_bot`)で動きます。リクエストのタイトルに種類(進行役の判断 / AI参加者の立場の生成 / AI参加者(名前)の発言)が出ます。台本の人間は AI の発言に反応しないため、流れが噛み合わないことがあります。
+
 ## Step 1: エージェント単体の検証(音声なし)
 ```bash
 .venv/bin/python -m pytest -q tests                                 # ルール層のテスト

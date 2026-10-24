@@ -43,14 +43,15 @@ class HandoffLLM:
         req = self.dir / f"request_{self.n:03d}.md"
         res = self.dir / f"response_{self.n:03d}.json"
         req.write_text(
-            f"# リクエスト {self.n:03d}\n\n"
+            f"# リクエスト {self.n:03d}: {context.get('kind', '進行役の判断')}\n\n"
             f"返事は `{res.name}` に、下の出力スキーマどおりの JSON だけを書いてください。\n\n"
             f"## システムプロンプト\n\n{system}\n\n"
             f"## ユーザープロンプト\n\n{user}\n\n"
             f"## 出力スキーマ\n\n```json\n{json.dumps(schema, ensure_ascii=False, indent=1)}\n```\n",
             encoding="utf-8",
         )
-        print(f"\n⏳ 返事待ち: {req.relative_to(ROOT) if req.is_relative_to(ROOT) else req}", flush=True)
+        kind = context.get("kind", "進行役の判断")
+        print(f"\n⏳ 返事待ち({kind}): {req.relative_to(ROOT) if req.is_relative_to(ROOT) else req}", flush=True)
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
             if res.exists():
