@@ -49,6 +49,8 @@ Observe → Understand → Decide → Act の単一エージェント(ルール 
    - 「(沈黙15秒)」→ `{"type":"wait","sec":15}`、「終了」→ `{"type":"end"}`
 4. status が `busy` の間に `exchange/request_NNN.md` が出たら、種類(進行役の判断 / AI参加者の発言)に合わせてシステムプロンプトどおりに答える。status が `idle`(または `done`)になったら、新しい transcript の行をそのまま見せる
 5. `done` になったら結果のまとめ(transcript 末尾)を見せる。まとめログは `logs/report-*-chat.md`
+6. 表示は1発言ずつ: 新しい transcript の行が出るたびに(リクエストに答える前に)ユーザーへ見せる。まとめて出さない
+7. 人間なし(AI 参加者のみ)の議論: `--humans` を省略して `--ai 4` などで起動し、起動後すぐ `{"type":"end"}` を送って最後まで流す
 
 ## 技術選定(2026-10 時点の調査。詳細は README)
 - LLM: Claude Opus 5.5(`claude-opus-5-5`)、`effort: low`、構造化出力(`output_config.format` の json_schema)、`fallbacks: "default"`(beta `server-side-fallback-2026-07-01`)。SDK は `anthropic` 1.13。

@@ -74,7 +74,7 @@ class VirtualSession:
         self.answered = -1
 
         out(f"テーマ: {theme} / 制限時間 {duration_sec / 60:g}分")
-        out(f"参加者: 人間 {'、'.join(humans.values())} / AI参加者 {ai_count}人 → {MODE_JA.get(self.mode, 'AI参加者なし')}")
+        out(f"参加者: 人間 {'、'.join(humans.values()) or 'なし'} / AI参加者 {ai_count}人 → {MODE_JA.get(self.mode, 'AI参加者なし')}")
         for p in self.personas:
             out(f"  🤖 {p.name}【{p.stance}】{p.opinion}")
         out("")
