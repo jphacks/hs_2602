@@ -109,13 +109,20 @@ def level_interval(level: int | None) -> tuple[float, float] | None:
 
 
 def generate_personas(
-    llm: LLMClient, theme: str, purpose: str, count: int, taken_names: list[str], first_id: int, level: int | None = None
+    llm: LLMClient, theme: str, purpose: str, count: int, taken_names: list[str], first_id: int, level: int | None = None,
+    stances: list[str] | None = None,
 ) -> list[Persona]:
+    """stances: 主催者が指定した立場(i 番目の AI 参加者。空文字・省略は自動で決める)。"""
     ids = [f"speaker_{first_id + i}" for i in range(count)]
     if count <= 0:
         return []
+    fixed = [((stances or [])[i] if i < len(stances or []) else "").strip()[:20] for i in range(count)]
     if llm.name == "mock":
-        return [Persona(sid, *MOCK_PERSONAS[i % len(MOCK_PERSONAS)]) for i, sid in enumerate(ids)]
+        personas = [Persona(sid, *MOCK_PERSONAS[i % len(MOCK_PERSONAS)]) for i, sid in enumerate(ids)]
+        for p, st in zip(personas, fixed):
+            if st:
+                p.stance, p.opinion = st, f"「{st}」の立場から考えます。"
+        return personas
     who = "就職活動の選考のグループディスカッションに参加する就活生" if purpose == "job" else "会議やワークショップの参加者"
     if level:
         who += f"(思考力: {level_note(level)}。立場や意見の書き方もこのレベルに合わせる)"
@@ -123,6 +130,10 @@ def generate_personas(
         f"テーマ: {theme}\n参加者の想定: {who}\nAI参加者の人数: {count}\n"
         f"既存の参加者名(使わないこと): {'、'.join(taken_names) or 'なし'}"
     )
+    if any(fixed):
+        lines = [f"- {i + 1}人目: " + (f"「{st}」(指定。stance はこのとおりにし、opinion もこの立場に沿って作る)" if st else "自由(指定された立場と重ならないように)")
+                 for i, st in enumerate(fixed)]
+        user += "\n主催者が指定した立場(この順に personas を並べる):\n" + "\n".join(lines)
     try:
         raw = llm.generate_json(PERSONA_SYSTEM, user, PERSONA_SCHEMA, {"kind": "AI参加者の立場の生成"})
         items = raw.get("personas", [])[:count]
@@ -135,6 +146,11 @@ def generate_personas(
             personas.append(Persona(sid, it["name"][:8], it["stance"][:20], it["opinion"], it["style"]))
         else:  # 生成に失敗した分は定型の立場で補う
             personas.append(Persona(sid, *MOCK_PERSONAS[i % len(MOCK_PERSONAS)]))
+        if fixed[i] and personas[-1].stance != fixed[i]:  # 指定した立場は必ず守る
+            p = personas[-1]
+            if i >= len(items):
+                p.opinion = f"「{fixed[i]}」の立場から考えます。"
+            p.stance = fixed[i]
     # 名前の重複を避ける
     used = set(taken_names)
     for p in personas:
