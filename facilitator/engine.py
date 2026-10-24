@@ -748,7 +748,8 @@ class Engine:
             "names": names,
             "humans": [f"speaker_{i + 1}" for i in range(len(cfg.names))],
             "participants": [
-                {"id": p.speaker_id, "name": p.name, "stance": p.stance, "opinion": p.opinion} for p in self.personas
+                # 立場・意見は画面に送らない(参加者からは見えないようにする。ログには残る)
+                {"id": p.speaker_id, "name": p.name} for p in self.personas
             ],
             "bot_mode": self.bot_mode,
             "ai_level": self.ai_level if self.personas else None,
