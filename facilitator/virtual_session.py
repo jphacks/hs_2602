@@ -23,6 +23,7 @@ from facilitator.participants import (
     transcript_for_bot,
 )
 from facilitator.report import ACTION_JA, GATE_JA, RecordingLLM, TestReport
+from facilitator.models import UNLIMITED_SEC
 from facilitator.state import DiscussionState
 
 MODE_JA = {"active": "練習相手モード(間があれば発言)", "reserved": "控えめモード(名指し・長い沈黙のみ)"}
@@ -57,6 +58,8 @@ class VirtualSession:
         self.interval = level_interval(level)
         self.threshold_cache: dict[int, float] = {}
         self.s, self.llm, self.out, self.purpose = settings, llm, out, purpose
+        self.unlimited = duration_sec >= UNLIMITED_SEC
+        limit_ja = "なし" if self.unlimited else f"{duration_sec / 60:g}分"
         self.show_blocked = show_blocked
         settings.num_participants = len(humans) + ai_count
         self.humans = humans
@@ -85,7 +88,7 @@ class VirtualSession:
             "テーマ": theme,
             "人数": f"人間 {len(humans)}人 / AI参加者 {ai_count}人",
             "AI参加者のモード": MODE_JA.get(self.mode, "なし"),
-            "制限時間": f"{duration_sec / 60:g}分",
+            "制限時間": limit_ja,
             **({"AI参加者のレベル": f"{LEVELS[level]['label']} / 発言の間隔 {self.interval[0]:g}〜{self.interval[1]:g}秒"} if level else {}),
         }
         self.agent = FacilitatorAgent(st, llm, settings, logger=TickLogger(settings.log_dir, report_name), purpose=purpose)
@@ -94,7 +97,7 @@ class VirtualSession:
         self.last_bot_end = -1e9
         self.answered = -1
 
-        out(f"テーマ: {theme} / 制限時間 {duration_sec / 60:g}分")
+        out(f"テーマ: {theme} / 制限時間 {limit_ja}")
         out(f"参加者: 人間 {'、'.join(humans.values()) or 'なし'} / AI参加者 {ai_count}人 → {MODE_JA.get(self.mode, 'AI参加者なし')}")
         if level:
             out(f"AI参加者のレベル: {LEVELS[level]['label']} / 発言の間隔 {self.interval[0]:g}〜{self.interval[1]:g}秒")
@@ -188,7 +191,9 @@ class VirtualSession:
         lines = [
             "━━━━━━━━━━ 結果 ━━━━━━━━━━",
             f"テーマ: {st.theme}",
-            f"経過時間: {tt(self.et(end))} / 制限 {st.duration_sec / 60:g}分" + (" (終了済み)" if st.finished else ""),
+            f"経過時間: {tt(self.et(end))}"
+            + (" / 制限時間なし" if self.unlimited else f" / 制限 {st.duration_sec / 60:g}分")
+            + (" (終了済み)" if st.finished else ""),
             "",
             f"進行役の介入: {len(st.interventions)}回"
             + (f"(内訳: {'、'.join(f'{ACTION_JA.get(k, k)} {v}' for k, v in acted.items())})" if acted else ""),
