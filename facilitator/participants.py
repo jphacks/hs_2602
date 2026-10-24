@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import random
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -73,19 +74,42 @@ PERSONA_SYSTEM = """\
 """
 
 
-LEVELS = {
-    "中学生": "中学生程度。難しい言葉や専門用語は使わず、知っていることは家族の買い物・お小遣い・コンビニなど身近な経験くらい。"
-    "根拠は浅かったり思いつきだったりしてよく、話が少しそれることもある。文は短く、くだけた丁寧語で話す",
+# AI 参加者のレベル: 思考力と発言の間隔(直前の発言が終わってから話し始めるまでの沈黙、秒)。
+# 口調はどのレベルでも落ち着いた「です・ます」(レベルを下げても幼くしない)
+LEVELS: dict[int, dict[str, Any]] = {
+    1: {
+        "label": "レベル1(高校生程度)",
+        "thinking": "思考力は高校生程度。身近な具体例や一般常識をもとに考え、根拠は経験や具体例が中心。"
+        "複数の観点を整理して比べたり、前提を疑ったりするのはやや苦手で、一つの観点に寄りがち",
+        "interval": (4.0, 6.0),
+    },
+    2: {
+        "label": "レベル2(大学生程度)",
+        "thinking": "思考力は大学生程度。根拠を挙げて話し、他の人の意見の前提を確かめ、複数の観点から比べて議論を整理できる",
+        "interval": (3.0, 5.0),
+    },
+    3: {
+        "label": "レベル3(大学生程度・テンポ速め)",
+        "thinking": "思考力は大学生程度。根拠を挙げて話し、他の人の意見の前提を確かめ、複数の観点から比べて議論を整理できる",
+        "interval": (2.0, 4.0),
+    },
 }
+TONE_NOTE = "口調は落ち着いた自然な「です・ます」で、幼い話し方やくだけすぎた話し方はしない"
 
 
-def level_note(level: str) -> str:
-    """参加者の知識・話し方のレベルの説明(未指定なら空)。"""
-    return LEVELS.get(level, level) if level else ""
+def level_note(level: int | None) -> str:
+    """参加者の思考力の説明(未指定なら空)。"""
+    if not level:
+        return ""
+    return f"{LEVELS[level]['thinking']}。{TONE_NOTE}"
+
+
+def level_interval(level: int | None) -> tuple[float, float] | None:
+    return LEVELS[level]["interval"] if level else None
 
 
 def generate_personas(
-    llm: LLMClient, theme: str, purpose: str, count: int, taken_names: list[str], first_id: int, level: str = ""
+    llm: LLMClient, theme: str, purpose: str, count: int, taken_names: list[str], first_id: int, level: int | None = None
 ) -> list[Persona]:
     ids = [f"speaker_{first_id + i}" for i in range(count)]
     if count <= 0:
@@ -94,7 +118,7 @@ def generate_personas(
         return [Persona(sid, *MOCK_PERSONAS[i % len(MOCK_PERSONAS)]) for i, sid in enumerate(ids)]
     who = "就職活動の選考のグループディスカッションに参加する就活生" if purpose == "job" else "会議やワークショップの参加者"
     if level:
-        who += f"(知識・話し方のレベル: {level_note(level)}。立場や意見の書き方もこのレベルに合わせる)"
+        who += f"(思考力: {level_note(level)}。立場や意見の書き方もこのレベルに合わせる)"
     user = (
         f"テーマ: {theme}\n参加者の想定: {who}\nAI参加者の人数: {count}\n"
         f"既存の参加者名(使わないこと): {'、'.join(taken_names) or 'なし'}"
@@ -129,9 +153,9 @@ UTTER_SCHEMA: dict[str, Any] = {
 }
 
 
-def _utter_system(p: Persona, purpose: str, level: str = "") -> str:
+def _utter_system(p: Persona, purpose: str, level: int | None = None) -> str:
     who = "就職活動の選考のグループディスカッションに参加している就活生" if purpose == "job" else "グループディスカッションの参加者"
-    lv = f"\n# あなたの知識・話し方のレベル\n{level_note(level)}。このレベルを超える知識や言い回しは使わない\n" if level else ""
+    lv = f"\n# あなたの思考力のレベル\n{level_note(level)}。このレベルを超える考え方はしない\n" if level else ""
     return f"""\
 あなたは{who}の「{p.name}」です(AI参加者として議論に加わっています)。
 あなたの立場: {p.stance} — {p.opinion}
@@ -147,7 +171,7 @@ def _utter_system(p: Persona, purpose: str, level: str = "") -> str:
 
 
 def generate_utterance(
-    llm: LLMClient, p: Persona, purpose: str, theme: str, transcript: list[str], reason: str, level: str = ""
+    llm: LLMClient, p: Persona, purpose: str, theme: str, transcript: list[str], reason: str, level: int | None = None
 ) -> str:
     if llm.name == "mock":
         line = MOCK_LINES[p.spoken % len(MOCK_LINES)].format(stance=p.stance, opinion=p.opinion)
@@ -191,8 +215,14 @@ def pick_bot(
     last_bot_end: float,
     answered_id: int,
     humans: int,
+    interval: tuple[float, float] | None = None,
+    threshold_cache: dict[int, float] | None = None,
 ) -> tuple[Persona, str, int] | None:
-    """今 AI 参加者が話すべきなら (誰が, 理由, 名指しされた発言 ID or -1) を返す。話さないなら None。"""
+    """今 AI 参加者が話すべきなら (誰が, 理由, 名指しされた発言 ID or -1) を返す。話さないなら None。
+
+    interval を渡すと(レベル指定時)、練習相手モードの「話し始めるまでの沈黙」を、その範囲で発言ごとにランダムに決める。
+    同じ発言に対して毎回引き直さないよう、決めた値は threshold_cache に発言 ID ごとに保持する。
+    """
     st = state
     if not personas or not st.started or st.speaking_now or st.elapsed(now) < 3.0 or not st.utterances:
         return None
@@ -229,7 +259,12 @@ def pick_bot(
 
     # 2. 間があいた
     if mode == "active":
-        if silence < BOT_ACTIVE_PAUSE_SEC or now - last_bot_end < BOT_ACTIVE_GAP_SEC:
+        if interval:
+            cache = threshold_cache if threshold_cache is not None else {}
+            need = cache.setdefault(last.id, random.uniform(*interval))
+            if silence < need or now - last_bot_end < need:
+                return None
+        elif silence < BOT_ACTIVE_PAUSE_SEC or now - last_bot_end < BOT_ACTIVE_GAP_SEC:
             return None
         chain = 0  # 人間か進行役が話してから、AI 参加者が続けて話した回数(進行役の問いかけでリセット)
         for u in reversed(st.utterances):
