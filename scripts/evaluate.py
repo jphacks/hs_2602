@@ -25,7 +25,7 @@ from facilitator.scenario import load_scenario, run_scenario  # noqa: E402
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--llm", choices=["anthropic", "mock"])
+    ap.add_argument("--llm", choices=["anthropic", "mock", "handoff"])
     ap.add_argument("--model")
     ap.add_argument("-s", "--scenario", action="append", help="シナリオIDの前方一致(複数可)")
     ap.add_argument("--repeat", type=int, default=1)

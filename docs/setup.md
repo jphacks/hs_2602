@@ -23,6 +23,15 @@ mkdir -p models && curl -L -o models/campplus_zh_en_advanced.onnx \
 ## AI 参加者
 設定画面で人間と AI 参加者の人数を選ぶと、AI 参加者にはテーマに対する異なる立場が自動で割り当てられ、議論に加わります。人数比に応じて「練習相手モード」(積極的に発言)か「控えめモード」(名指しや長い沈黙のときだけ発言)になります。AI 参加者の発言でも LLM を使うため、Claude を使う場合はその分のトークンを消費します。
 
+## チャット経由モード(API を使わずに判断の流れを確かめる)
+`--llm handoff`(または `LLM_PROVIDER=handoff`)で実行すると、AI に問い合わせる場面でプロンプトを `exchange/request_NNN.md` に書き出し、`exchange/response_NNN.json` に返事が書かれるまで待ちます。Claude Code のチャットで「シナリオ06をチャット経由で流して」のように頼むと、チャットの AI がリクエストを読んで判断を書き込みます。
+```bash
+.venv/bin/python scripts/evaluate.py --llm handoff -s 06 -v
+.venv/bin/python scripts/run_scenario.py scenarios/02_stalled.yaml --llm handoff
+```
+- ルール層(発話中・クールダウン・短い沈黙など)で止まった場面ではリクエストは出ません。AI が判断する場面だけ、何が渡され何を返したかをファイルで確認できます。
+- 返事を待つ間は処理が止まるため、仮想時計で進むシナリオ再生向けです(実時間のアプリでは使いません)。
+
 ## Step 1: エージェント単体の検証(音声なし)
 ```bash
 .venv/bin/python -m pytest -q tests                                 # ルール層のテスト
