@@ -17,16 +17,19 @@ class EnergyVAD:
         min_db: float = -50.0,  # これ未満は常に無音
         onset_ms: int = 150,  # この長さ連続したら発話開始
         hangover_ms: int = 500,  # この長さ無音が続いたら発話終了
+        max_speech_ms: int = 15000,  # 0.5秒の切れ目もなくこれ以上続く「発話」は雑音とみなす
     ) -> None:
         self.block_ms = block_ms
         self.margin_db = margin_db
         self.min_db = min_db
         self.onset_blocks = max(1, onset_ms // block_ms)
         self.hang_blocks = max(1, hangover_ms // block_ms)
+        self.max_blocks = max(1, max_speech_ms // block_ms)
         self.noise_db = -60.0
         self.speaking = False
         self._on = 0
         self._off = 0
+        self._run = 0  # 発話中と判定してから続いているブロック数
         self.level_db = -100.0
 
     def process(self, block: np.ndarray) -> str | None:
@@ -50,7 +53,17 @@ class EnergyVAD:
             self._on = 0
         if not self.speaking and self._on >= self.onset_blocks:
             self.speaking = True
+            self._run = 0
             return "start"
+        if self.speaking:
+            self._run += 1
+            # 雑音レベルは発話中に上げないため、部屋が途中で騒がしくなる(空調・ファンなど)と「発話中」のまま戻らなくなる。
+            # 人の話は 0.5 秒程度の切れ目が必ず入るので、切れ目なく続く場合は雑音とみなし、今の音量を雑音レベルにして終了にする
+            if self._run >= self.max_blocks:
+                self.noise_db = db
+                self.speaking = False
+                self._on = self._off = 0
+                return "end"
         if self.speaking and self._off >= self.hang_blocks:
             self.speaking = False
             return "end"
