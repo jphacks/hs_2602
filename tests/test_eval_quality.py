@@ -126,14 +126,14 @@ def test_09_return_to_speaker_unavailable_and_overridden():
 
 
 def test_10_low_confidence_hides_names_and_blocks_invite_person():
-    """10: 確信度0.7未満の発言は「不明」になり、話者統計は利用不可。invite_person は許可されず、
-    LLM が選ぶと no_intervention に置き換わり不合格(B2: invite_all への代替がない)。"""
+    """10: 確信度0.7未満の発言は「不明」になり、話者統計は利用不可。invite_person は許可されない。
+    LLM が選ぶと、個人名を含まない全体への呼びかけ(invite_all)に置き換わる(B2 の代替処理)。"""
     llm = FixedLLM("invite_person", "たろうさん、どうですか?", "speaker_1")
     c = _llm_check(run("10_low_confidence", llm))
     ctx = llm.contexts[-1]
     assert ctx["speaker_stats"] is None and "invite_person" not in c.record.allowed_actions
     assert sum("不明:" in line for line in ctx["transcript"]) == 7  # 8発言中7つが不明
     assert "利用不可" in build_user_prompt(ctx)
-    assert c.judged_by == "llm_overridden" and c.record.decision.action.value == "no_intervention" and not c.passed
-    assert c.record.decision.speech == ""  # 誤った個人名は発話されない
+    assert c.judged_by == "llm_overridden" and c.record.decision.action.value == "invite_all" and c.passed
+    assert "たろう" not in c.record.decision.speech and c.record.decision.target_speaker is None  # 誤った個人名は発話されない
     assert _llm_check(run("10_low_confidence", FixedLLM("invite_all", "まだ話していない方も、どう考えますか?"))).passed

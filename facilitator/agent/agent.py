@@ -183,6 +183,10 @@ class FacilitatorAgent:
                 return Decision(action=allowed[0], reasoning=d.reasoning, speech=d.speech, urgency=1.0), (
                     f"許可外の {d.action.value} を強制アクションに置換"
                 )
+            # 個人指名が許可されないのが「誰を指名すべきか確かでない」ためなら、全体への呼びかけで代替を検討する
+            reason = self._no_naming_reason()
+            if d.action == Action.invite_person and reason and Action.invite_all in allowed:
+                return self._invite_all_instead(d, reason, now)
             return Decision(reasoning=d.reasoning), f"許可外の {d.action.value} を no_intervention に置換"
 
         if d.action == Action.no_intervention:
@@ -200,9 +204,7 @@ class FacilitatorAgent:
                 if last is not None and now - last < s.person_cooldown_sec:
                     reason = "同一人物への指名クールダウン中"
             if reason:
-                return Decision(
-                    action=Action.invite_all, reasoning=d.reasoning, speech=INVITE_ALL_FALLBACK, urgency=d.urgency
-                ), f"invite_person→invite_all({reason})"
+                return self._invite_all_instead(d, reason, now)
 
         # 終了は最後の一文で終了を告げるので、切り詰めても締めの告知を残す
         n = REDIRECT_MAX_SENTENCES if d.action == Action.redirect_topic else 3
@@ -214,6 +216,27 @@ class FacilitatorAgent:
             else:
                 return Decision(reasoning=d.reasoning), "発話内容が空のため no_intervention"
         return d.model_copy(update={"speech": speech}), note
+
+    def _no_naming_reason(self) -> str | None:
+        """個人指名を許可しない理由(話者の特定に関わるもの)。指名できる状態なら None。"""
+        st, s = self.state, self.settings
+        if not s.use_speaker_info:
+            return "話者情報を使わない設定"
+        if not st.speaker_info_usable():
+            return "話者識別の信頼度が閾値未満"
+        if not st.names_confirmed:
+            return "名前が確認済みの参加者がいない"
+        return None
+
+    def _invite_all_instead(self, d: Decision, reason: str, now: float) -> tuple[Decision, str]:
+        """個人指名の代わりに全体へ呼びかける(目的は発言機会の確保なので全体向けでも果たせる)。
+        発言は個人名を含まない定型文にする。直近に全体への呼びかけをしていれば、繰り返さず見送る。"""
+        last = next((iv.time for iv in reversed(self.state.interventions) if iv.action == Action.invite_all), None)
+        if last is not None and now - last < self.settings.person_cooldown_sec:
+            return Decision(reasoning=d.reasoning), f"invite_person→no_intervention({reason}。直近に全体への呼びかけ済み)"
+        return Decision(
+            action=Action.invite_all, reasoning=d.reasoning, speech=INVITE_ALL_FALLBACK, urgency=d.urgency
+        ), f"invite_person→invite_all({reason})"
 
     def _template(self, action: Action, now: float) -> str:
         st = self.state
