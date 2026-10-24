@@ -21,7 +21,10 @@ Observe → Understand → Decide → Act の単一エージェント(ルール 
   - LLM 失敗・パース失敗時は `no_intervention`。強制イベントだけはテンプレートの発話で処理する。
   - `should_tick()`: 実時間ループ用のトリガー(定期 / 沈黙 / 時間閾値 / 時間切れ)。
 - `start_gd` / `time_warning` / `close_gd` はルール層だけが発動する(LLM が自発的に選んでも置換される)。
-- フェーズは前進のみ。LLM の提案と、経過時間の割合による下限(`phase_time_floor`)の大きい方を採用する。
+- フェーズは議論タイプごとに `facilitator/discussion_types.py` で定義する(就活GD=課題解決型の5フェーズ、一般=汎用型の3段階)。状況理解の目安であり、順序は強制しない。
+  - `observed_phase`: LLM が議論内容から判断する実際のフェーズ。後戻りあり、時間では動かさない。
+  - `target_phase`: 経過時間の割合(各フェーズの目標終了時点)から計算する目標。遅れ(`phase_behind`)は LLM への判断材料で、ルール層の介入条件には使わない。
+  - プロンプトは「冒頭(用途)+ 共通方針 + 議論タイプのフェーズ定義 + 用途別ルール」。評価ではフェーズ認識(`expect_phase`)を行動の一致率と別に集計する。
 - 発話データ: `Utterance{id, speaker_id, speaker_label, text, start_time, end_time, speaker_confidence, source}`。`state.update_speaker(id, ...)` でダイアライゼーションの後修正を反映できる。
 - 外部サービスはインターフェースの背後に置く: `facilitator/llm/`(anthropic / mock)。STT・TTS・話者識別も同じ方針で `facilitator/stt/` と `facilitator/tts/` に追加する(Step 2〜)。
 - 設定はすべて `config.py`。

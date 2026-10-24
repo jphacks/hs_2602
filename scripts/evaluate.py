@@ -46,6 +46,7 @@ def main() -> None:
 
     logger = TickLogger(settings.log_dir, "eval")
     rows, total, passed = [], 0, 0
+    phase_total, phase_passed = 0, 0  # フェーズ認識は行動の一致率とは別に集計する
     for rep in range(args.repeat):
         for p in paths:
             sc = load_scenario(p)
@@ -53,17 +54,29 @@ def main() -> None:
             for c in res.checks:
                 total += 1
                 passed += c.passed
+                if c.phase_ok is not None:
+                    phase_total += 1
+                    phase_passed += c.phase_ok
                 d = c.record.decision
                 mark = "OK " if c.passed else "NG "
+                pmark = {True: " フェーズOK", False: " フェーズNG", None: ""}[c.phase_ok]
                 print(
                     f"{mark}{res.id:<20} t={c.at:>6.1f} 期待={'/'.join(c.expect):<40} "
                     f"結果={d.action.value}{'(' + d.target_speaker + ')' if d.target_speaker else ''}"
-                    f"  [{c.record.gate}, {c.record.latency_sec:.1f}s]"
+                    f"  [{c.record.gate}, {c.record.latency_sec:.1f}s]{pmark}"
                 )
-                if args.verbose or not c.passed:
+                if args.verbose or not c.passed or c.phase_ok is False:
                     if c.fail_reason:
                         print(f"     NG理由: {c.fail_reason} / 想定: {c.why}")
-                    print(f"     状態: phase={c.record.phase} health={c.record.analysis.health}")
+                    r = c.record
+                    print(
+                        f"     フェーズ: 実際={r.observed_phase or '-'} 目標={r.target_phase} "
+                        f"差={r.phase_gap if r.phase_gap is not None else '-'}{' (遅れ)' if r.phase_behind else ''}"
+                        + (f" 期待={'/'.join(c.expect_phase)}" if c.expect_phase else "")
+                        + f" health={r.analysis.health}"
+                    )
+                    if r.analysis.phase_reason:
+                        print(f"     フェーズの根拠: {r.analysis.phase_reason}")
                     print(f"     理由: {d.reasoning}")
                     if d.speech:
                         print(f"     発話: {d.speech}")
@@ -77,11 +90,15 @@ def main() -> None:
                         "expect": c.expect,
                         "passed": c.passed,
                         "fail_reason": c.fail_reason,
+                        "expect_phase": c.expect_phase,
+                        "phase_ok": c.phase_ok,
                         "record": c.record.model_dump(mode="json"),
                     }
                 )
 
     print(f"\n一致率: {passed}/{total} = {passed / max(1, total):.0%}  (LLM: {llm.name})")
+    if phase_total:
+        print(f"フェーズ認識の一致率: {phase_passed}/{phase_total} = {phase_passed / phase_total:.0%}")
     out_dir = ROOT / "results"
     out_dir.mkdir(exist_ok=True)
     out = out_dir / f"eval-{datetime.now():%Y%m%d-%H%M%S}.json"

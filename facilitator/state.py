@@ -7,12 +7,10 @@ from dataclasses import dataclass, field
 from config import Settings
 from facilitator.models import (
     AI_SPEAKER,
-    PHASE_ORDER,
     UNKNOWN,
     Action,
     Analysis,
     Decision,
-    Phase,
     SpeakerStats,
     Utterance,
 )
@@ -34,7 +32,8 @@ class DiscussionState:
     start_time: float = 0.0  # GD 開始時刻(時計の値)
     started: bool = False
     finished: bool = False
-    phase: str = Phase.opening.value
+    observed_phase: str = ""  # LLM が判断した実際のフェーズ(開始前は空)
+    phase_observed_at: float | None = None  # observed_phase を判断した時刻(時計の値)
     utterances: list[Utterance] = field(default_factory=list)
     analysis: Analysis = field(default_factory=Analysis)
     interventions: list[Intervention] = field(default_factory=list)
@@ -150,9 +149,7 @@ class DiscussionState:
         if decision.action == Action.start_gd:
             self.started = True
             self.start_time = now
-            self.phase = Phase.ideation.value
         elif decision.action == Action.close_gd:
-            self.phase = Phase.closing.value
             self.finished = True
 
     def last_invited_at(self, speaker_id: str) -> float | None:
@@ -162,18 +159,15 @@ class DiscussionState:
         return None
 
     # ---------- フェーズ ----------
-    def advance_phase(self, suggested: str, now: float) -> None:
-        """フェーズは前進のみ。LLM の提案と、経過時間による下限(安全弁)の大きい方を採用。"""
-        if self.finished or not self.started:
+    def update_phase(self, observed: str, valid: list[str], now: float) -> None:
+        """LLM が判断した実際のフェーズをそのまま採用する(後戻りあり、時間では動かさない)。未知の値は無視。"""
+        if self.finished or not self.started or observed not in valid:
             return
-        idx = PHASE_ORDER.index(self.phase)
-        if suggested in PHASE_ORDER and suggested != Phase.closing.value:
-            idx = max(idx, PHASE_ORDER.index(suggested))
-        frac = self.elapsed(now) / self.duration_sec
-        for phase, floor in self.settings.phase_time_floor.items():
-            if frac >= floor:
-                idx = max(idx, PHASE_ORDER.index(phase))
-        self.phase = PHASE_ORDER[idx]
+        self.observed_phase = observed
+        self.phase_observed_at = now
+
+    def elapsed_fraction(self, now: float) -> float:
+        return min(1.0, max(0.0, self.elapsed(now) / self.duration_sec)) if self.duration_sec > 0 else 1.0
 
     # ---------- 話者別統計 ----------
     def speaker_reliability(self) -> float:

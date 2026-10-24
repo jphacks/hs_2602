@@ -414,7 +414,10 @@ class Engine:
             "elapsed": round(st.elapsed(now), 1),
             "remaining": round(st.remaining(now), 1),
             "duration": st.duration_sec,
-            "phase": st.phase,
+            "discussion_type": agent.dtype.label,
+            "phases": [[p.key, p.label] for p in agent.dtype.phases],
+            "phase": st.observed_phase,  # 実際のフェーズ(LLM の判断)
+            "target_phase": agent.phase_status(now)[0] if st.started else "",
             "analysis": st.analysis.model_dump(),
             "silence": round(st.silence_sec(now), 1),
             "speaking": st.speaking_now,

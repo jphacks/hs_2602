@@ -1,0 +1,18 @@
+id: 13_behind_progressing
+title: 目標より遅れているが自発的に進んでいる(古いフェーズ情報)
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 400
+initial_phase: cause_analysis
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 400, d: 5, s: speaker_1, c: 0.9, text: 席の回転が悪い原因って、食後に話し込む人が多いからですよね。}
+  - {t: 406, d: 5, s: speaker_2, c: 0.88, text: それに、一人で4人席を使ってる人もいます。}
+  - {t: 412, d: 6, s: speaker_3, c: 0.9, text: 確かに。席の形が合ってないのも原因かもしれません。カウンター席が少ないので。}
+  - {t: 419, d: 6, s: speaker_4, c: 0.86, text: なるほど、一人客が多いのにカウンターが少ない、というのは大事な視点ですね。}
+  - {t: 426, d: 6, s: speaker_1, c: 0.9, text: そうすると、原因は「話し込み」と「席の形のミスマッチ」の二つに分けられそうです。}
+  - {t: 433, d: 5, s: speaker_2, c: 0.88, text: いいですね。じゃあ、その二つに対する対策を考えていきましょう。}
+  - {t: 439, d: 5, s: speaker_3, c: 0.9, text: 席の形なら、4人席の一部をカウンターに変えるのはどうですか。}
+  - {t: 445, d: 5, s: speaker_4, c: 0.86, text: 話し込みには、ピーク時だけ時間の目安を掲示するとか。}
+checkpoints:
+  - {at: 452, expect: [no_intervention], expect_phase: [solution_ideation], why: 前回判断(原因分析)のままでは目標(評価・比較)より2段階遅れだが、参加者が自分たちで対策の検討に移り進展している。遅れだけで介入しない}

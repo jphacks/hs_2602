@@ -39,10 +39,11 @@ def main() -> None:
     for sid, name in (sc.get("participants") or {}).items():
         state.set_speaker_name(sid, name, confirmed=sc.get("names_confirmed", True))
     t = float(sc.get("start_elapsed", 0))
-    if t > 0:
-        state.started, state.start_time, state.phase = True, 0.0, sc.get("initial_phase", "ideation")
-
     agent = FacilitatorAgent(state, make_llm(settings), settings, logger=TickLogger(settings.log_dir, sc["id"]))
+    if t > 0:
+        state.started, state.start_time = True, 0.0
+        state.observed_phase = sc.get("initial_phase", "")
+        state.phase_observed_at = 0.0 if state.observed_phase else None
     pending = sorted(sc["utterances"], key=lambda u: u["t"] + u["d"])
     end = args.until or max(u["t"] + u["d"] for u in pending) + 30
 
@@ -66,7 +67,7 @@ def main() -> None:
                 if rec.overridden:
                     print(f"      ルール層: {rec.overridden}")
         t += args.step
-    print(f"=== 終了 phase={state.phase} 介入{len(state.interventions)}回 ===")
+    print(f"=== 終了 phase={state.observed_phase or '-'} 介入{len(state.interventions)}回 ===")
 
 
 if __name__ == "__main__":

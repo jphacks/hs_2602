@@ -37,10 +37,11 @@ class Settings:
     use_speaker_info: bool = True  # UI から切り替え可能(False で全体呼びかけのみ)
     enable_return_to_speaker: bool = False  # 遮り検出は Step 2 の検証次第
 
-    # --- フェーズ(経過時間の割合による強制移行の下限) ---
-    phase_time_floor: dict[str, float] = field(
-        default_factory=lambda: {"comparison": 0.55, "conclusion": 0.8}
-    )
+    # --- フェーズ(実際のフェーズは LLM が判断し、時間では動かさない) ---
+    # 目標フェーズより遅れていると見なす条件。移行を促してよい判断材料で、介入を強制するものではない
+    phase_behind_gap: int = 2  # この段階数以上遅れている
+    phase_behind_late_gap: int = 1  # または、この段階数以上遅れていて
+    phase_behind_late_fraction: float = 0.6  # 経過がこの割合以上
 
     # --- LLM ---
     llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic")  # anthropic | mock

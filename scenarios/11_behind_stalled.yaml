@@ -1,0 +1,18 @@
+id: 11_behind_stalled
+title: 時間が足りないのに原因分析で停滞している
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 360
+initial_phase: cause_analysis
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 360, d: 5, s: speaker_1, c: 0.9, text: 原因って、やっぱり昼休みが短いことですかね。}
+  - {t: 367, d: 5, s: speaker_2, c: 0.88, text: それもあるし、学生が多すぎるのもありますよね。}
+  - {t: 373, d: 4, s: speaker_3, c: 0.9, text: 食堂の座席数も関係あると思います。}
+  - {t: 379, d: 3, s: speaker_4, c: 0.86, text: 原因はいろいろありますね…。}
+  - {t: 385, d: 5, s: speaker_1, c: 0.9, text: 昼休みが短いのと、人が多いのと、座席が少ないのと…。}
+  - {t: 392, d: 4, s: speaker_2, c: 0.88, text: うーん、どれが一番の原因なんだろう。}
+  - {t: 398, d: 3, s: speaker_3, c: 0.9, text: 全部関係してそうですけどね。}
+  - {t: 403, d: 1.5, s: speaker_4, c: 0.86, text: うーん…。}
+checkpoints:
+  - {at: 420, expect: [organize_issues, ask_question], forbid: [no_intervention], expect_phase: [cause_analysis], why: 経過70%で目標は評価・比較だが、原因分析で同じ話を繰り返して止まっている。到達点を確認し、次の段階に進むかを問いかける(案・基準・結論は示さない)}

@@ -9,7 +9,8 @@ from typing import Callable
 from pydantic import ValidationError
 
 from config import Settings
-from facilitator.agent.prompts import OUTPUT_SCHEMA, build_system_prompt, build_user_prompt
+from facilitator.agent.prompts import build_output_schema, build_system_prompt, build_user_prompt
+from facilitator.discussion_types import get_discussion_type
 from facilitator.llm.base import LLMClient, LLMError
 from facilitator.logging import TickLogger
 from facilitator.models import AI_SPEAKER, UNKNOWN, Action, AgentOutput, Decision, TickRecord
@@ -33,8 +34,11 @@ def _mmss(sec: float) -> str:
     return f"{sec // 60:02d}:{sec % 60:02d}"
 
 
-def _limit_sentences(text: str, n: int = 3) -> str:
+def _limit_sentences(text: str, n: int = 3, keep_last: bool = False) -> str:
+    """先頭から n 文に切り詰める。keep_last=True なら最後の1文(締めの告知)を残す。"""
     parts = [p for p in re.split(r"(?<=[。!?!?])", text.strip()) if p]
+    if keep_last and len(parts) > n:
+        return "".join(parts[: n - 1] + parts[-1:])
     return "".join(parts[:n])
 
 
@@ -47,8 +51,11 @@ class FacilitatorAgent:
         speak: Callable[[str], float] | None = None,
         logger: TickLogger | None = None,
         purpose: str = "job",
+        discussion_type: str | None = None,  # 省略時は用途の既定(就活GD=課題解決型、一般=汎用型)
     ) -> None:
-        self.system_prompt = build_system_prompt(purpose)
+        self.dtype = get_discussion_type(discussion_type, purpose)
+        self.system_prompt = build_system_prompt(purpose, self.dtype.key)
+        self.output_schema = build_output_schema(self.dtype)
         self.state = state
         self.llm = llm
         self.settings = settings
@@ -99,6 +106,19 @@ class FacilitatorAgent:
         cap = self.state.duration_sec * self.settings.time_warning_max_fraction
         return sorted(min(th, cap) for th in self.settings.time_warnings_remaining_sec)
 
+    def phase_status(self, now: float) -> tuple[str, int | None, bool]:
+        """(目標フェーズ, 目標 - 実際のフェーズの段階差, 移行を促してよい程度に遅れているか)。
+        実際のフェーズは前回の LLM 判断のままなので、遅れは LLM への判断材料にとどめ、ルールの介入条件には使わない。"""
+        st, s = self.state, self.settings
+        frac = st.elapsed_fraction(now)
+        target = self.dtype.target_phase(frac).key
+        observed = self.dtype.index(st.observed_phase)
+        if observed is None:
+            return target, None, False
+        gap = self.dtype.index(target) - observed
+        behind = gap >= s.phase_behind_gap or (gap >= s.phase_behind_late_gap and frac >= s.phase_behind_late_fraction)
+        return target, gap, behind
+
     def _context(self, now: float, trigger: str, allowed: list[Action], note: str | None) -> dict:
         st = self.state
         transcript = []
@@ -116,9 +136,17 @@ class FacilitatorAgent:
             transcript.append(f"[{_mmss(st.elapsed(u.start_time))}] {who}: {u.text}")
 
         usable = st.speaker_info_usable()
+        target, gap, behind = self.phase_status(now)
+        observed = self.dtype.get(st.observed_phase)
         return {
             "theme": st.theme,
-            "phase": st.phase,
+            "observed_phase": st.observed_phase,
+            "observed_phase_label": observed.label if observed else "",
+            "observed_age_sec": 0.0 if st.phase_observed_at is None else now - st.phase_observed_at,
+            "target_phase": target,
+            "target_phase_label": self.dtype.get(target).label,
+            "phase_gap": gap,
+            "phase_behind": behind,
             "elapsed_sec": st.elapsed(now),
             "remaining_sec": st.remaining(now),
             "duration_sec": st.duration_sec,
@@ -166,13 +194,15 @@ class FacilitatorAgent:
                     action=Action.invite_all, reasoning=d.reasoning, speech=INVITE_ALL_FALLBACK, urgency=d.urgency
                 ), f"invite_person→invite_all({reason})"
 
-        speech = _limit_sentences(d.speech)
+        # 終了は最後の一文で終了を告げるので、切り詰めても締めの告知を残す
+        speech = _limit_sentences(d.speech, keep_last=d.action == Action.close_gd)
+        note = "発話を3文に短縮" if speech and speech != d.speech.strip() else None
         if not speech:
             if d.action in RULE_ONLY:
                 speech = self._template(d.action, now)
             else:
                 return Decision(reasoning=d.reasoning), "発話内容が空のため no_intervention"
-        return d.model_copy(update={"speech": speech}), None
+        return d.model_copy(update={"speech": speech}), note
 
     def _template(self, action: Action, now: float) -> str:
         st = self.state
@@ -209,6 +239,7 @@ class FacilitatorAgent:
         st = self.state
         gate, allowed, note = self._gate(now)
         raw_action, overridden = None, None
+        _, gap, behind = self.phase_status(now)  # 判断前(前回判断のフェーズ)の値を記録する
         t0 = time.monotonic()
 
         if not allowed:
@@ -220,11 +251,11 @@ class FacilitatorAgent:
         else:
             ctx = self._context(now, trigger, allowed, note)
             try:
-                raw = self.llm.generate_json(self.system_prompt, build_user_prompt(ctx), OUTPUT_SCHEMA, ctx)
+                raw = self.llm.generate_json(self.system_prompt, build_user_prompt(ctx), self.output_schema, ctx)
                 out = AgentOutput.model_validate(raw)
                 raw_action = out.decision.action.value
                 st.analysis = out.analysis
-                st.advance_phase(out.analysis.phase, now)
+                st.update_phase(out.analysis.phase, self.dtype.keys, now)
                 decision, overridden = self._validate(out.decision, allowed, now)
             except (LLMError, ValidationError) as e:
                 # パース失敗・API 失敗時は「介入しない」に倒す。強制イベントだけはテンプレートで処理
@@ -239,7 +270,10 @@ class FacilitatorAgent:
         record = TickRecord(
             time=now,
             trigger=trigger,
-            phase=st.phase,
+            observed_phase=st.observed_phase,
+            target_phase=self.phase_status(now)[0],
+            phase_gap=gap,
+            phase_behind=behind,
             remaining_sec=st.remaining(now),
             silence_sec=st.silence_sec(now),
             gate=gate,

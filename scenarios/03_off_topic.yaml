@@ -3,6 +3,7 @@ title: 脱線
 theme: 大学の学食の混雑を改善するには？
 duration_sec: 600
 start_elapsed: 180
+initial_phase: solution_ideation
 participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
 utterances:
   - {t: 180, d: 6, s: speaker_3, c: 0.9, text: 対策としては、キャッシュレスレジと空き教室の開放が出てますね。}
@@ -19,4 +20,4 @@ utterances:
   - {t: 236, d: 4, s: speaker_2, c: 0.88, text: 出ます出ます。唐揚げがめっちゃおいしいんですよ。}
 checkpoints:
   - {at: 204.5, expect: [no_intervention], why: 軽い脱線が始まった程度。一言の雑談で即座に介入しない}
-  - {at: 242, expect: [redirect_topic], why: テーマと無関係なバイトの話が30秒以上続いている}
+  - {at: 242, expect: [redirect_topic], expect_phase: [solution_ideation], why: テーマと無関係なバイトの話が30秒以上続いている}
