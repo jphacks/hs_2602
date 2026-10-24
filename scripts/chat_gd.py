@@ -42,6 +42,7 @@ def main() -> None:
     ap.add_argument("--minutes", type=float, default=5)
     ap.add_argument("--purpose", choices=["job", "general"], default="job")
     ap.add_argument("--llm", choices=["handoff", "mock", "anthropic"], default="handoff")
+    ap.add_argument("--level", default="", help="AI 参加者の知識・話し方のレベル(例: 中学生)")
     args = ap.parse_args()
 
     EX.mkdir(exist_ok=True)
@@ -74,6 +75,7 @@ def main() -> None:
         report_kind="チャット GD(scripts/chat_gd.py)",
         report_name="chat",
         out=out,
+        level=args.level,
     )
     vs.step(0.0)  # 開始の説明
     vs.run_until(vs.busy_until + 0.5)

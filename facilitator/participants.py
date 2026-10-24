@@ -73,8 +73,19 @@ PERSONA_SYSTEM = """\
 """
 
 
+LEVELS = {
+    "中学生": "中学生程度。難しい言葉や専門用語は使わず、知っていることは家族の買い物・お小遣い・コンビニなど身近な経験くらい。"
+    "根拠は浅かったり思いつきだったりしてよく、話が少しそれることもある。文は短く、くだけた丁寧語で話す",
+}
+
+
+def level_note(level: str) -> str:
+    """参加者の知識・話し方のレベルの説明(未指定なら空)。"""
+    return LEVELS.get(level, level) if level else ""
+
+
 def generate_personas(
-    llm: LLMClient, theme: str, purpose: str, count: int, taken_names: list[str], first_id: int
+    llm: LLMClient, theme: str, purpose: str, count: int, taken_names: list[str], first_id: int, level: str = ""
 ) -> list[Persona]:
     ids = [f"speaker_{first_id + i}" for i in range(count)]
     if count <= 0:
@@ -82,6 +93,8 @@ def generate_personas(
     if llm.name == "mock":
         return [Persona(sid, *MOCK_PERSONAS[i % len(MOCK_PERSONAS)]) for i, sid in enumerate(ids)]
     who = "就職活動の選考のグループディスカッションに参加する就活生" if purpose == "job" else "会議やワークショップの参加者"
+    if level:
+        who += f"(知識・話し方のレベル: {level_note(level)}。立場や意見の書き方もこのレベルに合わせる)"
     user = (
         f"テーマ: {theme}\n参加者の想定: {who}\nAI参加者の人数: {count}\n"
         f"既存の参加者名(使わないこと): {'、'.join(taken_names) or 'なし'}"
@@ -116,8 +129,9 @@ UTTER_SCHEMA: dict[str, Any] = {
 }
 
 
-def _utter_system(p: Persona, purpose: str) -> str:
+def _utter_system(p: Persona, purpose: str, level: str = "") -> str:
     who = "就職活動の選考のグループディスカッションに参加している就活生" if purpose == "job" else "グループディスカッションの参加者"
+    lv = f"\n# あなたの知識・話し方のレベル\n{level_note(level)}。このレベルを超える知識や言い回しは使わない\n" if level else ""
     return f"""\
 あなたは{who}の「{p.name}」です(AI参加者として議論に加わっています)。
 あなたの立場: {p.stance} — {p.opinion}
@@ -129,11 +143,11 @@ def _utter_system(p: Persona, purpose: str) -> str:
 - 進行役ではないので、議論をまとめたり仕切ったりしない。名指しで質問されたら、それに答える
 - 他の参加者の発言機会を奪わないよう、ときどき他の人に意見を聞くのはよい
 - 発言内容のみを出力する(名前や括弧書きは付けない)
-"""
+{lv}"""
 
 
 def generate_utterance(
-    llm: LLMClient, p: Persona, purpose: str, theme: str, transcript: list[str], reason: str
+    llm: LLMClient, p: Persona, purpose: str, theme: str, transcript: list[str], reason: str, level: str = ""
 ) -> str:
     if llm.name == "mock":
         line = MOCK_LINES[p.spoken % len(MOCK_LINES)].format(stance=p.stance, opinion=p.opinion)
@@ -143,7 +157,7 @@ def generate_utterance(
         + ("\n".join(transcript[-20:]) or "(まだ発言なし)")
         + f"\n\n# 今あなたが話す理由\n{reason}\n\nあなた({p.name})の次の発言を作ってください。"
     )
-    raw = llm.generate_json(_utter_system(p, purpose), user, UTTER_SCHEMA, {"kind": f"AI参加者({p.name})の発言"})
+    raw = llm.generate_json(_utter_system(p, purpose, level), user, UTTER_SCHEMA, {"kind": f"AI参加者({p.name})の発言"})
     return str(raw.get("text", "")).strip()
 
 

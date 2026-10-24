@@ -42,7 +42,9 @@ class VirtualSession:
         report_name: str = "session",
         out: Callable[[str], None] = print,
         show_blocked: bool = True,
+        level: str = "",  # AI 参加者の知識・話し方のレベル(例: 中学生)
     ) -> None:
+        self.level = level
         self.s, self.llm, self.out, self.purpose = settings, llm, out, purpose
         self.show_blocked = show_blocked
         settings.num_participants = len(humans) + ai_count
@@ -55,7 +57,7 @@ class VirtualSession:
         sec.state = st
 
         m = llm.mark()
-        self.personas = generate_personas(llm, theme, purpose, ai_count, list(humans.values()), len(humans) + 1)
+        self.personas = generate_personas(llm, theme, purpose, ai_count, list(humans.values()), len(humans) + 1, level)
         sec.personas, sec.persona_call = self.personas, llm.since(m)
         for p in self.personas:
             st.set_speaker_name(p.speaker_id, p.name, confirmed=True)
@@ -66,6 +68,7 @@ class VirtualSession:
             "人数": f"人間 {len(humans)}人 / AI参加者 {ai_count}人",
             "AI参加者のモード": MODE_JA.get(self.mode, "なし"),
             "制限時間": f"{duration_sec / 60:g}分",
+            **({"AI参加者のレベル": level} if level else {}),
         }
         self.agent = FacilitatorAgent(st, llm, settings, logger=TickLogger(settings.log_dir, report_name), purpose=purpose)
         self.t = 0.0
@@ -75,6 +78,8 @@ class VirtualSession:
 
         out(f"テーマ: {theme} / 制限時間 {duration_sec / 60:g}分")
         out(f"参加者: 人間 {'、'.join(humans.values()) or 'なし'} / AI参加者 {ai_count}人 → {MODE_JA.get(self.mode, 'AI参加者なし')}")
+        if level:
+            out(f"AI参加者のレベル: {level}")
         for p in self.personas:
             out(f"  🤖 {p.name}【{p.stance}】{p.opinion}")
         out("")
@@ -127,7 +132,7 @@ class VirtualSession:
         p, reason, addressed = picked
         m = llm.mark()
         try:
-            text = generate_utterance(llm, p, self.purpose, st.theme, transcript_for_bot(st), reason)
+            text = generate_utterance(llm, p, self.purpose, st.theme, transcript_for_bot(st), reason, self.level)
         except LLMError as e:
             self.out(f"{INDENT}(AI参加者 {p.name} の発言を生成できませんでした: {e})")
             return
