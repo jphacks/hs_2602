@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -30,7 +31,6 @@ from facilitator.report import RecordingLLM  # noqa: E402
 from facilitator.virtual_session import VirtualSession  # noqa: E402
 
 EX = ROOT / "exchange"
-INBOX, TRANSCRIPT, STATUS = EX / "inbox.jsonl", EX / "transcript.txt", EX / "status.txt"
 MAX_FOLLOW_SEC = 60.0  # 1回の発言のあとに AI だけで進める時間の上限
 
 
@@ -42,10 +42,15 @@ def main() -> None:
     ap.add_argument("--minutes", type=float, default=5)
     ap.add_argument("--purpose", choices=["job", "general"], default="job")
     ap.add_argument("--llm", choices=["handoff", "mock", "anthropic"], default="handoff")
-    ap.add_argument("--level", default="", help="AI 参加者の知識・話し方のレベル(例: 中学生)")
+    ap.add_argument("--level", type=int, choices=[1, 2, 3], help="AI 参加者のレベル(1: 高校生程度・間隔4〜6秒 / 2: 大学生程度・3〜5秒 / 3: 大学生程度・2〜4秒)")
+    ap.add_argument("--personas", type=Path, help="AI 参加者の立場を固定する JSON([{name, stance, opinion, style}, ...])")
+    ap.add_argument("--dir", type=Path, default=EX, help="受信箱・transcript・リクエストを置くフォルダ(並行実行時に分ける)")
     args = ap.parse_args()
 
-    EX.mkdir(exist_ok=True)
+    ex = args.dir if args.dir.is_absolute() else ROOT / args.dir
+    ex.mkdir(parents=True, exist_ok=True)
+    os.environ["HANDOFF_DIR"] = str(ex)  # チャット経由モードのリクエストも同じフォルダに置く
+    INBOX, TRANSCRIPT, STATUS = ex / "inbox.jsonl", ex / "transcript.txt", ex / "status.txt"
     for f in (INBOX, TRANSCRIPT):
         f.write_text("", encoding="utf-8")
 
@@ -59,10 +64,19 @@ def main() -> None:
     status("busy")
     s = load_settings(llm_provider=args.llm)
     names = [n.strip() for n in args.humans.split(",") if n.strip()]
-    if len(names) + args.ai < 2:
+    if len(names) + (len(json.loads(args.personas.read_text(encoding="utf-8"))) if args.personas else args.ai) < 2:
         sys.exit("参加者は合計2人以上にしてください")
     humans = {f"speaker_{i + 1}": n for i, n in enumerate(names)}
     by_name = {n: sid for sid, n in humans.items()}
+    personas = None
+    if args.personas:
+        from facilitator.participants import Persona
+
+        items = json.loads(args.personas.read_text(encoding="utf-8"))
+        personas = [
+            Persona(f"speaker_{len(humans) + i + 1}", x["name"], x["stance"], x["opinion"], x["style"])
+            for i, x in enumerate(items)
+        ]
     vs = VirtualSession(
         s,
         RecordingLLM(make_llm(s)),
@@ -73,9 +87,10 @@ def main() -> None:
         purpose=args.purpose,
         title=args.theme,
         report_kind="チャット GD(scripts/chat_gd.py)",
-        report_name="chat",
+        report_name=f"chat-L{args.level}" if args.level else "chat",
         out=out,
         level=args.level,
+        personas=personas,
     )
     vs.step(0.0)  # 開始の説明
     vs.run_until(vs.busy_until + 0.5)
