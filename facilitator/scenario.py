@@ -52,8 +52,9 @@ def judge(cp: dict[str, Any], rec: TickRecord) -> tuple[bool, str]:
 
 
 def run_scenario(
-    sc: dict[str, Any], llm: LLMClient, settings: Settings, logger: TickLogger | None = None
+    sc: dict[str, Any], llm: LLMClient, settings: Settings, logger: TickLogger | None = None, section: Any = None
 ) -> ScenarioResult:
+    """section(report.Section)を渡すと、判断・発言・評価結果をまとめログ用に記録する。"""
     state = DiscussionState(settings=settings, theme=sc["theme"], duration_sec=sc["duration_sec"])
     for sid, name in (sc.get("participants") or {}).items():
         state.set_speaker_name(sid, name, confirmed=sc.get("names_confirmed", True))
@@ -63,6 +64,8 @@ def run_scenario(
         state.phase = sc.get("initial_phase", "ideation")
 
     agent = FacilitatorAgent(state, llm, settings, logger=logger)
+    if section is not None:
+        section.state, section.info = state, {"テーマ": sc["theme"]}
     pending = sorted(sc["utterances"], key=lambda u: u["t"] + u["d"])
     result = ScenarioResult(sc["id"], sc["title"])
 
@@ -74,8 +77,22 @@ def run_scenario(
             state.add_utterance(u["s"], u["text"], u["t"], u["t"] + u["d"], u.get("c", 1.0))
         # VAD: 発話中の人がいるか
         state.speaking_now = any(u["t"] <= now < u["t"] + u["d"] for u in pending)
+        m = llm.mark() if hasattr(llm, "mark") else 0
         rec = agent.tick(now, trigger="checkpoint")
         ok, reason = judge(cp, rec)
+        if section is not None:
+            section.decision(rec, llm.since(m) if hasattr(llm, "since") else None)
+            d = rec.decision
+            section.checks.append(
+                {
+                    "at": now,
+                    "expect": cp["expect"],
+                    "result": d.action.value + (f"({d.target_speaker})" if d.target_speaker else ""),
+                    "passed": ok,
+                    "fail_reason": reason,
+                    "why": cp.get("why", ""),
+                }
+            )
         result.checks.append(
             CheckResult(now, cp["expect"], cp.get("forbid", []), cp.get("target_any"), cp.get("why", ""), rec, ok, reason)
         )

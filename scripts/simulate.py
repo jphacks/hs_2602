@@ -28,6 +28,7 @@ from facilitator.participants import (  # noqa: E402
     pick_bot,
     transcript_for_bot,
 )
+from facilitator.report import RecordingLLM, TestReport  # noqa: E402
 from facilitator.scenario import load_scenario  # noqa: E402
 from facilitator.state import DiscussionState  # noqa: E402
 
@@ -54,16 +55,22 @@ def main() -> None:
     st = DiscussionState(settings=s, theme=sc["theme"], duration_sec=sc["duration_sec"])
     for sid, name in humans.items():
         st.set_speaker_name(sid, name, confirmed=True)
-    llm = make_llm(s)
+    llm = RecordingLLM(make_llm(s))  # 入力と返事をまとめログに残す
     purpose = sc.get("purpose", "job")
+    report = TestReport("AI 参加者入りシミュレーション(scripts/simulate.py)", sc["id"], {"LLM": llm.name})
+    sec = report.section(sc["title"])
+    sec.state = st
 
     print(f"=== {sc['title']} / テーマ: {sc['theme']} ===")
+    m = llm.mark()
     personas = generate_personas(llm, sc["theme"], purpose, bots, list(humans.values()), len(humans) + 1)
+    sec.personas, sec.persona_call = personas, llm.since(m)
     for p in personas:
         st.set_speaker_name(p.speaker_id, p.name, confirmed=True)
         st.bot_ids.add(p.speaker_id)
     mode = bot_mode_for(len(humans), bots)
     print(f"人間 {len(humans)}人 / AI参加者 {bots}人 → {MODE_JA.get(mode, 'AI参加者なし')}")
+    sec.info = {"テーマ": sc["theme"], "人数": f"人間 {len(humans)}人 / AI参加者 {bots}人", "AI参加者のモード": MODE_JA.get(mode, "なし")}
     for p in personas:
         print(f"  🤖 {p.name}【{p.stance}】{p.opinion}")
 
@@ -82,7 +89,9 @@ def main() -> None:
             # 1. 進行役
             trig = agent.should_tick(t)
             if trig:
+                m = llm.mark()
                 rec = agent.tick(t, trig)
+                sec.decision(rec, llm.since(m))
                 d = rec.decision
                 if d.action.value != "no_intervention":
                     dur = len(d.speech) / s.tts_chars_per_sec
@@ -95,6 +104,7 @@ def main() -> None:
                 picked = pick_bot(st, personas, mode, t, last_bot_end, answered, len(humans))
                 if picked:
                     p, reason, addressed = picked
+                    m = llm.mark()
                     try:
                         text = generate_utterance(llm, p, purpose, st.theme, transcript_for_bot(st), reason)
                     except LLMError as e:
@@ -103,6 +113,7 @@ def main() -> None:
                     if text:
                         dur = len(text) / s.tts_chars_per_sec
                         st.add_utterance(p.speaker_id, text, t, t + dur, 1.0, source="bot")
+                        sec.bot(p.speaker_id, t, reason, llm.since(m))
                         p.spoken += 1
                         busy_until = last_bot_end = t + dur
                         if addressed >= 0:
@@ -115,6 +126,7 @@ def main() -> None:
     for x in st.speaker_stats(t_end):
         tag = "AI参加者" if x.is_bot else "人間"
         print(f"  {x.label:<6}({tag}) 発言 {x.turns}回・{x.total_speech_sec:.0f}秒")
+    print(f"\n📄 まとめログ: {report.write(s.log_dir)}")
 
 
 if __name__ == "__main__":

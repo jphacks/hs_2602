@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from config import ROOT, load_settings  # noqa: E402
 from facilitator.llm.factory import make_llm  # noqa: E402
 from facilitator.logging import TickLogger  # noqa: E402
+from facilitator.report import RecordingLLM, TestReport  # noqa: E402
 from facilitator.scenario import load_scenario, run_scenario  # noqa: E402
 
 
@@ -38,18 +39,20 @@ def main() -> None:
     if args.model:
         overrides["llm_model"] = args.model
     settings = load_settings(**overrides)
-    llm = make_llm(settings)
+    llm = RecordingLLM(make_llm(settings))
 
     paths = sorted((ROOT / "scenarios").glob("*.yaml"))
     if args.scenario:
         paths = [p for p in paths if any(p.stem.startswith(s) for s in args.scenario)]
 
     logger = TickLogger(settings.log_dir, "eval")
+    report = TestReport("シナリオ評価(scripts/evaluate.py)", "eval", {"LLM": llm.name})
     rows, total, passed = [], 0, 0
     for rep in range(args.repeat):
         for p in paths:
             sc = load_scenario(p)
-            res = run_scenario(sc, llm, settings, logger)
+            title = sc["id"] + (f" (#{rep + 1})" if args.repeat > 1 else "") + f" — {sc['title']}"
+            res = run_scenario(sc, llm, settings, logger, section=report.section(title))
             for c in res.checks:
                 total += 1
                 passed += c.passed
@@ -86,7 +89,9 @@ def main() -> None:
     out_dir.mkdir(exist_ok=True)
     out = out_dir / f"eval-{datetime.now():%Y%m%d-%H%M%S}.json"
     out.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
+    report.meta["一致率"] = f"{passed}/{total} = {passed / max(1, total):.0%}"
     print(f"詳細: {out.relative_to(ROOT)}  /  判断ログ: {logger.path.relative_to(ROOT)}")
+    print(f"📄 まとめログ: {report.write(settings.log_dir).relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
