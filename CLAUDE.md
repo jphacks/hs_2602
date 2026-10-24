@@ -40,6 +40,16 @@ Observe → Understand → Decide → Act の単一エージェント(ルール 
 - `LLM_PROVIDER=handoff`: `facilitator/llm/handoff_llm.py`。プロンプトを `exchange/request_NNN.md` に書き出し、`exchange/response_NNN.json` を待つ(既定のタイムアウト 900 秒、`HANDOFF_TIMEOUT_SEC`)。`exchange/` は gitignore 済み。
 - ユーザーに「チャット経由で流して」と頼まれたら、評価やシナリオ再生を `--llm handoff` で背景実行し、リクエストを読んで、システムプロンプトの方針どおりに判断した JSON を返事として書く。
 
+## チャット GD(チャットの中だけで模擬 GD を行う)
+ユーザーに「チャット GD を始めて」と頼まれたときの手順:
+1. `exchange/` を空にしてから、背景で起動する: `.venv/bin/python scripts/chat_gd.py --theme "…" --humans たろう,はなこ --ai 2 --minutes 5`(既定は `--llm handoff`)
+2. 起動直後に AI 参加者の立場の生成リクエストが来るので答える。`exchange/status.txt` が `idle` になったら、`exchange/transcript.txt` の新しい行をユーザーに見せる
+3. ユーザーの発言ごとに `exchange/inbox.jsonl` に1行追記する: `{"type":"say","speaker":"たろう","text":"…","pause":8}`
+   - 「はなこ: …」のように名前があればその人の発言。名前がなければ最初の人間
+   - 「(沈黙15秒)」→ `{"type":"wait","sec":15}`、「終了」→ `{"type":"end"}`
+4. status が `busy` の間に `exchange/request_NNN.md` が出たら、種類(進行役の判断 / AI参加者の発言)に合わせてシステムプロンプトどおりに答える。status が `idle`(または `done`)になったら、新しい transcript の行をそのまま見せる
+5. `done` になったら結果のまとめ(transcript 末尾)を見せる。まとめログは `logs/report-*-chat.md`
+
 ## 技術選定(2026-10 時点の調査。詳細は README)
 - LLM: Claude Opus 5.5(`claude-opus-5-5`)、`effort: low`、構造化出力(`output_config.format` の json_schema)、`fallbacks: "default"`(beta `server-side-fallback-2026-07-01`)。SDK は `anthropic` 1.13。
 - STT + 話者分離: AssemblyAI Universal-3.6 Pro Realtime(`speaker_labels`、`max_speakers`、SpeakerRevision イベント)を予定。日本語 × ストリーミング × 話者分離の組み合わせは**未確認**で、Step 2 で実測する。比較候補は Soniox。
