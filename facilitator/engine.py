@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 
-from config import CUSTOM_KEYS, PRESETS, Settings, load_settings
+from config import CUSTOM_KEYS, PRESETS, Settings, knob_overrides, load_settings
 from facilitator.agent.agent import FacilitatorAgent
 from facilitator.agent.topic_return import detect_topic_return
 from facilitator.llm.factory import make_llm
@@ -63,6 +63,7 @@ class SessionConfig:
     custom: dict[str, float] = field(default_factory=dict)
     ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
     ai_level: int | None = 2  # AI 参加者のレベル(1〜3)。思考力と発言の間隔が変わる。None なら従来の間隔
+    knobs: dict[str, int] = field(default_factory=dict)  # 詳細の5項目(0=控えめ / 1=標準 / 2=積極的)
 
 
 @dataclass
@@ -133,6 +134,8 @@ class Engine:
         overrides: dict[str, Any] = dict(PRESETS.get(cfg.preset, {}))
         if cfg.preset == "custom":
             overrides.update({k: float(v) for k, v in cfg.custom.items() if k in CUSTOM_KEYS})
+        knob_settings, style_notes = knob_overrides(cfg.knobs, cfg.purpose)
+        overrides.update(knob_settings)
         self.settings = s = load_settings(**{**self._base_overrides, **overrides})
         self.paused = False
         self._ended_at = None
@@ -179,6 +182,7 @@ class Engine:
             logger=TickLogger(s.log_dir, "live", include_speech=True),
             purpose=cfg.purpose,
             clock=self.clock,
+            style_notes=style_notes,
         )
         self.intro = IntroState()
         self.events = []

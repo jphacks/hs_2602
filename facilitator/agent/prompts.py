@@ -96,10 +96,14 @@ def build_phase_block(dtype: DiscussionType) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_system_prompt(purpose: str = "job", discussion_type: str | None = None) -> str:
+def build_system_prompt(purpose: str = "job", discussion_type: str | None = None, style_notes: list[str] | None = None) -> str:
     p = purpose if purpose in PURPOSE_INTRO else "job"
     dtype = get_discussion_type(discussion_type, p)
-    return PURPOSE_INTRO[p] + COMMON_PROMPT + build_phase_block(dtype) + PURPOSE_RULES[p]
+    extra = ""
+    if style_notes:
+        # 主催者が画面の「詳細」で選んだ進行の調整。上の方針(特に答えを与えない)の範囲内で従う
+        extra = "\n# 主催者による進行の調整(上の方針の範囲内で従う)\n" + "\n".join(style_notes) + "\n"
+    return PURPOSE_INTRO[p] + COMMON_PROMPT + build_phase_block(dtype) + PURPOSE_RULES[p] + extra
 
 
 SYSTEM_PROMPT = build_system_prompt("job")

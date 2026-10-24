@@ -138,6 +138,31 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .toggles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
 .toggle { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); font-size: 13.5px; cursor: pointer; }
 .toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+.theme-row { display: flex; gap: 10px; }
+.theme-row .btn { flex: none; }
+.numrow { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.stepper2 { display: grid; grid-template-columns: 44px 120px 44px; align-items: center; padding: 6px; border-radius: 14px;
+  border: 1px solid var(--line-strong); background: rgba(0,0,0,.22); }
+.stepper2 button { height: 40px; border-radius: 10px; border: 0; background: var(--accent-2); color: #fff; font-size: 20px; font-weight: 700; }
+.stepper2 button:disabled { opacity: .3; pointer-events: none; }
+.stepper2 output { text-align: center; font-family: var(--num); font-size: 20px; font-weight: 700; }
+.unitbox { display: flex; align-items: center; gap: 6px; padding: 0 14px; height: 54px; border-radius: 14px; border: 1px solid var(--line-strong);
+  background: rgba(0,0,0,.22); }
+.unitbox input { width: 56px; background: transparent; border: 0; outline: none; text-align: right; font-family: var(--num); font-size: 18px; }
+.unitbox span { color: var(--muted); }
+.choice2 { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 12px; }
+.choice2 button { padding: 16px; border-radius: 14px; border: 1px solid var(--line-strong); background: rgba(0,0,0,.2); font-weight: 700; font-size: 15px; transition: .2s; }
+.choice2 button.on { border-color: var(--accent); background: rgba(62,198,224,.1); box-shadow: 0 0 0 3px rgba(62,198,224,.12); }
+.detail-head { display: flex !important; align-items: center; justify-content: space-between; cursor: pointer; }
+.switch { position: relative; width: 50px; height: 28px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch i { position: absolute; inset: 0; border-radius: 999px; background: rgba(255,255,255,.14); transition: .25s; }
+.switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: .25s; }
+.switch input:checked + i { background: var(--accent); }
+.switch input:checked + i::after { transform: translateX(22px); }
+.knob { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 10px 0; font-size: 14px; flex-wrap: wrap; }
+.knob .seg button { padding: 6px 12px; font-size: 13px; }
+.seg button:disabled { opacity: .3; cursor: not-allowed; }
 .setup-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 28px; }
 .err { color: var(--bad); font-size: 13.5px; }
 .hint { color: var(--faint); font-size: 12.5px; margin-top: 6px; }
@@ -267,6 +292,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 
 @media (max-width: 980px) {
   .purpose-grid, .presets, .toggles, .counts { grid-template-columns: 1fr; }
+  .stepper2 { grid-template-columns: 40px 80px 40px; }
   .people-row { flex-wrap: wrap; } .pcard { flex-basis: 40%; }
   .people { grid-template-columns: 1fr; }
   .stage { grid-template-columns: 1fr; height: auto; }
@@ -279,29 +305,29 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 </head>
 <body>
 
-<!-- ============ 1. 用途 ============ -->
+<!-- ============ 1. モード選択 ============ -->
 <section class="screen" id="s-purpose">
   <div class="topline">
     <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span>AI Facilitator</div>
-    <div class="steps"><span class="on"><i>1</i>用途</span><span class="sep"></span><span><i>2</i>設定</span><span class="sep"></span><span><i>3</i>進行</span></div>
+    <div class="steps"><span class="on"><i>1</i>モード</span><span class="sep"></span><span><i>2</i>設定</span><span class="sep"></span><span><i>3</i>進行</span></div>
   </div>
   <div class="hero">
     <div class="eyebrow">AUTONOMOUS DISCUSSION FACILITATOR</div>
-    <h1>どんなディスカッションを<br>進行しますか？</h1>
+    <h1>モード選択</h1>
     <p class="lead">AI が議論を聞き取り、必要なときだけ問いかけ・論点整理・時間管理を行います。</p>
     <div class="purpose-grid">
-      <button class="purpose" data-purpose="job">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#3ec6e0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7M3 12.5h18"/></svg></div>
-        <h2>グループディスカッション</h2>
-        <div class="sub">就活</div>
-        <ul><li>選考形式の GD を AI が進行</li><li>全員が考えを示せるよう発言機会を調整</li><li>答えは与えず、学生自身の思考を尊重</li></ul>
+      <button class="purpose" data-mode="human">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#3ec6e0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.5"/><path d="M15.8 14.2c2.5-.3 4.3 1.3 4.8 4.3"/></svg></div>
+        <h2>人間だけ</h2>
+        <div class="sub">参加者は全員人間</div>
+        <ul><li>AI は進行役に徹する</li><li>停滞・脱線・発言の偏りに対応</li><li>答えは与えず、参加者の思考を尊重</li></ul>
         <span class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
       </button>
-      <button class="purpose general" data-purpose="general">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#b39dff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg></div>
-        <h2>グループディスカッション</h2>
-        <div class="sub">就活以外</div>
-        <ul><li>授業・会議・ワークショップに</li><li>停滞や脱線をやさしく立て直す</li><li>納得感のある結論づくりを支援</li></ul>
+      <button class="purpose general" data-mode="ai">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#b39dff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 16h5"/></svg></div>
+        <h2>AI参加者あり</h2>
+        <div class="sub">AI も参加者として議論に加わる</div>
+        <ul><li>人数が足りないときの練習に</li><li>AI ごとに異なる立場を自動で割り当て</li><li>思考力のレベルを選べる</li></ul>
         <span class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
       </button>
     </div>
@@ -312,68 +338,64 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 <section class="screen" id="s-setup">
   <div class="topline">
     <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span>AI Facilitator</div>
-    <div class="steps"><span class="on"><i>1</i>用途</span><span class="sep"></span><span class="on"><i>2</i>設定</span><span class="sep"></span><span><i>3</i>進行</span></div>
+    <div class="steps"><span class="on"><i>1</i>モード</span><span class="sep"></span><span class="on"><i>2</i>設定</span><span class="sep"></span><span><i>3</i>進行</span></div>
   </div>
   <div class="setup-wrap">
     <form class="glass setup-card" id="setup-form" autocomplete="off">
-      <div class="eyebrow" id="purpose-label">就活 GD</div>
+      <div class="eyebrow" id="mode-label">人間だけ</div>
       <h1>ディスカッションの設定</h1>
 
       <div class="field">
         <label for="f-theme">テーマ</label>
-        <input class="input" id="f-theme" required placeholder="例：大学の学食の混雑を改善するには？">
-        <div class="suggest" id="suggest"></div>
+        <div class="theme-row">
+          <input class="input" id="f-theme" placeholder="例：大学の学食の混雑を改善するには？">
+          <button type="button" class="btn primary" id="btn-theme">自動生成</button>
+        </div>
       </div>
 
       <div class="field">
         <span class="label">制限時間</span>
-        <div class="row">
-          <div class="seg" id="seg-min"><button type="button" data-v="5">5分</button><button type="button" data-v="8">8分</button><button type="button" data-v="10">10分</button><button type="button" data-v="15">15分</button></div>
-          <input class="input minutes" id="f-min" type="number" min="1" max="60" step="0.5" value="8"><span style="color:var(--muted)">分</span>
-        </div>
+        <div class="numrow" data-key="minutes" data-min="1" data-max="60" data-unit="分"></div>
       </div>
 
       <div class="field">
         <span class="label">参加者の人数</span>
-        <div class="counts">
-          <div class="count"><div><b>人間</b><small>実際に話す人(1〜4人)</small></div>
-            <div class="stepper" data-key="humans" data-min="1" data-max="4"><button type="button">−</button><output>3</output><button type="button">＋</button></div></div>
-          <div class="count ai"><div><b>AI 参加者</b><small>立場を割り当てて議論に加わる(0〜3人)</small></div>
-            <div class="stepper" data-key="bots" data-min="0" data-max="3"><button type="button">−</button><output>0</output><button type="button">＋</button></div></div>
-        </div>
-        <span class="label">人間の参加者の名前(話す順・ニックネーム可)</span>
+        <div class="numrow" data-key="humans" data-min="1" data-max="4" data-unit="人"></div>
+      </div>
+
+      <div class="field">
+        <span class="label">名前</span>
         <div class="people" id="people"></div>
-        <div class="botmode hidden" id="botmode"></div>
-        <div class="hidden" id="levelbox" style="margin-top:14px">
-          <span class="label">AI 参加者のレベル</span>
-          <div class="presets" id="levels">
-            <button type="button" class="preset" data-v="1"><b><span class="tag">1</span>高校生程度</b><span>身近な例から考える。発言の間隔 4〜6秒</span></button>
-            <button type="button" class="preset" data-v="2"><b><span class="tag">2</span>大学生程度</b><span>根拠や前提を確かめて比べる。間隔 3〜5秒</span></button>
-            <button type="button" class="preset" data-v="3"><b><span class="tag">3</span>大学生程度・速め</b><span>レベル2と同じ思考力。間隔 2〜4秒</span></button>
-          </div>
-        </div>
+        <div class="hint">参加者の人数に応じて、入力する枠が増えます(ニックネーム可)。</div>
+      </div>
+
+      <div class="field ai-only">
+        <span class="label">AI参加者</span>
+        <div class="numrow" data-key="bots" data-min="1" data-max="3" data-unit="人"></div>
+        <div class="botmode" id="botmode"></div>
       </div>
 
       <div class="field">
-        <span class="label">入力方法</span>
-        <div class="seg" id="seg-mode"><button type="button" data-v="voice">🎙 音声</button><button type="button" data-v="text">⌨ テキスト入力</button></div>
-        <div class="hint" id="mode-hint"></div>
+        <span class="label">スタイル</span>
+        <div class="choice2" id="purpose">
+          <button type="button" data-v="job">就活</button>
+          <button type="button" data-v="general">就活以外</button>
+        </div>
       </div>
 
-      <div class="field">
-        <span class="label">進行スタイル</span>
-        <div class="presets" id="presets">
-          <button type="button" class="preset" data-v="A"><b><span class="tag">A</span>標準</b><span>順調なときは見守り、停滞・脱線・偏りに対応(推奨)</span></button>
-          <button type="button" class="preset" data-v="B"><b><span class="tag">B</span>積極サポート</b><span>沈黙や停滞に早めに声をかける</span></button>
-          <button type="button" class="preset" data-v="custom"><b><span class="tag">⚙</span>カスタム</b><span>介入の間隔などを細かく調整</span></button>
-        </div>
-        <div class="advanced" id="advanced">
+      <div class="field detail">
+        <label class="detail-head">
+          <span class="label" style="margin:0">詳細</span>
+          <span class="switch"><input type="checkbox" id="f-detail"><i></i></span>
+        </label>
+        <div class="advanced" id="detail-body">
           <div class="adv-inner">
-            <h3>詳細設定</h3>
-            <div class="slider"><span>介入の最低間隔</span><input type="range" id="c-cooldown_sec" min="15" max="120" step="5"><output></output></div>
-            <div class="slider"><span>この秒数の沈黙で判断する</span><input type="range" id="c-silence_trigger_sec" min="5" max="30" step="1"><output></output></div>
-            <div class="slider"><span>定期的な見直しの間隔</span><input type="range" id="c-analysis_interval_sec" min="10" max="60" step="5"><output></output></div>
-            <div class="slider"><span>割り込まないための間</span><input type="range" id="c-min_silence_for_intervention_sec" min="0.5" max="5" step="0.5"><output></output></div>
+            <div id="knobs"></div>
+            <h3 style="margin-top:22px">その他</h3>
+            <div class="knob"><span>入力方法</span><div class="seg" id="seg-input"><button type="button" data-v="voice">🎙 音声</button><button type="button" data-v="text">⌨ テキスト</button></div></div>
+            <div class="hint" id="mode-hint" style="margin:-4px 0 10px"></div>
+            <div class="knob ai-only"><span>AI参加者のレベル</span><div class="seg" id="seg-level"><button type="button" data-v="1">1 高校生</button><button type="button" data-v="2">2 大学生</button><button type="button" data-v="3">3 大学生・速め</button></div></div>
+            <div class="hint ai-only" id="level-hint" style="margin:-4px 0 10px"></div>
             <div class="toggles">
               <label class="toggle"><input type="checkbox" id="f-intro" checked>自己紹介で声を登録</label>
               <label class="toggle"><input type="checkbox" id="f-tts" checked>AI の声を出す</label>
@@ -384,7 +406,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
       </div>
 
       <div class="setup-actions">
-        <button type="button" class="btn" id="back-purpose">← 用途に戻る</button>
+        <button type="button" class="btn" id="back-purpose">← モード選択に戻る</button>
         <span class="err" id="f-err"></span>
         <button type="submit" class="btn primary">準備完了 →</button>
       </div>
@@ -479,16 +501,14 @@ const ACTION_JA = {
   invite_person: "個人へ発言を促す", return_to_speaker: "発言を戻す", time_warning: "時間の告知", close_gd: "終了・結論の確認",
 };
 let PHASES = [];  // 議論タイプのフェーズ [key, 名前]。サーバーの状態(s.phases)から受け取る
-const SUGGEST = {
-  job: ["大学の学食の混雑を改善するには？", "新しい観光名所をつくるなら？", "10年後に残る仕事・なくなる仕事", "地方の若者流出を止めるには？"],
-  general: ["次の学園祭の企画を決めよう", "チームの会議を短くするには？", "研究室の共有スペースの使い方", "新歓イベントのアイデア"],
-};
-const PRESET_JA = { A: "A 標準", B: "B 積極サポート", custom: "カスタム" };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const mmss = (s) => { s = Math.max(0, Math.floor(s)); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
 const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then((r) => r.json());
 
-const ui = { purpose: "job", minutes: 8, mode: "voice", preset: "A", info: null, config: null, started: false, humans: 3, bots: 0, level: 2 };
+const ui = {
+  withAI: false, purpose: "job", minutes: 8, humans: 3, bots: 1, input: "voice", level: 2,
+  knobs: { phase: 1, redirect: 1, organize: 1, turns: 1, suggest: 1 }, info: null, config: null, started: false,
+};
 let snap = null, logKey = "", decKey = "", doneShown = false;
 
 function show(id) {
@@ -496,86 +516,99 @@ function show(id) {
   window.scrollTo(0, 0);
 }
 
-/* ---------- 1. 用途 ---------- */
+/* ---------- 1. モード選択 ---------- */
 document.querySelectorAll(".purpose").forEach((b) => b.onclick = () => {
-  ui.purpose = b.dataset.purpose;
-  $("purpose-label").textContent = ui.purpose === "job" ? "就活 GD" : "グループディスカッション(就活以外)";
-  $("suggest").innerHTML = SUGGEST[ui.purpose].map((t) => `<button type="button">${esc(t)}</button>`).join("");
-  $("suggest").querySelectorAll("button").forEach((x) => x.onclick = () => { $("f-theme").value = x.textContent; });
+  ui.withAI = b.dataset.mode === "ai";
+  $("mode-label").textContent = ui.withAI ? "AI参加者あり" : "人間だけ";
+  syncSetup();
   show("s-setup");
 });
 
 /* ---------- 2. 設定 ---------- */
+const KNOB_LEVELS = ["控えめ", "標準", "積極的"];
 $("people").innerHTML = [0, 1, 2, 3].map((i) => `<div class="person-in"><span class="dot" style="background:${COLORS[i]}"></span>
   <input class="input f-name" placeholder="${i + 1}人目"></div>`).join("");
+
+// 数値の入力(− 値 ＋ と、直接入力できる「○分/○人」の枠)
+document.querySelectorAll(".numrow").forEach((row) => {
+  row.innerHTML = `<div class="stepper2"><button type="button">−</button><output></output><button type="button">＋</button></div>
+    <label class="unitbox"><input type="number" min="${row.dataset.min}" max="${row.dataset.max}"><span>${row.dataset.unit}</span></label>`;
+  const [minus, plus] = row.querySelectorAll("button"), key = row.dataset.key;
+  const clamp = (v) => Math.min(+row.dataset.max, Math.max(+row.dataset.min, Math.round(v) || +row.dataset.min));
+  minus.onclick = () => { ui[key] = clamp(ui[key] - 1); syncSetup(); };
+  plus.onclick = () => { ui[key] = clamp(ui[key] + 1); syncSetup(); };
+  row.querySelector("input").onchange = (e) => { ui[key] = clamp(+e.target.value); syncSetup(); };
+});
+function seg(id, key, after) {
+  $(id).querySelectorAll("button").forEach((b) => b.onclick = () => {
+    if (b.disabled) return;
+    ui[key] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; syncSetup(); after && after();
+  });
+}
+seg("purpose", "purpose");
+seg("seg-input", "input");
+seg("seg-level", "level");
+$("f-detail").onchange = (e) => { $("detail-body").classList.toggle("open", e.target.checked); };
+
 function botModeOf(h, b) { return b === 0 ? "" : (h <= 2 || b >= h ? "active" : "reserved"); }
-function syncCounts() {
-  document.querySelectorAll("#levels .preset").forEach((b) => b.onclick = () => { ui.level = +b.dataset.v; syncCounts(); });
-document.querySelectorAll(".stepper").forEach((st) => {
-    const v = ui[st.dataset.key], [minus, plus] = st.querySelectorAll("button");
-    st.querySelector("output").textContent = v;
-    minus.disabled = v <= +st.dataset.min; plus.disabled = v >= +st.dataset.max;
+function renderKnobs() {
+  const labels = ui.info?.knobs || {};
+  $("knobs").innerHTML = Object.entries(labels).map(([k, label]) => `<div class="knob"><span>${esc(label)}</span>
+    <div class="seg" data-knob="${k}">${KNOB_LEVELS.map((t, i) => `<button type="button" data-v="${i}">${t}</button>`).join("")}</div></div>`).join("")
+    + '<div class="hint" id="knob-hint"></div>';
+  $("knobs").querySelectorAll(".seg").forEach((g) => g.querySelectorAll("button").forEach((b) => b.onclick = () => {
+    if (b.disabled) return;
+    ui.knobs[g.dataset.knob] = +b.dataset.v; syncSetup();
+  }));
+}
+function syncSetup() {
+  document.querySelectorAll(".numrow").forEach((row) => {
+    const v = ui[row.dataset.key], [minus, plus] = row.querySelectorAll("button");
+    row.querySelector("output").textContent = v;
+    row.querySelector("input").value = v;
+    minus.disabled = v <= +row.dataset.min; plus.disabled = v >= +row.dataset.max;
   });
   document.querySelectorAll(".person-in").forEach((el, i) => el.classList.toggle("hidden", i >= ui.humans));
-  const m = botModeOf(ui.humans, ui.bots);
-  $("botmode").classList.toggle("hidden", !m);
-  $("levelbox").classList.toggle("hidden", !ui.bots);
-  document.querySelectorAll("#levels .preset").forEach((b) => b.classList.toggle("on", +b.dataset.v === ui.level));
+  document.querySelectorAll(".ai-only").forEach((el) => el.classList.toggle("hidden", !ui.withAI));
+  const on = (id, v) => $(id).querySelectorAll("button").forEach((b) => b.classList.toggle("on", String(v) === b.dataset.v));
+  on("purpose", ui.purpose); on("seg-input", ui.input); on("seg-level", ui.level);
+  // 就活では選考の公平性のため、AI が参加者の出していない観点を持ち込まない(提案度合いは標準まで)
+  const jobCap = ui.purpose === "job";
+  if (jobCap && ui.knobs.suggest > 1) ui.knobs.suggest = 1;
+  $("knobs").querySelectorAll(".seg").forEach((g) => g.querySelectorAll("button").forEach((b) => {
+    b.classList.toggle("on", +b.dataset.v === (ui.knobs[g.dataset.knob] ?? 1));
+    b.disabled = jobCap && g.dataset.knob === "suggest" && +b.dataset.v === 2;
+  }));
+  if ($("knob-hint")) $("knob-hint").textContent = jobCap ? "就活では選考の公平性のため、「AIからの提案度合い」は標準までです(参加者が出していない観点は持ち込みません)。" : "";
+  $("mode-hint").textContent = ui.input === "voice"
+    ? "PC のマイクで会話を聞き取ります(文字起こしは AssemblyAI。従量課金)。" : "話者を選んで発言を入力します。マイクは使いません。";
+  $("level-hint").textContent = { 1: "高校生程度の思考力。発言の間隔 4〜6秒", 2: "大学生程度の思考力。発言の間隔 3〜5秒", 3: "大学生程度の思考力。発言の間隔 2〜4秒" }[ui.level];
+  const m = ui.withAI ? botModeOf(ui.humans, ui.bots) : "";
   $("botmode").innerHTML = m === "active"
     ? `<b>練習相手モード</b> — 人間が少ないので、AI 参加者は会話に間があれば積極的に意見を出します。開始時に AI ${ui.bots}人分の異なる立場を自動で割り当てます。`
     : `<b>控えめモード</b> — 人間が主役なので、AI 参加者は名指しされたときと長い沈黙のときだけ話します。開始時に AI ${ui.bots}人分の異なる立場を自動で割り当てます。`;
 }
-document.querySelectorAll(".stepper").forEach((st) => {
-  const [minus, plus] = st.querySelectorAll("button");
-  minus.onclick = () => { ui[st.dataset.key] = Math.max(+st.dataset.min, ui[st.dataset.key] - 1); syncCounts(); };
-  plus.onclick = () => { ui[st.dataset.key] = Math.min(+st.dataset.max, ui[st.dataset.key] + 1); syncCounts(); };
-});
-syncCounts();
-
-function seg(id, key, after) {
-  const el = $(id);
-  const sync = () => el.querySelectorAll("button").forEach((b) => b.classList.toggle("on", String(ui[key]) === b.dataset.v));
-  el.querySelectorAll("button").forEach((b) => b.onclick = () => { ui[key] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; sync(); after && after(); });
-  sync();
-  return sync;
-}
-const syncMin = seg("seg-min", "minutes", () => { $("f-min").value = ui.minutes; });
-$("f-min").oninput = () => { ui.minutes = +$("f-min").value; syncMin(); };
-const syncMode = seg("seg-mode", "mode", modeHint);
-function modeHint() {
-  $("mode-hint").textContent = ui.mode === "voice"
-    ? "PC のマイクで会話を聞き取ります(文字起こしは AssemblyAI。従量課金)。"
-    : "話者を選んで発言を入力します。マイクは使いません。";
-}
-
-const CUSTOM = ["cooldown_sec", "silence_trigger_sec", "analysis_interval_sec", "min_silence_for_intervention_sec"];
-function fillSliders(from) {
-  CUSTOM.forEach((k) => { const r = $("c-" + k); r.value = from[k]; r.nextElementSibling.textContent = `${r.value}秒`; });
-}
-CUSTOM.forEach((k) => $("c-" + k).oninput = (e) => { e.target.nextElementSibling.textContent = `${e.target.value}秒`; });
-function syncPreset() {
-  document.querySelectorAll("#presets .preset").forEach((b) => b.classList.toggle("on", b.dataset.v === ui.preset));
-  $("advanced").classList.toggle("open", ui.preset === "custom");
-}
-document.querySelectorAll("#presets .preset").forEach((b) => b.onclick = () => {
-  ui.preset = b.dataset.v;
-  if (ui.preset !== "custom" && ui.info) fillSliders(ui.info.presets[ui.preset]);
-  syncPreset();
-});
+$("btn-theme").onclick = async () => {
+  const b = $("btn-theme"); b.disabled = true; b.textContent = "生成中…";
+  try {
+    const r = await post("/api/theme", { purpose: ui.purpose, exclude: $("f-theme").value.trim() });
+    if (r.theme) $("f-theme").value = r.theme;
+  } finally { b.disabled = false; b.textContent = "自動生成"; }
+};
 $("back-purpose").onclick = () => show("s-purpose");
 
 $("setup-form").onsubmit = (ev) => {
   ev.preventDefault();
   const names = [...document.querySelectorAll(".f-name")].slice(0, ui.humans).map((e) => e.value.trim());
-  if (!$("f-theme").value.trim()) { $("f-err").textContent = "テーマを入力してください"; return; }
-  if (names.some((n) => !n)) { $("f-err").textContent = `人間の参加者の名前を${ui.humans}人分入力してください`; return; }
-  if (names.length + ui.bots < 2) { $("f-err").textContent = "合計2人以上にしてください(AI 参加者を追加できます)"; return; }
+  if (!$("f-theme").value.trim()) { $("f-err").textContent = "テーマを入力するか、自動生成してください"; return; }
+  if (names.some((n) => !n)) { $("f-err").textContent = `参加者の名前を${ui.humans}人分入力してください`; return; }
+  const bots = ui.withAI ? ui.bots : 0;
+  if (names.length + bots < 2) { $("f-err").textContent = "合計2人以上にしてください(AI参加者ありモードなら AI を加えられます)"; return; }
   $("f-err").textContent = "";
-  const custom = {}; CUSTOM.forEach((k) => custom[k] = +$("c-" + k).value);
   ui.config = {
-    theme: $("f-theme").value.trim(), minutes: +$("f-min").value || 8, names, mode: ui.mode,
+    theme: $("f-theme").value.trim(), minutes: ui.minutes, names, mode: ui.input,
     intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
-    purpose: ui.purpose, preset: ui.preset, custom, ai_count: ui.bots, ai_level: ui.level,
+    purpose: ui.purpose, preset: "A", custom: {}, ai_count: bots, ai_level: ui.level, knobs: { ...ui.knobs },
   };
   snap = null; logKey = ""; decKey = ""; doneShown = false; ui.started = false;
   renderReady();
@@ -611,7 +644,7 @@ function renderReady() {
   const c = ui.config;
   $("b-theme").textContent = c.theme;
   $("b-purpose").textContent = c.purpose === "general" ? "就活以外" : "就活";
-  $("b-preset").textContent = PRESET_JA[c.preset] || "";
+  $("b-preset").textContent = c.ai_count ? "AI参加者あり" : "人間だけ";
   $("b-level").textContent = c.ai_count ? `AI レベル${c.ai_level}` : "";
   llmChip(ui.info?.llm);
   $("c-limit").textContent = c.minutes; $("c-time").textContent = "00:00"; $("c-remain").textContent = "";
@@ -686,7 +719,7 @@ function render() {
   const running = s.status === "running" || s.status === "intro";
   $("b-theme").textContent = s.theme;
   $("b-purpose").textContent = s.purpose === "general" ? "就活以外" : "就活";
-  $("b-preset").textContent = PRESET_JA[s.preset] || "";
+  $("b-preset").textContent = (s.participants || []).length ? "AI参加者あり" : "人間だけ";
   $("b-level").textContent = s.ai_level ? `AI レベル${s.ai_level}` : "";
   llmChip(s.llm);
 
@@ -798,7 +831,7 @@ $("in-text").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.is
 
 /* ---------- 起動 ---------- */
 fetch("/api/info").then((r) => r.json()).then((info) => {
-  ui.info = info; ui.mode = info.default_mode; syncMode(); modeHint(); fillSliders(info.presets.A); syncPreset();
+  ui.info = info; ui.input = info.default_mode; renderKnobs(); syncSetup();
 });
 let first = true;
 function connect() {
