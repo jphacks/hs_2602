@@ -185,6 +185,70 @@ def generate_utterance(
     return str(raw.get("text", "")).strip()
 
 
+# ---------------- 誰が話すか(文脈で選ぶ)+ 発言 ----------------
+def _choose_system(personas: list[Persona], purpose: str, level: int | None) -> str:
+    who = "就職活動の選考のグループディスカッションに参加している就活生" if purpose == "job" else "グループディスカッションの参加者"
+    lines = [f"- {p.name}: 立場「{p.stance}」— {p.opinion}(話し方: {p.style})" for p in personas]
+    lv = f"\n# AI参加者の思考力のレベル\n{level_note(level)}。このレベルを超える考え方はしない\n" if level else ""
+    return f"""\
+あなたは、グループディスカッションに加わっている複数の「AI参加者」({who})を担当します。
+今、AI参加者のうち誰か1人が話す番です。**誰が話すのが会話の文脈上いちばん自然か**を選び、その人の発言を作ってください。
+
+# 話せる AI参加者
+{chr(10).join(lines)}
+
+# 誰が話すかの選び方(上ほど優先)
+1. 直前の発言で反論・質問・指摘を向けられた人(名前が出ていなくても、その人の意見に向けた発言なら、その人が応じるのが自然)
+2. 直前の話題に、自分の立場が直接かかわる人(賛成・反対・補足の意見を持っている人)
+3. 上の2つで決まらないときは、発言回数が少ない人
+発言の偏りは避けたいが、文脈に合うことを最優先にする。
+
+# 発言のルール
+- 1〜2文、話し言葉の自然な日本語(です・ます調)で短く話す。長い演説はしない
+- 選んだ人の立場と話し方で、直前の流れに応答する(賛同・質問・反論・付け足し)。他の人の良い意見は認めてよい
+- 進行役ではないので、議論をまとめたり仕切ったりしない
+- text には発言内容のみを書く(名前や括弧書きは付けない)。why には、その人が話すのが自然な理由を1文で書く
+{lv}"""
+
+
+def choose_and_generate(
+    llm: LLMClient,
+    personas: list[Persona],
+    purpose: str,
+    theme: str,
+    transcript: list[str],
+    reason: str,
+    level: int | None,
+    counts: dict[str, int],
+    fallback: Persona,
+) -> tuple[Persona, str, str]:
+    """話す AI参加者を文脈で選び、その人の発言を作る。(選んだ人, 発言, 選んだ理由) を返す。"""
+    if llm.name == "mock" or len(personas) == 1:
+        p = fallback if llm.name == "mock" else personas[0]
+        return p, generate_utterance(llm, p, purpose, theme, transcript, reason, level), "最近話していない人"
+    by_name = {p.name: p for p in personas}
+    schema = {
+        "type": "object",
+        "properties": {
+            "speaker": {"type": "string", "enum": list(by_name)},
+            "why": {"type": "string"},
+            "text": {"type": "string"},
+        },
+        "required": ["speaker", "why", "text"],
+        "additionalProperties": False,
+    }
+    stats = "、".join(f"{p.name} {counts.get(p.speaker_id, 0)}回" for p in personas)
+    user = (
+        f"テーマ: {theme}\n\n# 直近の発言(古い順)\n"
+        + ("\n".join(transcript[-20:]) or "(まだ発言なし)")
+        + f"\n\n# これまでの発言回数\n{stats}\n\n# 今 AI参加者が話す理由\n{reason}\n\n"
+        "誰が話すかを選び、その人の次の発言を作ってください。"
+    )
+    raw = llm.generate_json(_choose_system(personas, purpose, level), user, schema, {"kind": "AI参加者の発言(誰が話すかの選択つき)"})
+    p = by_name.get(str(raw.get("speaker", "")), fallback)
+    return p, str(raw.get("text", "")).strip(), str(raw.get("why", "")).strip()
+
+
 # ---------------- いつ話すか ----------------
 # active(練習相手): 人間が2人以下、または AI が人間と同数以上のとき。間があれば積極的に話す
 # reserved(控えめ): 人間が主役のとき。名指しされたときと長い沈黙のときだけ話す
