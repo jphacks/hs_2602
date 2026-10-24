@@ -1,0 +1,26 @@
+id: 17_planning
+title: 計画立案型(目標より遅れているが順調な洗い出し → 具体化で停滞 → 全体の確認)
+theme: 3か月後の大学祭で、ゼミとして模擬店を出すための準備計画を立てる
+discussion_type: planning
+duration_sec: 600
+start_elapsed: 340
+initial_phase: task_listing
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 340, d: 6, s: speaker_1, c: 0.9, text: 必要な作業は、メニュー決め、仕入れ先探し、保健所への届け出ですね。}
+  - {t: 347, d: 5, s: speaker_2, c: 0.88, text: あと、当日のシフト表と、看板づくりもいります。}
+  - {t: 353, d: 5, s: speaker_3, c: 0.9, text: 届け出は締め切りがあるので、早めにやらないといけないですね。}
+  - {t: 359, d: 5, s: speaker_4, c: 0.86, text: 機材のレンタルも忘れずに。鉄板とテントが必要です。}
+  - {t: 367, d: 5, s: speaker_1, c: 0.9, text: これで作業はだいたい出そろったかな。予算の管理もありますね。}
+  - {t: 375, d: 5, s: speaker_2, c: 0.88, text: じゃあ担当と順番を決めましょう。届け出は私がやります。}
+  - {t: 381, d: 4, s: speaker_3, c: 0.9, text: 仕入れ先探しは、メニューが決まってからですよね。}
+  - {t: 386, d: 4, s: speaker_4, c: 0.86, text: メニューはいつまでに決めればいいんだろう…。}
+  - {t: 391, d: 1.5, s: speaker_1, c: 0.9, text: うーん…。}
+  - {t: 430, d: 6, s: speaker_2, c: 0.88, text: メニューは来月末までに決めて、そのあと仕入れ先、という順番にしましょう。}
+  - {t: 437, d: 4, s: speaker_3, c: 0.9, text: 看板とシフトは、私とみさきさんで担当します。}
+  - {t: 442, d: 6, s: speaker_4, c: 0.86, text: 最後に全体を見直しましょう。届け出の締め切りに間に合うか、予算は足りるか。}
+  - {t: 449, d: 5, s: speaker_1, c: 0.9, text: 締め切りには間に合いそうです。予算は少し厳しいかもしれません。}
+checkpoints:
+  - {at: 366.5, expect: [no_intervention], require_llm: true, expect_phase: [task_listing], why: 経過61%で目標(計画具体化)より1段階遅れ(遅れの条件に該当)だが、参加者が自分たちで作業を次々に洗い出している。遅れだけで介入しない}
+  - {at: 408, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention], expect_phase: [plan_detailing], why: 担当と順番を決め始めたが、メニューの期限が決まらず止まっている。決めるべき項目を参加者の言葉で整理するよう促す。AI は日程や担当を決めない}
+  - {at: 456.5, expect: [no_intervention], require_llm: true, expect_phase: [review], why: 参加者自身が全体の見直し(締め切り・予算)を始めている。見守る}

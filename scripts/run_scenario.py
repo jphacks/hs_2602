@@ -41,7 +41,8 @@ def main() -> None:
         state.set_speaker_name(sid, name, confirmed=sc.get("names_confirmed", True))
     t = float(sc.get("start_elapsed", 0))
     llm = RecordingLLM(make_llm(settings))
-    agent = FacilitatorAgent(state, llm, settings, logger=TickLogger(settings.log_dir, sc["id"]))
+    agent = FacilitatorAgent(state, llm, settings, logger=TickLogger(settings.log_dir, sc["id"]),
+                             discussion_type=sc.get("discussion_type"))
     if t > 0:
         state.started, state.start_time = True, 0.0
         state.observed_phase = sc.get("initial_phase", "")

@@ -149,7 +149,8 @@ def test_bot_mode_by_headcount(humans, bots, mode):
     from facilitator.engine import Engine, SessionConfig
 
     e = Engine(load_settings(), llm_provider="mock")  # セッションごとの設定にもモックを引き継ぐ
-    e.start(SessionConfig("t", 1, [f"h{i}" for i in range(humans)], mode="text", tts=False, ai_count=bots))
+    # 就活GDは議論タイプの指定が必須
+    e.start(SessionConfig("t", 1, [f"h{i}" for i in range(humans)], mode="text", tts=False, ai_count=bots, discussion_type="problem_solving"))
     try:
         assert e.bot_mode == mode
         assert len(e.personas) == bots

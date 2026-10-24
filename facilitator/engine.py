@@ -19,6 +19,7 @@ import numpy as np
 from config import CUSTOM_KEYS, PRESETS, Settings, load_settings
 from facilitator.agent.agent import FacilitatorAgent
 from facilitator.agent.topic_return import detect_topic_return
+from facilitator.discussion_types import resolve_session_type
 from facilitator.llm.factory import make_llm
 from facilitator.logging import TickLogger
 from facilitator.llm.base import LLMError
@@ -59,6 +60,7 @@ class SessionConfig:
     tts: bool = True
     use_speaker_info: bool = True
     purpose: str = "job"  # job(就活) | general(就活以外)
+    discussion_type: str | None = None  # 議論タイプ。就活GDは必須(4種類から選択)、一般GWは省略時に汎用型
     preset: str = "A"  # A | B | custom
     custom: dict[str, float] = field(default_factory=dict)
     ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
@@ -127,6 +129,7 @@ class Engine:
     # ================= 開始・終了 =================
     def start(self, cfg: SessionConfig, background: bool = True) -> None:
         """background=False ならスレッドを起動しない(テストで _agent_step を直接回すため)。"""
+        dtype = resolve_session_type(cfg.discussion_type, cfg.purpose)  # 不正なら、走っているセッションを止める前に拒否する
         self.stop()
         self._stop = threading.Event()
         self.cfg = cfg
@@ -178,6 +181,7 @@ class Engine:
             s,
             logger=TickLogger(s.log_dir, "live", include_speech=True),
             purpose=cfg.purpose,
+            discussion_type=dtype.key,
             clock=self.clock,
         )
         self.intro = IntroState()
@@ -706,6 +710,7 @@ class Engine:
             "remaining": round(st.remaining(now), 1),
             "duration": st.duration_sec,
             "discussion_type": agent.dtype.label,
+            "discussion_type_key": agent.dtype.key,
             "phases": [[p.key, p.label] for p in agent.dtype.phases],
             "phase": st.observed_phase,  # 実際のフェーズ(LLM の判断)
             "target_phase": agent.phase_status(now)[0] if st.started else "",

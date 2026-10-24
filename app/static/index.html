@@ -320,6 +320,12 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
       </div>
 
       <div class="field">
+        <span class="label">議論タイプ <span id="type-req">(必須)</span></span>
+        <div class="seg" id="seg-type"></div>
+        <div class="hint" id="type-hint">テーマに合う進め方を選んでください。</div>
+      </div>
+
+      <div class="field">
         <span class="label">制限時間</span>
         <div class="row">
           <div class="seg" id="seg-min"><button type="button" data-v="5">5分</button><button type="button" data-v="8">8分</button><button type="button" data-v="10">10分</button><button type="button" data-v="15">15分</button></div>
@@ -391,7 +397,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   <div class="bar">
     <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span></div>
     <div class="theme" id="b-theme">—</div>
-    <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
+    <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-type"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
     <div class="actions">
       <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>開始</button>
       <button class="btn" id="btn-pause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>一時停止</span></button>
@@ -482,7 +488,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const mmss = (s) => { s = Math.max(0, Math.floor(s)); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
 const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then((r) => r.json());
 
-const ui = { purpose: "job", minutes: 8, mode: "voice", preset: "A", info: null, config: null, started: false, humans: 3, bots: 0, level: 2 };
+const ui = { purpose: "job", dtype: null, minutes: 8, mode: "voice", preset: "A", info: null, config: null, started: false, humans: 3, bots: 0, level: 2 };
 let snap = null, logKey = "", decKey = "", doneShown = false;
 
 function show(id) {
@@ -496,10 +502,31 @@ document.querySelectorAll(".purpose").forEach((b) => b.onclick = () => {
   $("purpose-label").textContent = ui.purpose === "job" ? "就活 GD" : "グループディスカッション(就活以外)";
   $("suggest").innerHTML = SUGGEST[ui.purpose].map((t) => `<button type="button">${esc(t)}</button>`).join("");
   $("suggest").querySelectorAll("button").forEach((x) => x.onclick = () => { $("f-theme").value = x.textContent; });
+  ui.dtype = ui.purpose === "job" ? null : "";  // 就活GDは毎回選ぶ。一般GWは「指定なし(汎用)」が初期値
+  renderTypes();
   show("s-setup");
 });
 
 /* ---------- 2. 設定 ---------- */
+// 議論タイプ: 就活GDは4種類から必須。一般GWは「指定なし(汎用)」も選べる(従来の動き)
+const GENERIC_TYPE = { key: "", label: "指定なし(汎用)", phases: ["案出し", "比較検討", "結論"] };
+function typeOptions() {
+  const types = ui.info?.discussion_types || [];
+  return ui.purpose === "general" ? [GENERIC_TYPE, ...types] : types;
+}
+function typeLabel(key) {
+  const t = [GENERIC_TYPE, ...(ui.info?.discussion_types || [])].find((x) => x.key === (key || ""));
+  return t ? (t.key ? t.label : "汎用型") : "";
+}
+function renderTypes() {
+  const opts = typeOptions();
+  $("seg-type").innerHTML = opts.map((t) => `<button type="button" data-v="${esc(t.key)}" class="${t.key === ui.dtype ? "on" : ""}">${esc(t.label)}</button>`).join("");
+  $("seg-type").querySelectorAll("button").forEach((b) => b.onclick = () => { ui.dtype = b.dataset.v; renderTypes(); });
+  const cur = opts.find((t) => t.key === ui.dtype);
+  $("type-hint").textContent = cur ? cur.phases.join(" → ") : "テーマに合う進め方を選んでください。";
+  $("type-req").style.display = ui.purpose === "job" ? "" : "none";
+}
+
 $("people").innerHTML = [0, 1, 2, 3].map((i) => `<div class="person-in"><span class="dot" style="background:${COLORS[i]}"></span>
   <input class="input f-name" placeholder="${i + 1}人目"></div>`).join("");
 function botModeOf(h, b) { return b === 0 ? "" : (h <= 2 || b >= h ? "active" : "reserved"); }
@@ -562,6 +589,7 @@ $("setup-form").onsubmit = (ev) => {
   ev.preventDefault();
   const names = [...document.querySelectorAll(".f-name")].slice(0, ui.humans).map((e) => e.value.trim());
   if (!$("f-theme").value.trim()) { $("f-err").textContent = "テーマを入力してください"; return; }
+  if (ui.purpose === "job" && !ui.dtype) { $("f-err").textContent = "議論タイプを選択してください"; return; }
   if (names.some((n) => !n)) { $("f-err").textContent = `人間の参加者の名前を${ui.humans}人分入力してください`; return; }
   if (names.length + ui.bots < 2) { $("f-err").textContent = "合計2人以上にしてください(AI 参加者を追加できます)"; return; }
   $("f-err").textContent = "";
@@ -569,7 +597,7 @@ $("setup-form").onsubmit = (ev) => {
   ui.config = {
     theme: $("f-theme").value.trim(), minutes: +$("f-min").value || 8, names, mode: ui.mode,
     intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
-    purpose: ui.purpose, preset: ui.preset, custom, ai_count: ui.bots, ai_level: ui.level,
+    purpose: ui.purpose, preset: ui.preset, custom, discussion_type: ui.dtype || null, ai_count: ui.bots, ai_level: ui.level,
   };
   snap = null; logKey = ""; decKey = ""; doneShown = false; ui.started = false;
   renderReady();
@@ -605,6 +633,7 @@ function renderReady() {
   const c = ui.config;
   $("b-theme").textContent = c.theme;
   $("b-purpose").textContent = c.purpose === "general" ? "就活以外" : "就活";
+  $("b-type").textContent = typeLabel(c.discussion_type);
   $("b-preset").textContent = PRESET_JA[c.preset] || "";
   $("b-level").textContent = c.ai_count ? `AI レベル${c.ai_level}` : "";
   llmChip(ui.info?.llm);
@@ -658,6 +687,7 @@ function render() {
   const running = s.status === "running" || s.status === "intro";
   $("b-theme").textContent = s.theme;
   $("b-purpose").textContent = s.purpose === "general" ? "就活以外" : "就活";
+  $("b-type").textContent = s.discussion_type || "";
   $("b-preset").textContent = PRESET_JA[s.preset] || "";
   $("b-level").textContent = s.ai_level ? `AI レベル${s.ai_level}` : "";
   llmChip(s.llm);
@@ -770,7 +800,7 @@ $("in-text").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.is
 
 /* ---------- 起動 ---------- */
 fetch("/api/info").then((r) => r.json()).then((info) => {
-  ui.info = info; ui.mode = info.default_mode; syncMode(); modeHint(); fillSliders(info.presets.A); syncPreset();
+  ui.info = info; renderTypes(); ui.mode = info.default_mode; syncMode(); modeHint(); fillSliders(info.presets.A); syncPreset();
 });
 let first = true;
 function connect() {
@@ -780,7 +810,7 @@ function connect() {
     if (first) {
       first = false;
       if (s.status === "running" || s.status === "intro") {  // 再読み込み時は進行画面に戻る
-        ui.config = { theme: s.theme, minutes: s.duration / 60, names: (s.humans || []).map((id) => s.names[id]), ai_count: (s.participants || []).length, purpose: s.purpose, preset: s.preset };
+        ui.config = { theme: s.theme, minutes: s.duration / 60, names: (s.humans || []).map((id) => s.names[id]), ai_count: (s.participants || []).length, purpose: s.purpose, preset: s.preset, discussion_type: s.discussion_type_key };
         ui.started = true; snap = s; renderReady(); show("s-session");
       } else show("s-purpose");
     }
