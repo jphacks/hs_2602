@@ -47,6 +47,7 @@ def main() -> None:
     logger = TickLogger(settings.log_dir, "eval")
     rows, total, passed = [], 0, 0
     phase_total, phase_passed = 0, 0  # フェーズ認識は行動の一致率とは別に集計する
+    by_src: dict[tuple[str, bool], list[bool]] = {}  # (判断の出どころ, 介入不要が正解の時点か) → 合否
     for rep in range(args.repeat):
         for p in paths:
             sc = load_scenario(p)
@@ -60,10 +61,12 @@ def main() -> None:
                 d = c.record.decision
                 mark = "OK " if c.passed else "NG "
                 pmark = {True: " フェーズOK", False: " フェーズNG", None: ""}[c.phase_ok]
+                src = {"rule": "ルール", "llm": "LLM", "llm_overridden": "LLM→書換"}[c.judged_by]
+                by_src.setdefault((c.judged_by, d.action.value == "no_intervention" and c.expect == ["no_intervention"]), []).append(c.passed)
                 print(
                     f"{mark}{res.id:<20} t={c.at:>6.1f} 期待={'/'.join(c.expect):<40} "
                     f"結果={d.action.value}{'(' + d.target_speaker + ')' if d.target_speaker else ''}"
-                    f"  [{c.record.gate}, {c.record.latency_sec:.1f}s]{pmark}"
+                    f"  [{src}: {c.record.gate}, {c.record.latency_sec:.1f}s]{pmark}"
                 )
                 if args.verbose or not c.passed or c.phase_ok is False:
                     if c.fail_reason:
@@ -75,6 +78,8 @@ def main() -> None:
                         + (f" 期待={'/'.join(c.expect_phase)}" if c.expect_phase else "")
                         + f" health={r.analysis.health}"
                     )
+                    if c.record.overridden:
+                        print(f"     書き換え: {c.record.overridden}")
                     if r.analysis.phase_reason:
                         print(f"     フェーズの根拠: {r.analysis.phase_reason}")
                     print(f"     理由: {d.reasoning}")
@@ -92,6 +97,7 @@ def main() -> None:
                         "fail_reason": c.fail_reason,
                         "expect_phase": c.expect_phase,
                         "phase_ok": c.phase_ok,
+                        "judged_by": c.judged_by,
                         "record": c.record.model_dump(mode="json"),
                     }
                 )
@@ -99,6 +105,16 @@ def main() -> None:
     print(f"\n一致率: {passed}/{total} = {passed / max(1, total):.0%}  (LLM: {llm.name})")
     if phase_total:
         print(f"フェーズ認識の一致率: {phase_passed}/{phase_total} = {phase_passed / phase_total:.0%}")
+    quiet = {k[0]: v for k, v in by_src.items() if k[1]}
+    if quiet:
+        print("介入不要が正解の時点: " + " / ".join(f"{ {'rule': 'ルール層の見送り', 'llm': 'LLM の見守り判断', 'llm_overridden': 'LLM→書換'}[k]} {sum(v)}/{len(v)}" for k, v in sorted(quiet.items())))
+    calls = [r["record"] for r in rows if r["record"]["llm_called"]]
+    tokens: dict[str, int] = {}
+    for rec in calls:
+        for k, v in (rec["llm_usage"] or {}).items():
+            tokens[k] = tokens.get(k, 0) + v
+    avg = sum(rec["latency_sec"] for rec in calls) / len(calls) if calls else 0.0
+    print(f"LLM呼び出し: {len(calls)}回 / 平均応答 {avg:.1f}秒 / トークン: " + (", ".join(f"{k}={v}" for k, v in tokens.items()) or "記録なし(モック)"))
     out_dir = ROOT / "results"
     out_dir.mkdir(exist_ok=True)
     out = out_dir / f"eval-{datetime.now():%Y%m%d-%H%M%S}.json"

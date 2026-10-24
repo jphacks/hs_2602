@@ -15,4 +15,4 @@ utterances:
   - {t: 439, d: 5, s: speaker_3, c: 0.9, text: 席の形なら、4人席の一部をカウンターに変えるのはどうですか。}
   - {t: 445, d: 5, s: speaker_4, c: 0.86, text: 話し込みには、ピーク時だけ時間の目安を掲示するとか。}
 checkpoints:
-  - {at: 452, expect: [no_intervention], expect_phase: [solution_ideation], why: 前回判断(原因分析)のままでは目標(評価・比較)より2段階遅れだが、参加者が自分たちで対策の検討に移り進展している。遅れだけで介入しない}
+  - {at: 452, expect: [no_intervention], require_llm: true, expect_phase: [solution_ideation], why: 前回判断(原因分析)のままでは目標(評価・比較)より2段階遅れだが、参加者が自分たちで対策の検討に移り進展している。遅れだけで介入しない}

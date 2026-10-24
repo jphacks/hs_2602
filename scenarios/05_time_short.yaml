@@ -26,5 +26,5 @@ utterances:
 checkpoints:
   - {at: 482, expect: [time_warning], expect_phase: [evaluation, conclusion], why: 残り2分を切った。結論が出ていないので時間告知と取りまとめの促し(強制イベント)}
   - {at: 511, expect: [no_intervention], why: 直前の介入から29秒でクールダウン中。かつ自分たちで結論を出した}
-  - {at: 556, expect: [no_intervention], expect_phase: [conclusion], why: 結論が出て自分たちで確認している。介入不要}
+  - {at: 556, expect: [no_intervention], require_llm: true, expect_phase: [conclusion], why: 結論が出て自分たちで確認している。介入不要}
   - {at: 601, expect: [close_gd], expect_phase: [conclusion], why: 制限時間到達。結論を確認して終了}

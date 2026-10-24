@@ -28,6 +28,7 @@ class CheckResult:
     fail_reason: str = ""
     expect_phase: list[str] | None = None
     phase_ok: bool | None = None  # フェーズ認識の評価(行動の評価とは別)。LLM が判断していない/期待なしなら None
+    judged_by: str = "rule"  # rule(ルール層の見送り) / llm(LLM の判断) / llm_overridden(LLM の選択を検証で書き換え)
 
 
 @dataclass
@@ -41,7 +42,18 @@ def load_scenario(path: Path) -> dict[str, Any]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def judged_by(rec: TickRecord) -> str:
+    """判断の出どころ。介入しない判断が LLM 自身のものか、ルール層の見送りかを区別する。"""
+    if not rec.llm_called:
+        return "rule"
+    if rec.llm_raw_action is not None and rec.llm_raw_action != rec.decision.action.value:
+        return "llm_overridden"
+    return "llm"
+
+
 def judge(cp: dict[str, Any], rec: TickRecord) -> tuple[bool, str]:
+    if cp.get("require_llm") and not rec.llm_called:  # LLM 自身の判断を評価したい時点で、ルール層が先に処理した
+        return False, f"評価条件不成立: LLM 未実行({rec.gate})"
     action = rec.decision.action.value
     if action in cp.get("forbid", []):
         return False, f"禁止アクション {action}"
@@ -89,7 +101,7 @@ def run_scenario(
         result.checks.append(
             CheckResult(
                 now, cp["expect"], cp.get("forbid", []), cp.get("target_any"), cp.get("why", ""), rec, ok, reason,
-                cp.get("expect_phase"), judge_phase(cp, rec),
+                cp.get("expect_phase"), judge_phase(cp, rec), judged_by(rec),
             )
         )
     return result

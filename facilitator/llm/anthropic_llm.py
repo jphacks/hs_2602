@@ -17,10 +17,12 @@ class AnthropicLLM:
         self.name = f"anthropic:{settings.llm_model}"
         # キーは環境変数 ANTHROPIC_API_KEY(.env)から SDK が読む。コード・ログには出さない。
         self.client = anthropic.Anthropic(timeout=settings.llm_timeout_sec, max_retries=1)
+        self.last_usage: dict[str, int] | None = None  # 直前の呼び出しの使用トークン数(費用の計測用)
 
     def generate_json(
         self, system: str, user: str, schema: dict[str, Any], context: dict[str, Any]
     ) -> dict[str, Any]:
+        self.last_usage = None
         try:
             response = self.client.beta.messages.create(
                 model=self.settings.llm_model,
@@ -37,6 +39,11 @@ class AnthropicLLM:
         except anthropic.APIError as e:
             raise LLMError(f"API error: {type(e).__name__}") from e
 
+        usage = response.usage
+        self.last_usage = {
+            k: int(getattr(usage, k, 0) or 0)
+            for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+        }
         if response.stop_reason in ("refusal", "max_tokens"):
             raise LLMError(f"stop_reason={response.stop_reason}")
         text = "".join(b.text for b in response.content if b.type == "text")

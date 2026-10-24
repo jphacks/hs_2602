@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import time
-from typing import Callable
+from typing import Any, Callable
 
 from pydantic import ValidationError
 
@@ -27,6 +27,7 @@ FREE_ACTIONS = [
     Action.invite_all,
 ]
 INVITE_ALL_FALLBACK = "まだお話しされていない方も、ここまでの議論についてどう考えているか聞かせてもらえますか?"
+REDIRECT_MAX_SENTENCES = 2  # 軌道修正は短い区切りで話すので短くする
 
 
 def _mmss(sec: float) -> str:
@@ -52,7 +53,9 @@ class FacilitatorAgent:
         logger: TickLogger | None = None,
         purpose: str = "job",
         discussion_type: str | None = None,  # 省略時は用途の既定(就活GD=課題解決型、一般=汎用型)
+        clock: Any = None,  # 応答時間の計測に使う時計(テストでは疑似時計)
     ) -> None:
+        self.clock = clock or time
         self.dtype = get_discussion_type(discussion_type, purpose)
         self.system_prompt = build_system_prompt(purpose, self.dtype.key)
         self.output_schema = build_output_schema(self.dtype)
@@ -64,6 +67,7 @@ class FacilitatorAgent:
         self.logger = logger
         self.history: list[TickRecord] = []
         self.last_tick_time: float | None = None
+        self.skipped_due: str | None = None  # 直近の should_tick で、定期分析の時刻なのに見送った理由
 
     # ================= Observe =================
     def _gate(self, now: float) -> tuple[str, list[Action], str | None]:
@@ -105,6 +109,12 @@ class FacilitatorAgent:
     def _warn_thresholds(self) -> list[float]:
         cap = self.state.duration_sec * self.settings.time_warning_max_fraction
         return sorted(min(th, cap) for th in self.settings.time_warnings_remaining_sec)
+
+    def forced_event_pending(self, now: float) -> bool:
+        """時間切れ、または未告知の時間閾値に達しているか(待機中の軌道修正より強制イベントを優先するため)。"""
+        st = self.state
+        remaining = st.remaining(now)
+        return remaining <= 0 or any(remaining <= th and th not in st.warned_thresholds for th in self._warn_thresholds())
 
     def phase_status(self, now: float) -> tuple[str, int | None, bool]:
         """(目標フェーズ, 目標 - 実際のフェーズの段階差, 移行を促してよい程度に遅れているか)。
@@ -195,8 +205,9 @@ class FacilitatorAgent:
                 ), f"invite_person→invite_all({reason})"
 
         # 終了は最後の一文で終了を告げるので、切り詰めても締めの告知を残す
-        speech = _limit_sentences(d.speech, keep_last=d.action == Action.close_gd)
-        note = "発話を3文に短縮" if speech and speech != d.speech.strip() else None
+        n = REDIRECT_MAX_SENTENCES if d.action == Action.redirect_topic else 3
+        speech = _limit_sentences(d.speech, n, keep_last=d.action == Action.close_gd)
+        note = f"発話を{n}文に短縮" if speech and speech != d.speech.strip() else None
         if not speech:
             if d.action in RULE_ONLY:
                 speech = self._template(d.action, now)
@@ -240,7 +251,9 @@ class FacilitatorAgent:
         gate, allowed, note = self._gate(now)
         raw_action, overridden = None, None
         _, gap, behind = self.phase_status(now)  # 判断前(前回判断のフェーズ)の値を記録する
-        t0 = time.monotonic()
+        llm_called, usage = False, None
+        last_utt = max((u.id for u in st.utterances if u.end_time <= now), default=None)
+        t0 = self.clock.monotonic()
 
         if not allowed:
             decision = Decision(reasoning=f"ルール層により見送り({gate})")
@@ -250,8 +263,12 @@ class FacilitatorAgent:
             )
         else:
             ctx = self._context(now, trigger, allowed, note)
+            llm_called = True
             try:
-                raw = self.llm.generate_json(self.system_prompt, build_user_prompt(ctx), self.output_schema, ctx)
+                try:
+                    raw = self.llm.generate_json(self.system_prompt, build_user_prompt(ctx), self.output_schema, ctx)
+                finally:
+                    usage = getattr(self.llm, "last_usage", None)
                 out = AgentOutput.model_validate(raw)
                 raw_action = out.decision.action.value
                 st.analysis = out.analysis
@@ -266,7 +283,7 @@ class FacilitatorAgent:
                     decision = Decision(reasoning="LLM失敗のため見送り")
                 overridden = f"LLM失敗: {type(e).__name__}: {str(e)[:80]}"
 
-        latency = time.monotonic() - t0
+        latency = self.clock.monotonic() - t0
         record = TickRecord(
             time=now,
             trigger=trigger,
@@ -283,6 +300,9 @@ class FacilitatorAgent:
             llm_raw_action=raw_action,
             overridden=overridden,
             latency_sec=round(latency, 2),
+            llm_called=llm_called,
+            llm_usage=usage,
+            context_last_utt_id=last_utt,
         )
         if act:
             self._act(decision, now)
@@ -308,15 +328,19 @@ class FacilitatorAgent:
 
     # ================= 実時間ループ用のトリガー判定 =================
     def should_tick(self, now: float) -> str | None:
-        """定期分析 + イベント駆動(沈黙・時間閾値)。発火すべきトリガー名を返す。"""
+        """定期分析 + イベント駆動(沈黙・時間閾値)。発火すべきトリガー名を返す。
+        定期分析の時刻なのに見送った場合は、その理由を skipped_due に残す(計測用。判定には使わない)。"""
         st, s = self.state, self.settings
+        self.skipped_due = None
         if st.finished:
             return None
         if not st.started:
             return "start"
-        if st.is_speaking(now):
-            return None
         last = self.last_tick_time
+        due = last is None or now - last >= s.analysis_interval_sec
+        if st.is_speaking(now):
+            self.skipped_due = "speaking" if due else None
+            return None
         remaining = st.remaining(now)
         if remaining <= 0:
             return "time_up"
@@ -327,6 +351,7 @@ class FacilitatorAgent:
             return "time_threshold"
         silence = st.silence_sec(now)
         if silence < s.min_silence_for_intervention_sec:
+            self.skipped_due = "short_silence" if due else None
             return None  # 短い間では分析しない(定期分析のタイマーを無駄に消費しない)
         if silence >= s.silence_trigger_sec and (last is None or now - last >= s.silence_trigger_sec):
             return "silence"

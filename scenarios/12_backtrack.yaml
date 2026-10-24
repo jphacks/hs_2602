@@ -16,5 +16,5 @@ utterances:
   - {t: 350, d: 5, s: speaker_4, c: 0.86, text: 昼のピークに席が満席で、トレーを持って待ってる人をよく見ます。}
   - {t: 356, d: 5, s: speaker_1, c: 0.9, text: それなら席の回転の方が大きい原因かもしれないですね。}
 checkpoints:
-  - {at: 326, expect: [no_intervention], expect_phase: [evaluation], why: 以前の原因(会計の遅さ)に触れたのは案を比べる根拠としてで、主な目的は評価・比較のまま。順調なので見守る}
-  - {at: 363, expect: [no_intervention], expect_phase: [cause_analysis], why: 原因を整理し直すことに参加者が合意し、主な目的が原因分析に戻った。自分たちで進めているので見守る}
+  - {at: 326, expect: [no_intervention], require_llm: true, expect_phase: [evaluation], why: 以前の原因(会計の遅さ)に触れたのは案を比べる根拠としてで、主な目的は評価・比較のまま。順調なので見守る}
+  - {at: 363, expect: [no_intervention], require_llm: true, expect_phase: [cause_analysis], why: 原因を整理し直すことに参加者が合意し、主な目的が原因分析に戻った。自分たちで進めているので見守る}

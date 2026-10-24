@@ -97,3 +97,6 @@ class TickRecord(BaseModel):
     llm_raw_action: str | None = None
     overridden: str | None = None  # ルール層で書き換えた場合の理由
     latency_sec: float = 0.0
+    llm_called: bool = False  # この判断で LLM を呼んだか(失敗も含む)
+    llm_usage: dict[str, int] | None = None  # 使用トークン数(Claude のみ)
+    context_last_utt_id: int | None = None  # LLM に渡した発話ログの最後の発言 id(判断後に増えた発言を数えるため)

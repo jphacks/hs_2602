@@ -23,6 +23,9 @@ class Settings:
     silence_trigger_sec: float = 12.0  # これ以上沈黙したらイベント駆動で分析
     min_gap_after_speech_sec: float = 1.0  # 発話終了後、最低この秒数あけてから話す(強制イベント含む)
     min_silence_for_intervention_sec: float = 2.0  # 任意の介入はこの秒数以上の沈黙が必要(会話の途中に割り込まない)
+    # 脱線の軌道修正(redirect_topic)だけは、判断後に短い発話の区切りを待って話す(分析のタイミングは変えない)
+    redirect_pause_sec: float = 0.8  # この長さの静けさがあれば話す(発話中には話さない)
+    redirect_wait_max_sec: float = 15.0  # これ以上区切りがなければ取り消す(割り込まない)
 
     # --- 過剰介入の防止 ---
     cooldown_sec: float = 45.0  # 直前の介入からの最低間隔
