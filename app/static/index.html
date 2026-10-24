@@ -189,7 +189,8 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .logbox .head h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
 .log { flex: 1; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
 .log::-webkit-scrollbar { width: 6px; } .log::-webkit-scrollbar-thumb { background: var(--fill-2); border-radius: 6px; }
-.msg { display: grid; grid-template-columns: 30px 1fr; gap: 8px; animation: fade .3s ease both; }
+.msg { display: grid; grid-template-columns: 30px 1fr; gap: 8px; }
+.msg.new { animation: fade .3s ease both; }  /* 書き足しのたびに既存の発言が点滅しないよう、新しい発言だけ動かす */
 .msg .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: #fff; background-color: var(--c, #8e8e93); }
 .msg .av svg { width: 18px; height: 18px; }
 .msg .who { font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; padding-left: 12px; }
@@ -567,6 +568,7 @@ const ui = {
   knobs: { phase: 1, redirect: 1, organize: 1, turns: 1, suggest: 1 }, info: null, config: null, started: false,
 };
 let snap = null, logKey = "", decKey = "", doneShown = false;
+const seenMsg = new Set();
 
 function show(id) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === id));
@@ -690,7 +692,7 @@ $("setup-form").onsubmit = (ev) => {
     intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
     purpose: ui.purpose, preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level, knobs: { ...ui.knobs },
   };
-  snap = null; logKey = ""; decKey = ""; doneShown = false; ui.started = false;
+  snap = null; logKey = ""; decKey = ""; doneShown = false; ui.started = false; seenMsg.clear();
   renderReady();
   show("s-session");
 };
@@ -864,14 +866,16 @@ function renderLog(s) {
   const humans = new Set(s.humans || Object.keys(s.names));
   const opts = (sel) => Object.entries(s.names).filter(([id]) => humans.has(id)).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${esc(n)}</option>`).join("")
     + `<option value="unknown" ${sel === "unknown" ? "selected" : ""}>不明</option>`;
+  const cls = (u) => (seenMsg.has(u.id) ? "" : " new");
   box.innerHTML = s.utterances.map((u) => u.source === "ai"
-    ? `<div class="msg ai"><div class="av">AI</div><div><div class="who"><b>AI ファシリテーター</b><time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`
+    ? `<div class="msg ai${cls(u)}"><div class="av">AI</div><div><div class="who"><b>AI ファシリテーター</b><time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`
     : u.source === "bot"
-    ? `<div class="msg bot" style="--c:${color(u.speaker_id)}"><div class="av">${ROBOT}</div>
+    ? `<div class="msg bot${cls(u)}" style="--c:${color(u.speaker_id)}"><div class="av">${ROBOT}</div>
        <div><div class="who"><b>${esc(s.names[u.speaker_id] || "AI")}</b><span class="aitag">AI参加者</span><time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`
-    : `<div class="msg" style="--c:${u.speaker_id === "unknown" ? "#c7c7cc" : color(u.speaker_id)}"><div class="av">${esc((s.names[u.speaker_id] || "?").slice(0, 1))}</div>
+    : `<div class="msg${cls(u)}" style="--c:${u.speaker_id === "unknown" ? "#c7c7cc" : color(u.speaker_id)}"><div class="av">${esc((s.names[u.speaker_id] || "?").slice(0, 1))}</div>
        <div><div class="who"><select class="relabel" data-id="${u.id}" title="話者を修正">${opts(u.speaker_id)}</select><time>${mmss(u.t)}</time>
        ${u.conf < 0.7 && u.speaker_id !== "unknown" ? '<span class="low">低確信</span>' : ""}</div><div class="bubble">${esc(u.text)}</div></div></div>`).join("");
+  s.utterances.forEach((u) => seenMsg.add(u.id));
   box.querySelectorAll(".relabel").forEach((el) => el.onchange = () => { post("/api/relabel", { id: +el.dataset.id, speaker_id: el.value }); el.blur(); });
   if (atBottom) box.scrollTop = box.scrollHeight;
 }

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from config import ROOT
+from facilitator.llm.base import generate, supports_stream
 from facilitator.models import TickRecord
 
 ACTION_JA = {
@@ -46,10 +47,14 @@ class RecordingLLM:
         self.name = inner.name
         self.calls: list[dict[str, Any]] = []
 
-    def generate_json(self, system: str, user: str, schema: dict, context: dict) -> dict:
+    @property
+    def streams(self) -> bool:
+        return supports_stream(self.inner)
+
+    def generate_json(self, system: str, user: str, schema: dict, context: dict, on_partial: Any = None) -> dict:
         call: dict[str, Any] = {"kind": context.get("kind", "進行役の判断"), "system": system, "user": user}
         try:
-            out = self.inner.generate_json(system, user, schema, context)
+            out = generate(self.inner, system, user, schema, context, on_partial)
             call["response"] = out
             return out
         except Exception as e:

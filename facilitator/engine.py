@@ -22,7 +22,8 @@ from facilitator.agent.topic_return import detect_topic_return
 from facilitator.discussion_types import resolve_session_type
 from facilitator.llm.factory import make_llm
 from facilitator.logging import TickLogger
-from facilitator.llm.base import LLMError
+from facilitator.llm.base import LLMError, supports_stream
+from facilitator.llm.stream import SentenceFeeder, partial_string
 from facilitator.models import AI_SPEAKER, UNKNOWN, Action, TickRecord
 from facilitator.participants import (
     LEVELS,
@@ -45,6 +46,10 @@ INTRO_END_SILENCE_SEC = 2.5
 INTRO_TIMEOUT_SEC = 25.0
 FORCED_PAUSE_SEC = 0.6  # 強制イベントはこの長さの間で話し始める
 FORCED_WAIT_MAX_SEC = 12.0  # これ以上間がなければ、割り込んででも話す
+# 生成しながら話してよい進行役の行動(個人指名・軌道修正は検証や待ち合わせで内容が変わりうるので、全文を待ってから話す)
+NO_LIVE_ACTIONS = {Action.no_intervention, Action.invite_person, Action.redirect_topic,
+                   Action.start_gd, Action.time_warning, Action.close_gd}
+ECHO_SIMILARITY = 0.45  # AI の発話中の文字起こしが、AI の発言とこれ以上似ていれば AI 自身の声(回り込み)とみなす
 
 MAC_BOT_VOICES = ["Eddy (日本語（日本）)", "Shelley (日本語（日本）)", "Reed (日本語（日本）)"]
 WIN_BOT_VOICES = ["Microsoft Ichiro Desktop", "Microsoft Ayumi Desktop", "Microsoft Haruka Desktop"]
@@ -66,6 +71,59 @@ class SessionConfig:
     ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
     ai_level: int | None = 2  # AI 参加者のレベル(1〜3)。思考力と発言の間隔が変わる。None なら従来の間隔
     knobs: dict[str, int] = field(default_factory=dict)  # 詳細の5項目(0=控えめ / 1=標準 / 2=積極的)
+
+
+def _bigrams(text: str) -> set[str]:
+    t = "".join(ch for ch in text if ch.isalnum())
+    return {t[i : i + 2] for i in range(len(t) - 1)} or ({t} if t else set())
+
+
+def _overlap(heard: str, said: str) -> float:
+    """聞き取った文のうち、AI が話した文にも含まれる2文字の組の割合(0〜1)。"""
+    h = _bigrams(heard)
+    return len(h & _bigrams(said)) / len(h) if h else 0.0
+
+
+class LiveSpeech:
+    """生成中の AI の発言を、一文できるたびに議論ログへ出して読み上げる(進行役・AI 参加者で共通)。
+    最初の一文ができた時点で話し始めてよいか(can_start)を確かめ、だめならこの発言は全文を待つ従来の流れに任せる。"""
+
+    def __init__(self, engine: "Engine", gen: int, can_start: Any, max_sentences: int | None = None) -> None:
+        self.engine, self.gen, self.can_start, self.max = engine, gen, can_start, max_sentences
+        self.speaker: str | None = None
+        self.persona: Persona | None = None
+        self.action: Action | None = None
+        self.q: queue.Queue[str | None] = queue.Queue()
+        self.started = False
+        self.declined = False
+        self.count = 0
+        self.utt: Any = None
+        self.spoken: list[str] = []
+        self.done = threading.Event()
+
+    def push(self, sentence: str) -> None:
+        if self.declined or (self.max and self.count >= self.max):
+            return
+        if not self.started:
+            if self.speaker is None or not self.can_start():
+                self.declined = True
+                return
+            self.started = True
+            threading.Thread(target=self.engine._speak_live, args=(self,), daemon=True).start()
+        self.count += 1
+        self.q.put(sentence)
+
+    def close(self) -> None:
+        if self.started:
+            self.q.put(None)
+
+    def wait(self) -> None:
+        if self.started:
+            self.done.wait()
+
+    @property
+    def text(self) -> str:
+        return "".join(self.spoken)
 
 
 @dataclass
@@ -298,9 +356,13 @@ class Engine:
                 block = q.get(timeout=0.5)
             except queue.Empty:
                 continue
-            muted = self.paused or self.ai_speaking or self.now() < self._ai_mute_until
-            if muted:
+            ai_turn = self.ai_speaking or self.now() < self._ai_mute_until
+            if self.paused or (ai_turn and self.status == "intro"):  # 自己紹介中は AI の声を登録しないよう従来どおり無音にする
                 block = np.zeros_like(block)
+                self.state.speaking_now = False
+            elif ai_turn:
+                # AI の発話中も文字起こしには実際の音を送る(人の発言を議事録に残すため)。
+                # ただし発話中かどうかの判定(介入や AI 参加者のタイミング)には使わない。AI 自身の声の回り込みは _on_stt で除く
                 self.state.speaking_now = False
             else:
                 if vad.process(block) == "end":
@@ -313,7 +375,8 @@ class Engine:
 
     def _on_stt(self, e: TranscriptEvent) -> None:
         if e.kind == "partial":
-            self.partial = e.text
+            if not self.ai_speaking:  # AI の発話中の途中経過は、ほとんどが AI 自身の声なので出さない
+                self.partial = e.text
             return
         if e.kind == "error":
             self._note(f"STT エラー: {e.text[:80]}")
@@ -328,7 +391,24 @@ class Engine:
         if self._vid and self._vid.enrolled:
             r = self._vid.identify(self._buf.segment(e.start - 0.1, e.end + 0.1))
             sid, conf = r.speaker_id, r.confidence
+        echo = self._echo_of_ai(e.text, e.start, e.end)
+        if echo:
+            self._note(f"AI の声の回り込みとみなして除外: {echo}")
+            return
         self.state.add_utterance(sid, e.text, e.start, e.end, conf)
+
+    def _echo_of_ai(self, text: str, start: float, end: float) -> str | None:
+        """AI の発話と時間が重なる文字起こしが、AI の発言とよく似ていれば(スピーカーの声をマイクが拾った)理由を返す。"""
+        tail = ECHO_TAIL_SEC + 0.5
+        ai = [u for u in self.state.utterances if u.source in ("ai", "bot") and u.start_time - 0.5 <= end and start <= u.end_time + tail]
+        if not ai and not self.ai_speaking:
+            return None
+        if self.ai_speaking and self._speaking_as is not None:  # 読み上げ中の発言(終了時刻がまだ確定していない)も比べる
+            cur = next((u for u in reversed(self.state.utterances) if u.speaker_id == self._speaking_as), None)
+            if cur is not None and cur not in ai:
+                ai.append(cur)
+        sim = max((_overlap(text, u.text) for u in ai), default=0.0)
+        return f"一致度 {sim:.2f}" if sim >= ECHO_SIMILARITY else None
 
     # ================= 自己紹介(声の登録) =================
     def _intro_flow(self, gen: int) -> None:
@@ -401,13 +481,45 @@ class Engine:
 
     def _run_tick(self, trigger: str, gen: int | None = None) -> None:
         gen = self._gen if gen is None else gen
+        live: LiveSpeech | None = None
         try:
             m = self.agent.llm.mark()
-            rec = self.agent.tick(self.now(), trigger, act=False)
+            on_partial = None
+            if supports_stream(self.agent.llm):
+                live = LiveSpeech(self, gen, lambda: self._facilitator_can_start(gen), max_sentences=3)
+                live.speaker = AI_SPEAKER
+                feeder = SentenceFeeder("speech", live.push)
+
+                def on_partial(acc: str, allowed: list[Action], gate: str) -> None:
+                    if live.declined:
+                        return
+                    if live.action is None:  # 行動が決まるまでは話し始めない
+                        a, closed = partial_string(acc, "action")
+                        if not closed:
+                            return
+                        act = next((x for x in Action if x.value == a), None)
+                        if act is None or act in NO_LIVE_ACTIONS or act not in allowed or gate.startswith("forced"):
+                            live.declined = True
+                            return
+                        live.action = act
+                    feeder.feed(acc)
+
+            try:
+                rec = self.agent.tick(self.now(), trigger, act=False, on_partial=on_partial)
+            finally:
+                if live is not None:
+                    if live.started:
+                        feeder.finish()  # 句点のない最後の文
+                    live.close()
             if gen != self._gen:  # LLM の応答待ちの間に次のセッションが始まった。古い判断は捨てる
                 return
             if self._sec is not None:
                 self._sec.decision(rec, self.agent.llm.since(m))  # 取りやめた場合も rec に追記されて残る
+            if live is not None and live.started:  # 生成しながら話した
+                live.wait()
+                if live.utt is not None and gen == self._gen and live.action is not None:
+                    self.agent.commit_spoken(rec, live.utt.start_time, live.action, live.text)
+                return
             d = rec.decision
             if d.action == Action.no_intervention:
                 return
@@ -451,6 +563,60 @@ class Engine:
         finally:
             if gen == self._gen:  # 次のセッションの「判断中」の印は消さない
                 self._agent_busy = False
+
+    def _facilitator_can_start(self, gen: int) -> bool:
+        """進行役が生成途中の発言を話し始めてよいか(全文を待つ場合の、話す直前の確認と同じ条件)。"""
+        if not self._alive(gen) or self.paused or self.status != "running" or self.ai_speaking:
+            return False
+        now, st = self.now(), self.state
+        return not st.is_speaking(now) and st.silence_sec(now) >= self.settings.min_silence_for_intervention_sec
+
+    def _speak_live(self, live: LiveSpeech) -> None:
+        """LiveSpeech の文を順に議論ログへ足して読み上げる。最初の文で発言を追加し、以降は同じ発言に書き足す。"""
+        speaker = live.speaker or AI_SPEAKER
+        is_bot = speaker != AI_SPEAKER
+        try:
+            with self._speak_lock:
+                if not self._alive(live.gen):
+                    return
+                tts = self._bot_tts.get(speaker) if is_bot else self._tts
+                self.ai_speaking = True
+                self._speaking_as = speaker
+                try:
+                    while True:
+                        sent = live.q.get()
+                        if sent is None or not self._alive(live.gen):
+                            break
+                        now = self.now()
+                        est = len(sent) / 5.6 if tts else min(3.0, len(sent) / self.settings.tts_chars_per_sec)
+                        if live.utt is None:
+                            live.utt = self.state.add_utterance(speaker, sent, now, now + est, 1.0, source="bot" if is_bot else "ai")
+                        else:
+                            live.utt.text += sent
+                            live.utt.end_time = now + est
+                        live.spoken.append(sent)
+                        spoken = False
+                        if tts:
+                            try:
+                                tts.speak(sent)
+                                spoken = True
+                            except Exception as e:  # TTS が使えなくても進行は止めない(以降は声なしで続ける)
+                                self._note(f"音声出力に失敗したため、声なしで続けます({type(e).__name__})")
+                                if is_bot:
+                                    self._bot_tts.pop(speaker, None)
+                                else:
+                                    self._tts = None
+                                tts = None
+                        if not spoken:
+                            self.clock.sleep(est)
+                finally:
+                    if live.utt is not None:
+                        live.utt.end_time = max(live.utt.start_time, self.now())
+                    self.ai_speaking = False
+                    self._speaking_as = None
+                    self._ai_mute_until = self.now() + ECHO_TAIL_SEC
+        finally:
+            live.done.set()
 
     def _quiet_sec(self, now: float) -> float:
         """いまの静けさの長さ。発話中は0。音声モードは VAD で声が止まった時刻も見る(STT の確定は遅れるため)。"""
@@ -619,30 +785,72 @@ class Engine:
         st = self.state
         gen = self._gen if gen is None else gen
         try:
-            last_id = st.utterances[-1].id if st.utterances else -1
+            last_id = st.latest_id
             transcript = transcript_for_bot(st)
             m = self.agent.llm.mark()
+            llm = self.agent.llm
+            live: LiveSpeech | None = None
+            on_partial = None
+            if supports_stream(llm):
+                live = LiveSpeech(self, gen, lambda: self._bot_can_start(gen, last_id, addressed_id))
+                feeder = SentenceFeeder("text", live.push)
+                if addressed_id >= 0:
+                    live.speaker, live.persona = p.speaker_id, p
+                    on_partial = feeder.feed
+                else:
+                    by_name = {x.name: x for x in self.personas}
+
+                    def on_partial(acc: str) -> None:
+                        if live.declined:
+                            return
+                        if live.speaker is None:  # 誰が話すかが決まってから文を受け取る
+                            name, closed = partial_string(acc, "speaker")
+                            if not closed:
+                                return
+                            live.persona = by_name.get(name or "")
+                            if live.persona is None:
+                                live.declined = True
+                                return
+                            live.speaker = live.persona.speaker_id
+                        feeder.feed(acc)
             try:
                 if addressed_id >= 0:  # 名指しされた人が答える
                     text = generate_utterance(
-                        self.agent.llm, p, self.cfg.purpose, st.theme, transcript, reason, self.ai_level
+                        llm, p, self.cfg.purpose, st.theme, transcript, reason, self.ai_level, on_partial
                     )
                 else:  # 誰が話すかは文脈で選ぶ(直前の話者は除く)
                     last_sid = st.utterances[-1].speaker_id if st.utterances else ""
                     cands = [x for x in self.personas if x.speaker_id != last_sid] or self.personas
                     counts = {x.speaker_id: x.spoken for x in self.personas}
                     p, text, why = choose_and_generate(
-                        self.agent.llm, cands, self.cfg.purpose, st.theme, transcript, reason, self.ai_level, counts, p
+                        llm, cands, self.cfg.purpose, st.theme, transcript, reason, self.ai_level, counts, p, on_partial
                     )
                     if why:
                         reason += f" / {p.name}が話した理由: {why}"
             except LLMError as e:
                 self._note(f"{p.name}の発言を生成できませんでした({type(e).__name__})")
+                text = ""
+            finally:
+                if live is not None:
+                    if live.started:
+                        feeder.finish()
+                    live.close()
+            if live is not None and live.started:  # 生成しながら話した
+                live.wait()
+                if live.utt is None or gen != self._gen:
+                    return
+                p = live.persona or p
+                if addressed_id >= 0:
+                    self._bot_answered_id = addressed_id
+                p.spoken += 1
+                if self._sec is not None:
+                    self._sec.bot(p.speaker_id, live.utt.start_time, reason, self.agent.llm.since(m))
+                self._last_bot_end = self.now()
                 return
             if not text or not self._alive(gen) or self.paused or self.status != "running":
                 return
             # 生成を待つ間に人間が話し始めた/新しい発言があった場合は取りやめる(名指しへの応答は除く)
-            newer = st.utterances and st.utterances[-1].id != last_id
+            newer = st.latest_id != last_id
             if st.speaking_now or (newer and addressed_id < 0):
                 return
             if addressed_id >= 0:
@@ -659,6 +867,13 @@ class Engine:
             if gen == self._gen:
                 self._bot_busy = False
 
+    def _bot_can_start(self, gen: int, last_id: int, addressed_id: int) -> bool:
+        """AI 参加者が生成途中の発言を話し始めてよいか(全文を待つ場合の、話す直前の確認と同じ条件)。"""
+        st = self.state
+        if not self._alive(gen) or self.paused or self.status != "running" or st.speaking_now or self.ai_speaking:
+            return False
+        return addressed_id >= 0 or st.latest_id == last_id
+
     # ================= UI からの操作 =================
     def add_text(self, speaker_id: str, text: str) -> None:
         if self.status not in ("running", "intro") or not text.strip():
@@ -666,7 +881,10 @@ class Engine:
         now = self.now()
         dur = max(1.0, len(text) / 6.0)
         conf = 1.0 if speaker_id != UNKNOWN else 0.0
-        self.state.add_utterance(speaker_id, text.strip(), now - dur, now, conf)
+        # 入力した発言には本当の話し始めがないので、既にある発言より前には入れない(送った順に並べる)
+        latest = max((u.start_time for u in self.state.utterances), default=now - dur)
+        start = min(now, max(now - dur, latest + 0.001))
+        self.state.add_utterance(speaker_id, text.strip(), start, now, conf)
 
     def relabel(self, utterance_id: int, speaker_id: str) -> None:
         if self.state:

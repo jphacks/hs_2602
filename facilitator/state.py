@@ -74,8 +74,17 @@ class DiscussionState:
             source=source,  # type: ignore[arg-type]
         )
         self._next_id += 1
-        self.utterances.append(u)
+        # 話し始めた順に並べる(後から確定した発言でも、話し始めが早ければ前に入る。同時なら追加した順)
+        i = len(self.utterances)
+        while i > 0 and self.utterances[i - 1].start_time > start_time:
+            i -= 1
+        self.utterances.insert(i, u)
         return u
+
+    @property
+    def latest_id(self) -> int:
+        """最後に追加した発言の ID(なければ -1)。並び順は話し始めの順なので、新しい発言の有無はこれで確かめる。"""
+        return self._next_id - 1 if self.utterances else -1
 
     def update_speaker(self, utterance_id: int, speaker_id: str, confidence: float) -> None:
         """ダイアライゼーションの後修正を反映する。"""
