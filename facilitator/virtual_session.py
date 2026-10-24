@@ -16,6 +16,7 @@ from facilitator.logging import TickLogger
 from facilitator.participants import (
     LEVELS,
     bot_mode_for,
+    choose_and_generate,
     generate_personas,
     generate_utterance,
     level_interval,
@@ -155,8 +156,17 @@ class VirtualSession:
             return
         p, reason, addressed = picked
         m = llm.mark()
+        why = ""
         try:
-            text = generate_utterance(llm, p, self.purpose, st.theme, transcript_for_bot(st), reason, self.level)
+            if addressed >= 0:  # 名指しされた人が答える
+                text = generate_utterance(llm, p, self.purpose, st.theme, transcript_for_bot(st), reason, self.level)
+            else:  # 誰が話すかは文脈で選ぶ(直前の話者は除く)
+                last_sid = st.utterances[-1].speaker_id if st.utterances else ""
+                cands = [x for x in self.personas if x.speaker_id != last_sid] or self.personas
+                counts = {x.speaker_id: x.spoken for x in self.personas}
+                p, text, why = choose_and_generate(
+                    llm, cands, self.purpose, st.theme, transcript_for_bot(st), reason, self.level, counts, p
+                )
         except LLMError as e:
             self.out(f"{INDENT}(AI参加者 {p.name} の発言を生成できませんでした: {e})")
             return
@@ -164,13 +174,15 @@ class VirtualSession:
             return
         dur = len(text) / s.tts_chars_per_sec
         st.add_utterance(p.speaker_id, text, t, t + dur, 1.0, source="bot")
-        self.sec.bot(p.speaker_id, t, reason, llm.since(m))
+        self.sec.bot(p.speaker_id, t, reason + (f" / {p.name}が話した理由: {why}" if why else ""), llm.since(m))
         p.spoken += 1
         self.busy_until = self.last_bot_end = t + dur
         if addressed >= 0:
             self.answered = addressed
         self.out(f"[{tt(self.et(t))}–{tt(self.et(t + dur))}] 🤖 {p.name}(AI参加者): {text}")
         self.out(f"{INDENT}└ 話した理由: {reason}")
+        if why:
+            self.out(f"{INDENT}└ {p.name}が話した理由: {why}")
 
     def run_until(self, t_end: float, step: float = 0.5) -> None:
         t = self.t

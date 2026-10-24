@@ -25,6 +25,7 @@ from facilitator.models import AI_SPEAKER, UNKNOWN, Action, TickRecord
 from facilitator.participants import (
     Persona,
     bot_mode_for,
+    choose_and_generate,
     generate_personas,
     generate_utterance,
     pick_bot,
@@ -443,7 +444,17 @@ class Engine:
             transcript = transcript_for_bot(st)
             m = self.agent.llm.mark()
             try:
-                text = generate_utterance(self.agent.llm, p, self.cfg.purpose, st.theme, transcript, reason)
+                if addressed_id >= 0:  # 名指しされた人が答える
+                    text = generate_utterance(self.agent.llm, p, self.cfg.purpose, st.theme, transcript, reason)
+                else:  # 誰が話すかは文脈で選ぶ(直前の話者は除く)
+                    last_sid = st.utterances[-1].speaker_id if st.utterances else ""
+                    cands = [x for x in self.personas if x.speaker_id != last_sid] or self.personas
+                    counts = {x.speaker_id: x.spoken for x in self.personas}
+                    p, text, why = choose_and_generate(
+                        self.agent.llm, cands, self.cfg.purpose, st.theme, transcript, reason, None, counts, p
+                    )
+                    if why:
+                        reason += f" / {p.name}が話した理由: {why}"
             except LLMError as e:
                 self._note(f"{p.name}の発言を生成できませんでした({type(e).__name__})")
                 return
