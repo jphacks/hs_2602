@@ -54,10 +54,11 @@ class FacilitatorAgent:
         purpose: str = "job",
         discussion_type: str | None = None,  # 省略時は用途の既定(就活GD=課題解決型、一般=汎用型)
         clock: Any = None,  # 応答時間の計測に使う時計(テストでは疑似時計)
+        style_notes: list[str] | None = None,  # 画面の「詳細」で選んだ進行の調整
     ) -> None:
         self.clock = clock or time
         self.dtype = get_discussion_type(discussion_type, purpose)
-        self.system_prompt = build_system_prompt(purpose, self.dtype.key)
+        self.system_prompt = build_system_prompt(purpose, self.dtype.key, style_notes)
         self.output_schema = build_output_schema(self.dtype)
         self.state = state
         self.llm = llm
