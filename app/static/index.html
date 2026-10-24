@@ -181,9 +181,12 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .people-row { display: grid; gap: 16px; min-height: 0; align-content: start; }
 .pcard { padding: 22px 20px 18px; position: relative; text-align: center; transition: border-color .3s, box-shadow .3s, transform .3s; }
 .pcard.active { border-color: var(--c); box-shadow: 0 0 0 1px var(--c), 0 18px 50px -18px var(--c); transform: translateY(-2px); }
-.avatar { width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 24px;
-  color: #04202b; background: var(--c); position: relative; }
-.pcard.active .avatar::after { content: ""; position: absolute; inset: -7px; border-radius: 50%; border: 2px solid var(--c); animation: ripple 1.4s ease-out infinite; }
+/* 参加者のアイコン: 角の丸い正方形で始まり、発言量に応じて幅だけが伸び縮みする(高さは一定) */
+.avatar { width: 64px; max-width: 100%; height: 64px; margin: 0 auto 12px; border-radius: 18px; display: grid; place-items: center;
+  font-weight: 700; font-size: 24px; color: #04202b; background: var(--c); position: relative;
+  transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.pcard.active .avatar::after { content: ""; position: absolute; inset: -7px; border-radius: 24px; border: 2px solid var(--c); animation: ripple-box 1.4s ease-out infinite; }
+@keyframes ripple-box { from { opacity: .9; } to { inset: -14px; opacity: 0; } }
 .pcard .name { font-weight: 700; font-size: 17px; }
 .pcard .meta { color: var(--muted); font-size: 13px; font-family: var(--num); margin-top: 2px; }
 .share { height: 5px; border-radius: 999px; background: rgba(255,255,255,.08); margin-top: 14px; overflow: hidden; }
@@ -615,6 +618,7 @@ function renderReady() {
   $("log").innerHTML = '<div class="empty">発言がここに表示されます</div>'; $("partial").textContent = ""; $("silence").textContent = "";
   $("decs").innerHTML = '<div class="empty">まだ判断はありません</div>';
   renderPhases("", "");
+  $("pcards").dataset.key = "";
   renderPeople();
   $("in-speaker").innerHTML = people().filter((p) => !p.bot).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
 }
@@ -629,28 +633,51 @@ function renderPhases(phase, target) {
   }).join("");
 }
 
+const AVATAR = 64;  // アイコンの基準の大きさ(px)。発言量が平均の人はこの正方形
+function avatarWidth(sec, sum, n) {
+  // 発言時間の割合が平均(1/n)ならちょうど正方形。多いほど広く、少ないほど狭く(0.5倍〜カード幅まで)
+  if (!sum) return AVATAR;
+  const r = (sec / sum) * n;
+  return Math.round(AVATAR * Math.min(4, Math.max(0.5, Math.pow(r, 0.8))));
+}
+
 function renderPeople() {
   const ps = people(), n = names(), ids = ps.map((p) => p.id), botOf = Object.fromEntries(ps.map((p) => [p.id, p.bot]));
+  const box = $("pcards");
+  const key = JSON.stringify(ps.map((p) => [p.id, p.name, p.bot?.stance || "", p.bot?.opinion || ""]));
+  if (box.dataset.key !== key) {
+    // 参加者の顔ぶれが変わったときだけカードを作り直す(幅のアニメーションを途切れさせないため)
+    box.style.gridTemplateColumns = `repeat(${ids.length <= 4 ? ids.length : 3}, minmax(0, 1fr))`;
+    box.innerHTML = ids.map((id) => {
+      const bot = botOf[id];
+      return `<div class="glass pcard ${bot ? "bot" : ""}" data-id="${id}" style="--c:${color(id)}">
+        <div class="badges"></div>
+        <div class="avatar">${bot ? ROBOT : esc(n[id].slice(0, 1))}</div>
+        <div class="name">${esc(n[id])}</div>
+        ${bot ? `<div class="stance">${esc(bot.stance)}</div>${bot.opinion ? `<div class="opinion" title="${esc(bot.opinion)}">${esc(bot.opinion)}</div>` : ""}` : ""}
+        <div class="meta"></div>
+        <div class="share"><div></div></div>
+      </div>`;
+    }).join("");
+    box.dataset.key = key;
+  }
   const stats = Object.fromEntries((snap?.stats || []).map((s) => [s.speaker_id, s]));
   const max = Math.max(1, ...Object.values(stats).map((s) => s.total_speech_sec));
-  const sum = Object.values(stats).reduce((a, s) => a + s.total_speech_sec, 0) || 1;
+  const sum = Object.values(stats).reduce((a, s) => a + s.total_speech_sec, 0);
   const enrolled = new Set(snap?.intro?.enrolled || []);
-  $("pcards").style.gridTemplateColumns = `repeat(${ids.length <= 4 ? ids.length : 3}, minmax(0, 1fr))`;
-  $("pcards").innerHTML = ids.map((id) => {
+  box.querySelectorAll(".pcard").forEach((card) => {
+    const id = card.dataset.id, bot = botOf[id];
     const s = stats[id] || { total_speech_sec: 0, turns: 0, since_last_spoke_sec: null };
-    const active = snap?.active_speaker === id;
-    const bot = botOf[id];
     const quiet = !bot && snap?.started && (s.since_last_spoke_sec == null || s.since_last_spoke_sec > 90);
-    const share = snap?.started ? Math.round((s.total_speech_sec / sum) * 100) : 0;
-    return `<div class="glass pcard ${active ? "active" : ""} ${bot ? "bot" : ""}" style="--c:${color(id)}">
-      <div class="badges">${bot ? '<span class="badge ai">AI</span>' : ""}${enrolled.has(n[id]) ? '<span class="badge voice">声 ✓</span>' : ""}${quiet ? `<span class="badge quiet">${s.since_last_spoke_sec == null ? "未発言" : "しばらく発言なし"}</span>` : ""}</div>
-      <div class="avatar">${bot ? ROBOT : esc(n[id].slice(0, 1))}</div>
-      <div class="name">${esc(n[id])}</div>
-      ${bot ? `<div class="stance">${esc(bot.stance)}</div>${bot.opinion ? `<div class="opinion" title="${esc(bot.opinion)}">${esc(bot.opinion)}</div>` : ""}` : ""}
-      <div class="meta">${s.turns}回 · ${Math.round(s.total_speech_sec)}秒 · ${share}%</div>
-      <div class="share"><div style="width:${(s.total_speech_sec / max) * 100}%"></div></div>
-    </div>`;
-  }).join("");
+    const share = snap?.started && sum ? Math.round((s.total_speech_sec / sum) * 100) : 0;
+    card.classList.toggle("active", snap?.active_speaker === id);
+    card.querySelector(".badges").innerHTML = (bot ? '<span class="badge ai">AI</span>' : "")
+      + (enrolled.has(n[id]) ? '<span class="badge voice">声 ✓</span>' : "")
+      + (quiet ? `<span class="badge quiet">${s.since_last_spoke_sec == null ? "未発言" : "しばらく発言なし"}</span>` : "");
+    card.querySelector(".avatar").style.width = `${avatarWidth(s.total_speech_sec, snap?.started ? sum : 0, ids.length)}px`;
+    card.querySelector(".meta").textContent = `${s.turns}回 · ${Math.round(s.total_speech_sec)}秒 · ${share}%`;
+    card.querySelector(".share > div").style.width = `${(s.total_speech_sec / max) * 100}%`;
+  });
 }
 
 function render() {
