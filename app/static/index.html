@@ -100,8 +100,6 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .person-in { position: relative; }
 .person-in .dot { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; }
 .person-in .input { padding-left: 34px; }
-.botmode { margin-top: 12px; padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; color: var(--muted); background: var(--fill); }
-.botmode b { color: var(--ai); }
 .advanced { overflow: hidden; max-height: 0; opacity: 0; transition: max-height .45s ease, opacity .3s, margin .3s; }
 .advanced.open { max-height: 1000px; opacity: 1; margin-top: 8px; }
 .adv-inner h3 { margin: 18px 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
@@ -172,7 +170,7 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .people-row { display: flex; gap: var(--gap); min-height: 0; align-items: stretch; }
 .pcard { background: color-mix(in srgb, var(--c) 10%, #fff); box-shadow: none; flex: 1 1 0; min-width: 84px; padding: 22px 14px 18px; position: relative; text-align: center; overflow: hidden;
   transition: flex-grow .8s cubic-bezier(.2,.8,.2,1), box-shadow .3s, transform .3s; }
-.pcard .name, .pcard .meta, .pcard .stance { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.pcard .name, .pcard .stance { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .pcard.active { box-shadow: inset 0 0 0 2px var(--c); transform: translateY(-2px); }
 /* 参加者のアイコン: アプリアイコン風の角の丸い正方形(大きさは固定) */
 .avatar { width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 15px; display: grid; place-items: center;
@@ -181,9 +179,6 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .pcard.active .avatar::after { content: ""; position: absolute; inset: -6px; border-radius: 20px; border: 2px solid var(--accent); animation: ripple-box 1.4s ease-out infinite; }
 @keyframes ripple-box { from { opacity: .9; } to { inset: -13px; opacity: 0; } }
 .pcard .name { font-weight: 600; font-size: 17px; }
-.pcard .meta { color: var(--muted); font-size: 13px; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.share { height: 4px; border-radius: 999px; background: var(--fill); margin-top: 14px; overflow: hidden; }
-.share div { height: 100%; background: var(--text); transition: width .6s; }
 .badges { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; }
 .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--fill); color: var(--muted); }
 .badge.ai { color: var(--ai); background: var(--ai-soft); }
@@ -282,7 +277,7 @@ body { font-size: 17px; }
 .unitbox { height: 50px; } .unitbox input { font-size: 20px; }
 .choice2 button, .choice3 button { font-size: 17px; padding: 13px 4px; }
 .choice3 button small { font-size: 13px; }
-.botmode, .hint, .err { font-size: 15px; }
+.hint, .err { font-size: 15px; }
 .knob { font-size: 16px; flex-direction: column; align-items: stretch; gap: 8px; }
 .knob .seg { display: grid; grid-template-columns: repeat(3, 1fr); }
 .knob .seg button { font-size: 15px; padding: 8px 4px; }
@@ -330,8 +325,6 @@ body { font-size: 17px; }
 #s-session .pcard .name { font-size: 14px; }
 #s-session .stance { font-size: 10.5px; margin-top: 3px; }
 #s-session .opinion { display: none; }
-#s-session .pcard .meta { font-size: 11px; }
-#s-session .share { margin-top: 8px; width: 100%; }
 #s-session .badges { top: 6px; right: 6px; }
 #s-session .badge { font-size: 9.5px; padding: 1px 6px; }
 #s-session .logbox { min-height: 0; padding: 12px 12px 10px; }
@@ -415,15 +408,14 @@ body { font-size: 17px; }
     <div class="tile tile-ai span-2 ai-only">
       <span class="label">AI参加者</span>
       <div class="numrow" data-key="bots" data-min="1" data-max="3" data-unit="人"></div>
-      <div class="botmode" id="botmode"></div>
     </div>
 
     <div class="tile tile-ai span-2 ai-only">
       <span class="label">AI参加者のレベル</span>
       <div class="choice3" id="seg-level">
-        <button type="button" data-v="1">レベル1<small>高校生</small></button>
-        <button type="button" data-v="2">レベル2<small>大学生</small></button>
-        <button type="button" data-v="3">レベル3<small>大学生・速め</small></button>
+        <button type="button" data-v="1">やさしい</button>
+        <button type="button" data-v="2">ふつう</button>
+        <button type="button" data-v="3">むずかしい</button>
       </div>
     </div>
 
@@ -573,6 +565,7 @@ document.querySelectorAll(".purpose").forEach((b) => b.onclick = () => {
 });
 
 /* ---------- 2. 設定 ---------- */
+const LEVEL_NAMES = { 1: "やさしい", 2: "ふつう", 3: "むずかしい" };
 const KNOB_LEVELS = ["控えめ", "標準", "積極的"];
 $("people").innerHTML = [0, 1, 2, 3].map((i) => `<div class="person-in"><span class="dot" style="background:${COLORS[i]}"></span>
   <input class="input f-name" placeholder="${i + 1}人目"></div>`).join("");
@@ -598,7 +591,6 @@ seg("seg-input", "input");
 seg("seg-level", "level");
 $("f-detail").onchange = (e) => { $("detail-body").classList.toggle("open", e.target.checked); };
 
-function botModeOf(h, b) { return b === 0 ? "" : (h <= 2 || b >= h ? "active" : "reserved"); }
 function renderKnobs() {
   const labels = ui.info?.knobs || {};
   $("knobs").innerHTML = Object.entries(labels).map(([k, label]) => `<div class="knob"><span>${esc(label)}</span>
@@ -630,10 +622,6 @@ function syncSetup() {
   if ($("knob-hint")) $("knob-hint").textContent = jobCap ? "就活では提案度合いは標準までです" : "";
   $("mode-hint").textContent = ui.input === "voice"
     ? "マイクで聞き取ります" : "発言を入力します";
-  const m = ui.withAI ? botModeOf(ui.humans, ui.bots) : "";
-  $("botmode").innerHTML = m === "active"
-    ? "<b>練習相手モード</b> — AI も積極的に発言"
-    : "<b>控えめモード</b> — AI は名指し・沈黙のときだけ発言";
 }
 $("btn-theme").onclick = async () => {
   const b = $("btn-theme"); b.disabled = true; b.textContent = "生成中…";
@@ -697,7 +685,7 @@ function renderReady() {
   $("b-theme").textContent = c.theme;
   $("b-purpose").textContent = c.purpose === "general" ? "就活以外" : "就活";
   $("b-preset").textContent = c.ai_count ? "AI参加者あり" : "人間だけ";
-  $("b-level").textContent = c.ai_count ? `AI レベル${c.ai_level}` : "";
+  $("b-level").textContent = c.ai_count ? `AI ${LEVEL_NAMES[c.ai_level] || ""}` : "";
   llmChip(ui.info?.llm);
   $("c-limit").textContent = c.minutes; $("c-time").textContent = "00:00"; $("c-remain").textContent = "";
   $("c-bar").style.width = "0"; $("clock").classList.remove("low", "over");
@@ -743,26 +731,20 @@ function renderPeople() {
         <div class="avatar">${bot ? ROBOT : esc(n[id].slice(0, 1))}</div>
         <div class="name">${esc(n[id])}</div>
         ${bot ? `<div class="stance">${esc(bot.stance)}</div>${bot.opinion ? `<div class="opinion" title="${esc(bot.opinion)}">${esc(bot.opinion)}</div>` : ""}` : ""}
-        <div class="meta"></div>
-        <div class="share"><div></div></div>
       </div>`;
     }).join("");
     box.dataset.key = key;
   }
   const stats = Object.fromEntries((snap?.stats || []).map((s) => [s.speaker_id, s]));
-  const max = Math.max(1, ...Object.values(stats).map((s) => s.total_speech_sec));
   const sum = Object.values(stats).reduce((a, s) => a + s.total_speech_sec, 0);
   const enrolled = new Set(snap?.intro?.enrolled || []);
   box.querySelectorAll(".pcard").forEach((card) => {
     const id = card.dataset.id, bot = botOf[id];
     const s = stats[id] || { total_speech_sec: 0, turns: 0, since_last_spoke_sec: null };
-    const share = snap?.started && sum ? Math.round((s.total_speech_sec / sum) * 100) : 0;
     card.classList.toggle("active", snap?.active_speaker === id);
     card.querySelector(".badges").innerHTML = (bot ? '<span class="badge ai">AI</span>' : "")
       + (enrolled.has(n[id]) ? '<span class="badge voice">声 ✓</span>' : "");
     card.style.flexGrow = cardGrow(s.total_speech_sec, snap?.started ? sum : 0, ids.length).toFixed(3);
-    card.querySelector(".meta").textContent = `${s.turns}回 · ${Math.round(s.total_speech_sec)}秒 · ${share}%`;
-    card.querySelector(".share > div").style.width = `${(s.total_speech_sec / max) * 100}%`;
   });
 }
 
@@ -772,7 +754,7 @@ function render() {
   $("b-theme").textContent = s.theme;
   $("b-purpose").textContent = s.purpose === "general" ? "就活以外" : "就活";
   $("b-preset").textContent = (s.participants || []).length ? "AI参加者あり" : "人間だけ";
-  $("b-level").textContent = s.ai_level ? `AI レベル${s.ai_level}` : "";
+  $("b-level").textContent = s.ai_level ? `AI ${LEVEL_NAMES[s.ai_level] || ""}` : "";
   llmChip(s.llm);
 
   // 時計
