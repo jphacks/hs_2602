@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from config import Settings
 from facilitator.agent.prompts import build_output_schema, build_system_prompt, build_user_prompt
 from facilitator.discussion_types import get_discussion_type
-from facilitator.llm.base import LLMClient, LLMError
+from facilitator.llm.base import LLMClient, LLMError, generate
 from facilitator.logging import TickLogger
 from facilitator.models import AI_SPEAKER, UNKNOWN, UNLIMITED_SEC, Action, AgentOutput, Decision, TickRecord
 from facilitator.state import DiscussionState
@@ -243,20 +243,9 @@ class FacilitatorAgent:
 
     def _template(self, action: Action, now: float) -> str:
         st = self.state
-        if action == Action.start_gd:
-            mins = int(st.duration_sec // 60)
-            bots = "、".join(f"{st.speaker_names[b]}さん" for b in sorted(st.bot_ids))
-            limit = (
-                "今回は制限時間を設けませんので、グループとしての結論がまとまるまで議論してください。"
-                if st.duration_sec >= UNLIMITED_SEC
-                else f"制限時間は{mins}分で、最後にグループとしての結論をまとめてください。"
-            )
-            return (
-                f"それでは、グループディスカッションを始めます。テーマは「{st.theme}」です。"
-                + limit
-                + (f"今回はAI参加者の{bots}も一緒に議論します。" if bots else "")
-                + "私は進行役として、ときどき論点の整理や質問をします。では、どなたからでもどうぞ。"
-            )
+        if action == Action.start_gd:  # テーマと時間だけを短く伝える
+            limit = "時間の制限はありません" if st.duration_sec >= UNLIMITED_SEC else f"時間は{int(st.duration_sec // 60)}分です"
+            return f"テーマは「{st.theme}」、{limit}。始めてください。"
         if action == Action.time_warning:
             return f"残り約{max(1, round(st.remaining(now) / 60))}分です。そろそろ結論に向けてまとめていきましょう。"
         return "時間になりました。皆さんの結論を最後に確認させてください。お疲れさまでした。"
@@ -266,19 +255,31 @@ class FacilitatorAgent:
         st = self.state
         if d.action == Action.no_intervention:
             return
+        self._record(d, now)
+        dur = self.speak(d.speech) if self.speak else len(d.speech) / self.settings.tts_chars_per_sec
+        st.add_utterance(AI_SPEAKER, d.speech, now, now + dur, 1.0, source="ai")
+
+    def _record(self, d: Decision, now: float) -> None:
+        st = self.state
         remaining_before = st.remaining(now)
         st.record_intervention(now, d)
         if d.action == Action.time_warning:
             for th in self._warn_thresholds():
                 if remaining_before <= th:
                     st.warned_thresholds.add(th)
-        dur = self.speak(d.speech) if self.speak else len(d.speech) / self.settings.tts_chars_per_sec
-        st.add_utterance(AI_SPEAKER, d.speech, now, now + dur, 1.0, source="ai")
 
     # ================= 1 サイクル =================
-    def tick(self, now: float, trigger: str = "periodic", act: bool = True) -> TickRecord:
+    def tick(
+        self,
+        now: float,
+        trigger: str = "periodic",
+        act: bool = True,
+        on_partial: Callable[[str, list[Action], str], None] | None = None,
+    ) -> TickRecord:
         """1サイクル実行する。act=False のときは判断だけ行い、発話は commit() で確定させる
-        (実時間モードで、LLM の応答待ちの間に誰かが話し始めていないかを確認するため)。"""
+        (実時間モードで、LLM の応答待ちの間に誰かが話し始めていないかを確認するため)。
+        on_partial を渡すと、生成途中の JSON テキストを (テキスト, 許可アクション, ゲート) で受け取れる
+        (発言を一文できるたびに話し始めるため)。"""
         self.last_tick_time = now
         st = self.state
         gate, allowed, note = self._gate(now)
@@ -299,7 +300,8 @@ class FacilitatorAgent:
             llm_called = True
             try:
                 try:
-                    raw = self.llm.generate_json(self.system_prompt, build_user_prompt(ctx), self.output_schema, ctx)
+                    partial = (lambda acc: on_partial(acc, allowed, gate)) if on_partial else None
+                    raw = generate(self.llm, self.system_prompt, build_user_prompt(ctx), self.output_schema, ctx, partial)
                 finally:
                     usage = getattr(self.llm, "last_usage", None)
                 out = AgentOutput.model_validate(raw)
@@ -354,6 +356,17 @@ class FacilitatorAgent:
             self._act(d, now)
         finally:
             self.speak = speak
+
+    def commit_spoken(self, record: TickRecord, now: float, action: Action, spoken: str) -> None:
+        """生成しながら話した発言を、介入として記録する(発言は議論ログに追加済み)。
+        検証で判断が変わった場合や途中で LLM が失敗した場合も、実際に話した内容と行動を記録に残す。"""
+        d = record.decision
+        if d.action != action or d.speech != spoken:
+            if d.action != action:
+                record.overridden = f"生成しながら {action.value} として話した(最終判断: {d.action.value})"
+            d = Decision(action=action, reasoning=d.reasoning, speech=spoken, urgency=d.urgency)
+            record.decision = d
+        self._record(d, now)
 
     def cancel(self, record: TickRecord, reason: str) -> None:
         """発話直前に取りやめた判断を記録する(介入回数・クールダウンには数えない)。"""
