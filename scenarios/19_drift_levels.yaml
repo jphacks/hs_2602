@@ -1,0 +1,35 @@
+id: 19_drift_levels
+title: 脱線の長さと②脱線への対応の段階
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 180
+initial_phase: solution_ideation
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+# 雑談が 約10秒 / 約45秒 / 約85秒 続いた時点で判断させる(期待は仮説)。台本は固定なので、軌道修正の後も雑談が続く
+utterances:
+  - {t: 180, d: 6, s: speaker_3, c: 0.9, text: 対策としては、キャッシュレスレジと空き教室の開放が出てますね。}
+  - {t: 187, d: 5, s: speaker_4, c: 0.88, text: あとはメニューごとに並ぶ列を分けるのもいいかも。}
+  - {t: 193, d: 4, s: speaker_1, c: 0.9, text: メニューの話で言うと、ラーメンが一番並んでますよね。}
+  - {t: 198, d: 5, s: speaker_2, c: 0.86, text: 学食のラーメン、正直駅前のラーメン屋の方がおいしくないですか？}
+  - {t: 204, d: 4, s: speaker_3, c: 0.9, text: わかります！駅前のあの店、最近行きました？}
+  - {t: 211, d: 4, s: speaker_4, c: 0.87, text: 行きました！あそこ替え玉無料なんですよね。}
+  - {t: 216, d: 3, s: speaker_1, c: 0.9, text: え、そうなんだ。今度行こうかな。}
+  - {t: 220, d: 5, s: speaker_2, c: 0.86, text: 僕あそこの近くでバイトしてるんですけど、夜はもっと並んでますよ。}
+  - {t: 226, d: 2, s: speaker_3, c: 0.9, text: バイト何してるんですか？}
+  - {t: 229, d: 3, s: speaker_2, c: 0.88, text: 居酒屋です。シフト結構きつくて。}
+  - {t: 233, d: 3, s: speaker_4, c: 0.87, text: 居酒屋いいなあ、まかない出ます？}
+  - {t: 237, d: 3, s: speaker_2, c: 0.88, text: 出ます出ます。唐揚げがめっちゃおいしいんですよ。}
+  - {t: 245, d: 4, s: speaker_1, c: 0.9, text: 唐揚げいいですね。僕は最近自炊にはまってて。}
+  - {t: 250, d: 4, s: speaker_3, c: 0.9, text: 自炊えらい！何作るんですか？}
+  - {t: 255, d: 4, s: speaker_1, c: 0.9, text: パスタが多いですね。簡単なので。}
+  - {t: 260, d: 5, s: speaker_4, c: 0.87, text: 私もパスタ好きです。この前ジェノベーゼ作りました。}
+  - {t: 266, d: 3, s: speaker_2, c: 0.88, text: おしゃれですね。}
+  - {t: 270, d: 4, s: speaker_3, c: 0.9, text: 今度みんなでご飯行きましょうよ。}
+  - {t: 276, d: 3, s: speaker_1, c: 0.9, text: いいですね、行きましょう。}
+checkpoints:
+  - {at: 210.5, when: {drift: high}, expect: [redirect_topic], why: 積極的は、テーマと関係ない話が2〜3往復続いたら早めに戻す}
+  - {at: 210.5, when: {drift: [low, standard]}, expect: [no_intervention], why: 雑談が始まったばかり}
+  - {at: 242.5, when: {drift: standard}, expect: [redirect_topic], why: 無関係な話が40秒以上続いている(03 と同じ状況)}
+  - {at: 242.5, when: {drift: high}, expect: [no_intervention], why: 210.5 で軌道修正した直後でクールダウン中(ルール層)}
+  - {at: 242.5, when: {drift: low}, expect: [no_intervention], why: 控えめは、時間が明らかに失われるまで脱線に寛容}
+  - {at: 282, when: {drift: low}, expect: [redirect_topic], why: 雑談が80秒以上続き、前回の判断でも脱線だった}

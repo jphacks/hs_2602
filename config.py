@@ -47,6 +47,10 @@ class Settings:
     phase_behind_late_gap: int = 1  # または、この段階数以上遅れていて
     phase_behind_late_fraction: float = 0.6  # 経過がこの割合以上
 
+    # --- 介入ポリシーの段階で変わる判断条件(既定値=標準。控えめ/積極的の値は LEVEL_SETTINGS) ---
+    drift_confirm_ticks: int = 0  # 直前にこの回数続けて脱線と判断していなければ redirect_topic を許可しない(0=条件なし)
+    quiet_member_sec: float = 0.0  # この秒数以上発言していない人間の参加者を「発言の少ない参加者」として LLM に示す(0=示さない)
+
     # --- LLM ---
     llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic")  # anthropic | mock | handoff(チャット経由)
     llm_model: str = os.getenv("LLM_MODEL", "claude-opus-5-5")
@@ -77,47 +81,14 @@ PRESETS: dict[str, dict[str, float]] = {
 CUSTOM_KEYS = {"cooldown_sec", "silence_trigger_sec", "analysis_interval_sec", "min_silence_for_intervention_sec"}
 
 
-# 画面の「詳細」で選ぶ進行の調整。0=控えめ / 1=標準(既定・これまでの評価値) / 2=積極的
-# settings: 数値設定の上書き / prompt: 進行役への指示(システムプロンプトの末尾に足す)
+# 画面の「詳細」の5項目(0=控えめ / 1=標準 / 2=積極的)。label は画面に出す名前
+# phase / redirect / organize / turns は介入ポリシーの①〜④に変換し、効果は LEVEL_SETTINGS とプロンプト(prompts.LEVEL_TEXT)で決める。
+# suggest は⑥と1対1に対応しないので、第3段階までは従来の効果(levels: システムプロンプト末尾への指示)のまま
 STYLE_KNOBS: dict[str, dict[str, Any]] = {
-    "phase": {
-        "label": "次のフェーズへの進行度合い",
-        "levels": [
-            {"settings": {"phase_behind_gap": 3, "phase_behind_late_gap": 2, "phase_behind_late_fraction": 0.75},
-             "prompt": "フェーズの移行は急がない。参加者が十分に話し合うことを優先し、移行を促すのは大きく遅れたときだけにする。"},
-            {"settings": {}, "prompt": ""},
-            {"settings": {"phase_behind_gap": 1, "phase_behind_late_gap": 1, "phase_behind_late_fraction": 0.45},
-             "prompt": "時間配分を重視し、目標フェーズより遅れ始めたら、区切りで次のフェーズへの移行を早めに促す。"},
-        ],
-    },
-    "redirect": {
-        "label": "脱線修正の積極度",
-        "levels": [
-            {"settings": {"redirect_wait_max_sec": 10.0},
-             "prompt": "脱線には寛容にする。雑談が長く続き、議論の時間が明らかに失われているときだけ軌道修正する。"},
-            {"settings": {}, "prompt": ""},
-            {"settings": {"redirect_wait_max_sec": 25.0},
-             "prompt": "テーマから話がそれ始めたら、続く前に早めに軌道修正する。"},
-        ],
-    },
-    "organize": {
-        "label": "話題整理の積極度",
-        "levels": [
-            {"settings": {}, "prompt": "論点整理や比較基準の提示は控えめにし、参加者自身が整理するのを待つ。"},
-            {"settings": {}, "prompt": ""},
-            {"settings": {}, "prompt": "意見が増えてきたら、区切りで論点を整理したり比較の基準を示したりして、議論の見通しを良くする。"},
-        ],
-    },
-    "turns": {
-        "label": "どれだけ話を回すか",
-        "levels": [
-            {"settings": {"cooldown_sec": 60.0, "silence_trigger_sec": 15.0, "analysis_interval_sec": 25.0},
-             "prompt": "発言機会の調整は控えめにし、参加者どうしの自然なやり取りに任せる。"},
-            {"settings": {}, "prompt": ""},
-            {"settings": {"cooldown_sec": 30.0, "silence_trigger_sec": 8.0, "analysis_interval_sec": 15.0},
-             "prompt": "発言の少ない人に積極的に話を振り、全員が考えを示せるように回す。"},
-        ],
-    },
+    "phase": {"label": "次のフェーズへの進行度合い"},
+    "redirect": {"label": "脱線修正の積極度"},
+    "organize": {"label": "話題整理の積極度"},
+    "turns": {"label": "どれだけ話を回すか"},
     "suggest": {
         "label": "AIからの提案度合い",
         "levels": [
@@ -136,13 +107,12 @@ JOB_MAX_LEVEL = {"suggest": 1}
 
 
 def knob_overrides(knobs: dict[str, int] | None, purpose: str = "job") -> tuple[dict[str, Any], list[str]]:
-    """詳細の選択から、数値設定の上書きと進行役への追加の指示を作る。
-    介入ポリシー(facilitator/policy.py)の①〜④の効果として使う(第2段階でポリシーの項目ごとの効果に置き換える)。"""
+    """「詳細」のうち従来の効果を持つ項目(現在は suggest だけ)から、数値設定の上書きと進行役への追加の指示を作る。"""
     overrides: dict[str, Any] = {}
     notes: list[str] = []
     for key, level in (knobs or {}).items():
         spec = STYLE_KNOBS.get(key)
-        if not spec or level not in (0, 1, 2):
+        if not spec or "levels" not in spec or level not in (0, 1, 2):
             continue
         if purpose == "job":
             level = min(level, JOB_MAX_LEVEL.get(key, 2))
@@ -151,6 +121,29 @@ def knob_overrides(knobs: dict[str, int] | None, purpose: str = "job") -> tuple[
         if choice["prompt"]:
             notes.append(f"- {spec['label']}: {choice['prompt']}")
     return overrides, notes
+
+
+# 介入ポリシー①〜⑤の段階ごとの判断条件(Settings の上書き)。標準は上書きなし(=現行の値)。
+# 値はすべて仮の値で、シナリオ評価(第5段階)で調整する。各項目は自分の判断条件だけを変え、
+# クールダウン(45秒)・分析間隔(20秒)・割り込まないための間(2秒)はどの項目・段階でも変えない
+LEVEL_SETTINGS: dict[str, dict[str, dict[str, Any]]] = {
+    "progress": {  # ① 目標フェーズより「遅れている」とみなす条件(LLM に時間配分の注意を出す条件)
+        "low": {"phase_behind_gap": 3, "phase_behind_late_gap": 2, "phase_behind_late_fraction": 0.75},
+        "high": {"phase_behind_gap": 1, "phase_behind_late_gap": 1, "phase_behind_late_fraction": 0.45},
+    },
+    "drift": {  # ② 控えめ: 前回の判断でも脱線と見ていた(2回続けて脱線)ときだけ redirect_topic を許可
+        "low": {"drift_confirm_ticks": 1},
+        "high": {},
+    },
+    "organize": {},  # ③ 判断基準(プロンプト)だけを変える
+    "turns": {  # ④ 積極的: 60秒以上発言していない人間の参加者を LLM に示す(個人指名の条件は変えない)
+        "high": {"quiet_member_sec": 60.0},
+    },
+    "stall": {  # ⑤ 沈黙で判断を始めるまでの秒数
+        "low": {"silence_trigger_sec": 18.0},
+        "high": {"silence_trigger_sec": 8.0},
+    },
+}
 
 
 # 介入ポリシーのプリセット(facilitator/policy.py の InterventionPolicy の初期値)。利用者は選んだ後に各項目を変更できる

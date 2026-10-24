@@ -3,12 +3,14 @@
 就活GD用・一般GW用のプリセット(config.POLICY_PRESETS)を初期値にし、利用者が各項目を変更できる。
 GD用・GW用で別々の進行役を作らず、共通の進行役がこの設定に応じて動く。
 
-第1段階(現在)は設定の保持・検証・互換変換だけを行い、介入の判断・頻度・発話は変えない。
-- ①〜④ の段階の効果は、画面の「詳細」の既存の4項目(config.STYLE_KNOBS の phase / redirect / organize / turns)の効果をそのまま使う
-- ⑤ 停滞と ⑥ 内容支援は値を持つだけで、まだ効果はない(第2・第3段階で反映する)
+効果(第2段階):
+- ①〜⑤ は、項目ごとの判断条件(config.LEVEL_SETTINGS)と判断基準の文(prompts.LEVEL_TEXT)を変える。標準は現行どおり
+- ⑥ 内容支援は値を持つだけで、まだ効果はない(第3段階で反映する)
 - 旧「AIからの提案度合い」(STYLE_KNOBS["suggest"])は⑥と1対1に対応しないので変換せず、legacy_suggest として旧挙動を保つ
-- セッションの①〜④は画面の「詳細」の値(指定なしは標準=従来どおり)、⑤・⑥は用途のプリセットの値を使う(session_policy)。
-  画面の5項目を6項目に対応させる第4段階で、①〜④にもプリセットの値を使う
+
+設定の優先順位(resolve_policy): プリセット(指定がなければ用途の既定)< 個別の変更 < 旧画面の「詳細」(knobs)。
+最後に依存関係を補正する。現在の画面は「詳細」の5項目を常に全部送るため、①〜④はプリセットの値ではなく画面の値
+(既定は標準)になる。画面が変更した項目だけを送るようにするのは第4段階。
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from config import CUSTOM_KEYS, POLICY_PRESETS, PRESETS, PURPOSE_PRESET, STYLE_KNOBS, knob_overrides
+from config import CUSTOM_KEYS, LEVEL_SETTINGS, POLICY_PRESETS, PRESETS, PURPOSE_PRESET, STYLE_KNOBS, knob_overrides
 
 
 class Level(str, Enum):
@@ -128,11 +130,36 @@ def from_knobs(knobs: dict[str, Any] | None, base: InterventionPolicy) -> Interv
     return base.updated(**changes) if changes else base
 
 
-def session_policy(purpose: str, knobs: dict[str, Any] | None = None) -> InterventionPolicy:
-    """セッションのポリシー(第1段階)。①〜④は画面の「詳細」の値で、指定がなければ標準(従来どおり)。
-    ⑤・⑥は画面からまだ変えられないので、用途のプリセットの値を使う(効果は第2・第3段階から)。"""
-    base = purpose_preset(purpose).updated(**{item: Level.standard for item in KNOB_FOR_ITEM})
+def resolve_policy(
+    purpose: str,
+    preset: str | None = None,
+    overrides: dict[str, Any] | None = None,
+    knobs: dict[str, Any] | None = None,
+) -> InterventionPolicy:
+    """セッションのポリシー。優先順位: プリセット(preset、指定がなければ用途の既定)< 個別の変更(overrides)
+    < 旧画面の「詳細」(knobs)。overrides の不正な値はエラーにし、knobs の不正な値は従来どおり無視する。"""
+    base = preset_policy(preset) if preset else purpose_preset(purpose)
+    if overrides:
+        base = base.updated(**overrides)
     return from_knobs(knobs, base)
+
+
+def session_policy(purpose: str, knobs: dict[str, Any] | None = None) -> InterventionPolicy:
+    """用途の既定のプリセットに、画面の「詳細」を重ねたポリシー。"""
+    return resolve_policy(purpose, knobs=knobs)
+
+
+def levels(policy: InterventionPolicy) -> dict[str, str]:
+    """①〜⑤の段階(項目 → low / standard / high)。プロンプトの差し替えに使う。"""
+    return {item: getattr(policy, item).value for item in LEVEL_ITEMS}
+
+
+def level_settings(policy: InterventionPolicy) -> dict[str, Any]:
+    """①〜⑤の段階で変わる判断条件(Settings の上書き)。標準の項目は何も上書きしない。"""
+    out: dict[str, Any] = {}
+    for item, level in levels(policy).items():
+        out.update(LEVEL_SETTINGS[item].get(level, {}))
+    return out
 
 
 def legacy_knobs(policy: InterventionPolicy) -> dict[str, int]:
@@ -149,16 +176,18 @@ def legacy_knobs(policy: InterventionPolicy) -> dict[str, int]:
 
 
 def policy_effects(policy: InterventionPolicy, purpose: str) -> tuple[dict[str, Any], list[str]]:
-    """ポリシーから、数値設定の上書きと進行役への追加の指示を作る。
-    第1段階は既存の「詳細」の効果(config.knob_overrides、就活の提案度合いの上限を含む)をそのまま使う。"""
-    return knob_overrides(legacy_knobs(policy), purpose)
+    """従来の効果を持つ旧設定(legacy_suggest)から、数値設定の上書きと進行役への追加の指示を作る(就活の上限を含む)。
+    ①〜⑤の効果は進行役(FacilitatorAgent)が level_settings と levels から直接使う。"""
+    if policy.legacy_suggest is None:
+        return {}, []
+    return knob_overrides({"suggest": policy.legacy_suggest}, purpose)
 
 
 def session_overrides(
     preset: str, custom: dict[str, float] | None, policy: InterventionPolicy, purpose: str
 ) -> tuple[dict[str, Any], list[str]]:
-    """セッションの数値設定の上書きと、進行役への追加の指示。
-    優先順位は従来どおり、旧進行スタイル(A/B)< 旧カスタム < 介入ポリシー。旧進行スタイルは第4段階で廃止する。"""
+    """セッションの数値設定の上書きと、進行役への追加の指示(①〜⑤の段階の効果は含まない)。
+    優先順位は従来どおり、旧進行スタイル(A/B)< 旧カスタム < 旧 suggest。旧進行スタイルは第4段階で廃止する。"""
     overrides: dict[str, Any] = dict(PRESETS.get(preset, {}))
     if preset == "custom":
         overrides.update({k: float(v) for k, v in (custom or {}).items() if k in CUSTOM_KEYS})

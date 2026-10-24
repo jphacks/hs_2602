@@ -1,0 +1,33 @@
+id: 18_stall_levels
+title: 停滞の長さと⑤停滞への介入の段階
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 120
+initial_phase: cause_analysis
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+# 9秒・14秒・20秒の沈黙を、介入のクールダウン(45秒)より離して置く。⑤の段階ごとに、どの長さから介入するかを見る(期待は仮説)
+utterances:
+  - {t: 120, d: 5, s: speaker_1, c: 0.9, text: 混雑の原因を挙げると、まずお昼の時間の集中ですよね。}
+  - {t: 126, d: 4, s: speaker_2, c: 0.88, text: あとは会計に時間がかかることかな。}
+  - {t: 131, d: 4, s: speaker_3, c: 0.9, text: 席が足りないのもありそうです。}
+  - {t: 136, d: 3, s: speaker_4, c: 0.86, text: うーん、ほかにありますかね…。}
+  - {t: 141, d: 3, s: speaker_1, c: 0.9, text: うーん…。}
+  - {t: 146, d: 4, s: speaker_2, c: 0.88, text: 何か見落としてる気もするんですけど…。}
+  - {t: 165, d: 5, s: speaker_3, c: 0.9, text: 原因の中で、どれが一番大きいんでしょうね。}
+  - {t: 171, d: 5, s: speaker_4, c: 0.86, text: 時間の集中が一番だと思いますけど、根拠はないですね。}
+  - {t: 177, d: 4, s: speaker_1, c: 0.9, text: 根拠か…どう調べればいいんだろう。}
+  - {t: 182, d: 3, s: speaker_2, c: 0.88, text: うーん…。}
+  - {t: 187, d: 4, s: speaker_3, c: 0.9, text: アンケートとか…？でも今は無理か。}
+  - {t: 192, d: 3, s: speaker_4, c: 0.86, text: そうですね…。}
+  - {t: 212, d: 5, s: speaker_1, c: 0.9, text: とりあえず、時間の集中を前提に考えてみますか。}
+  - {t: 218, d: 4, s: speaker_2, c: 0.88, text: そうですね。でも対策となると…。}
+  - {t: 223, d: 4, s: speaker_3, c: 0.9, text: うーん、難しいですね。}
+  - {t: 228, d: 3, s: speaker_4, c: 0.86, text: …どうしましょう。}
+  - {t: 233, d: 4, s: speaker_1, c: 0.9, text: 何から手をつければいいのか…。}
+  - {t: 238, d: 2, s: speaker_2, c: 0.88, text: うーん。}
+checkpoints:
+  - {at: 159, when: {stall: high}, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention], why: 積極的は8秒ほどの沈黙で、話し出すきっかけをつくる}
+  - {at: 159, when: {stall: [low, standard]}, expect: [no_intervention], why: 9秒の沈黙。標準・控えめはまだ待つ}
+  - {at: 209, when: {stall: [standard, high]}, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention], why: 14秒の沈黙と「うーん」で止まっている}
+  - {at: 209, when: {stall: low}, expect: [no_intervention], why: 控えめは15秒以上の停滞まで参加者の再開を待つ}
+  - {at: 260, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention], why: 20秒の沈黙。どの段階でも介入する}

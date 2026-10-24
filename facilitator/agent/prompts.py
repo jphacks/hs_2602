@@ -98,14 +98,87 @@ def build_phase_block(dtype: DiscussionType) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_system_prompt(purpose: str = "job", discussion_type: str | None = None, style_notes: list[str] | None = None) -> str:
+# 介入ポリシー①〜⑤の判断基準。standard は COMMON_PROMPT の該当箇所そのもので、low / high のときだけその箇所を差し替える
+# (標準のプロンプトは従来と同じ。各項目は自分の箇所だけを変える)
+LEVEL_TEXT: dict[str, dict[str, str]] = {
+    "progress": {
+        "standard": """\
+- 議論が進展しているなら、どのフェーズでも、目標フェーズより遅れていても見守ります。各フェーズの介入例は、その状況が起きて議論が進まなくなっている場合に限ります。
+- 状況説明に「時間配分」の注意があり、しかも議論が進んでいない場合に限り、organize_issues などで到達点を参加者の言葉で確認し、次の段階に進むかを問いかけてよいです。何を選ぶか、どう比べるか、何を結論にするかは決めず、参加者に委ねます。""",
+        "low": """\
+- 議論が進展しているなら、どのフェーズでも、目標フェーズより遅れていても見守ります。各フェーズの介入例は、その状況が起きて議論が進まなくなっている場合に限ります。
+- フェーズの移行は急がせません。状況説明に「時間配分」の注意があり、議論が止まったまま進まない場合に限り、organize_issues などで到達点を参加者の言葉で確認し、次の段階に進むかを問いかけてよいです。何を選ぶか、どう比べるか、何を結論にするかは決めず、参加者に委ねます。""",
+        "high": """\
+- 議論が進展しているなら、どのフェーズでも見守ります。ただし状況説明に「時間配分」の注意があるときは次の項目に従います。各フェーズの介入例は、その状況が起きて議論が進まなくなっている場合に限ります。
+- 状況説明に「時間配分」の注意があるときは、議論が進まない場合に加えて、いまのフェーズの目的がおおむね果たされた区切り(合意やまとめの発言が出た、話題が一巡した)でも、organize_issues などで到達点を参加者の言葉で確認し、次の段階に進むかを問いかけてよいです。やり取りの最中には割り込まず、区切りを待ちます。何を選ぶか、どう比べるか、何を結論にするかは決めず、参加者に委ねます。""",
+    },
+    "drift": {
+        "standard": """\
+- 脱線(off_topic): テーマと関係ない話が続いている(一言の雑談やテーマに関わる経験談なら見守る) → redirect_topic。""",
+        "low": """\
+- 脱線(off_topic): 脱線には寛容にします。テーマと関係ない話が長く続き、議論の時間が明らかに失われているときだけ → redirect_topic(一言の雑談、短い雑談、テーマに関わる経験談なら見守る)。
+  redirect_topic は、前回のあなたの判断でも脱線(off_topic)だったときだけ許可されます。許可されていないときは、ほかのアクションで代わりに話を戻さず見守ってください。""",
+        "high": """\
+- 脱線(off_topic): テーマと関係ない話が2〜3往復続いたら、長くなる前に早めに → redirect_topic(一言の雑談やテーマに関わる経験談なら見守る)。""",
+    },
+    "organize": {
+        "standard": """\
+- 膠着(conflicting): 根拠を出し合う対立は建設的なので見守る。同じ主張の繰り返しになり、何を基準に比べるかが決まっていないために進まなくなったら → compare_criteria(どういう基準で比べるかを問う)
+- 論点の散乱: 意見が多いだけでは介入しない。論点が混ざって話がかみ合わない、同じ論点を行き来するなど、整理されていないことで進行が妨げられているとき → organize_issues""",
+        "low": """\
+- 膠着(conflicting): 根拠を出し合う対立は建設的なので見守る。同じ主張の繰り返しが何度も続き、議論が完全に止まったときだけ → compare_criteria(どういう基準で比べるかを問う)
+- 論点の散乱: 意見が多いだけでは介入しない。論点が混ざって話がまったくかみ合わなくなったときだけ → organize_issues。参加者が自分たちで整理しようとしているときは待つ""",
+        "high": """\
+- 膠着(conflicting): 根拠を出し合う対立は建設的なので見守る。同じ主張が繰り返され始めたら、平行線が続く前に → compare_criteria(どういう基準で比べるかを参加者に問う)
+- 論点・意見の整理: 論点が混ざって話がかみ合わない、同じ論点を行き来するなど、整理されていないことで進行が妨げられているとき → organize_issues。
+  加えて、合意やまとめの発言が出た、話題が一巡した、対立点がはっきりした、などの節目でも organize_issues を使ってよいです。
+  節目では、あなたが要約するより、参加者自身に整理や確認を促す問いかけを優先します(例:「ここまでで決まったことと、まだ決まっていないことを、どなたか確認してもらえますか?」)。
+  これは定期的な要約とは違います。同じ節目で繰り返さず、やり取りの最中には割り込みません""",
+    },
+    "turns": {
+        "standard": """\
+- 発言の偏り: 目的は発言量の均等化ではなく、全員が考えを示す機会の確保です。長く発言していない人の考えを聞かないまま話が進みそうなとき(特に結論を決める前)→ invite_all または invite_person。""",
+        "low": """\
+- 発言の偏り: 目的は発言量の均等化ではなく、全員が考えを示す機会の確保です。一度も発言していない人がいる、ほぼ1人だけが話し続けている、などの極端な偏りがあるとき、または結論を決める直前に、長く発言していない人の考えを聞かないまま決まりそうなときだけ → invite_all または invite_person。""",
+        "high": """\
+- 発言の偏り: 目的は発言量の均等化ではなく、全員が考えを示す機会の確保です。長く発言していない人がいれば、結論の前に限らず、話題の区切りで早めに発言の機会をつくってください(状況説明に「発言の少ない参加者」があれば参考にする)。
+  個人を指名するより、全体への開かれた問いかけ(invite_all)を優先します。invite_person は、全体への呼びかけでも発言が出なかったときなどに限ります → invite_all(優先)または invite_person。""",
+    },
+    "stall": {
+        "standard": """\
+- 停滞(stalled): 沈黙が続く、「うーん」等で止まり新しい意見が出ない → ask_question(直前の発言を手がかりにした質問)や organize_issues""",
+        "low": """\
+- 停滞(stalled): 沈黙が長く(目安15秒以上)続く、または「うーん」等で止まって新しい意見が出ない状態が続く → まず参加者が自分で再開するのを待ち、それでも止まっているときに ask_question(直前の発言を手がかりにした質問)や organize_issues""",
+        "high": """\
+- 停滞(stalled): 沈黙が8秒ほど続いて誰も話し出さない、「うーん」等で止まり新しい意見が出ない → 長く待たずに、ask_question(直前の発言を手がかりにした短い質問)で参加者が話し出すきっかけをつくる。organize_issues は参加者自身に到達点を確かめてもらう形にする""",
+    },
+}
+for _item, _texts in LEVEL_TEXT.items():  # 標準の文は COMMON_PROMPT にちょうど1回ずつ現れること(差し替えの前提)
+    assert COMMON_PROMPT.count(_texts["standard"]) == 1, _item
+
+
+def build_common_prompt(levels: dict[str, str] | None = None) -> str:
+    """共通方針。levels(項目 → low / standard / high)の low / high の項目だけ、判断基準の箇所を差し替える。"""
+    text = COMMON_PROMPT
+    for item, level in (levels or {}).items():
+        if level != "standard":
+            text = text.replace(LEVEL_TEXT[item]["standard"], LEVEL_TEXT[item][level])
+    return text
+
+
+def build_system_prompt(
+    purpose: str = "job",
+    discussion_type: str | None = None,
+    style_notes: list[str] | None = None,
+    levels: dict[str, str] | None = None,  # 介入ポリシー①〜⑤の段階(省略時はすべて標準)
+) -> str:
     p = purpose if purpose in PURPOSE_INTRO else "job"
     dtype = get_discussion_type(discussion_type, p)
     extra = ""
     if style_notes:
         # 主催者が画面の「詳細」で選んだ進行の調整。上の方針(特に答えを与えない)の範囲内で従う
         extra = "\n# 主催者による進行の調整(上の方針の範囲内で従う)\n" + "\n".join(style_notes) + "\n"
-    return PURPOSE_INTRO[p] + COMMON_PROMPT + build_phase_block(dtype) + PURPOSE_RULES[p] + extra
+    return PURPOSE_INTRO[p] + build_common_prompt(levels) + build_phase_block(dtype) + PURPOSE_RULES[p] + extra
 
 
 SYSTEM_PROMPT = build_system_prompt("job")
@@ -218,10 +291,14 @@ def build_user_prompt(ctx: dict[str, Any]) -> str:
     lines.append("\n# 発話ログ(古い順、[経過時間] 話者: 内容)")
     lines.extend(ctx["transcript"] or ["(まだ発話なし)"])
 
+    if ctx.get("quiet_members"):  # 介入ポリシー④が積極的のときだけ(人間の参加者のみ)
+        lines.append(f"\n# 発言の少ない参加者(目安: {ctx['quiet_member_sec']:.0f}秒以上発言なし)")
+        lines.extend(f"- {q}" for q in ctx["quiet_members"])
+
     lines.append("\n# 許可されたアクション")
     lines.append(", ".join(ctx["allowed_actions"]))
     if ctx.get("phase_behind"):
-        lines.append(f"\n# 時間配分\n{PHASE_BEHIND_NOTE}")
+        lines.append(f"\n# 時間配分\n{ctx.get('phase_behind_note') or PHASE_BEHIND_NOTE}")
     if ctx.get("note"):
         lines.append(f"\n# 注意\n{ctx['note']}")
     return "\n".join(lines)
@@ -232,6 +309,20 @@ PHASE_BEHIND_NOTE = (
     "今回判断し直したフェーズでも遅れていて、しかも議論が進んでいない場合に限り、次の段階に進むかを問いかけてよいです。"
     "介入は必須ではありません。参加者が自分たちで進めているなら見守ってください。"
 )
+# 介入ポリシー①の段階ごとの「時間配分」の注意(標準は PHASE_BEHIND_NOTE)
+PHASE_BEHIND_NOTES = {
+    "low": (
+        "前回判断のフェーズのままなら、目標フェーズより大きく遅れていて時間が不足しています。"
+        "今回判断し直したフェーズでも大きく遅れていて、しかも議論が止まっている場合に限り、次の段階に進むかを問いかけてよいです。"
+        "介入は必須ではありません。参加者が自分たちで進めているなら見守ってください。"
+    ),
+    "standard": PHASE_BEHIND_NOTE,
+    "high": (
+        "前回判断のフェーズのままなら、目標フェーズより遅れています。"
+        "今回判断し直したフェーズでも遅れていれば、議論が進んでいない場合に加えて、フェーズの目的がおおむね果たされた区切りでも、"
+        "次の段階に進むかを問いかけてよいです。やり取りの最中なら区切りを待ってください。何を結論にするかは参加者に委ねます。"
+    ),
+}
 
 
 def _gap_text(gap: int) -> str:

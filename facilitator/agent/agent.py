@@ -9,12 +9,12 @@ from typing import Any, Callable
 from pydantic import ValidationError
 
 from config import Settings
-from facilitator.agent.prompts import build_output_schema, build_system_prompt, build_user_prompt
+from facilitator.agent.prompts import PHASE_BEHIND_NOTES, build_output_schema, build_system_prompt, build_user_prompt
 from facilitator.discussion_types import get_discussion_type
 from facilitator.llm.base import LLMClient, LLMError
 from facilitator.logging import TickLogger
 from facilitator.models import AI_SPEAKER, UNKNOWN, UNLIMITED_SEC, Action, AgentOutput, Decision, TickRecord
-from facilitator.policy import InterventionPolicy, session_policy
+from facilitator.policy import InterventionPolicy, level_settings, levels, session_policy
 from facilitator.state import DiscussionState
 
 # ルール層だけが発動させるアクション(LLM が自発的に選ぶことはできない)
@@ -56,12 +56,14 @@ class FacilitatorAgent:
         discussion_type: str | None = None,  # 省略時は用途の既定(就活GD=課題解決型、一般=汎用型)
         clock: Any = None,  # 応答時間の計測に使う時計(テストでは疑似時計)
         style_notes: list[str] | None = None,  # 画面の「詳細」で選んだ進行の調整
-        policy: InterventionPolicy | None = None,  # 介入ポリシー。省略時は用途の既定(第1段階では保持するだけで判断には使わない)
+        policy: InterventionPolicy | None = None,  # 介入ポリシー。省略時は用途の既定のプリセット
     ) -> None:
         self.clock = clock or time
         self.policy = policy or session_policy(purpose)
+        # ①〜⑤の段階で変わる判断条件。標準の項目は settings の値をそのまま使う(_param)
+        self.level_settings = level_settings(self.policy)
         self.dtype = get_discussion_type(discussion_type, purpose)
-        self.system_prompt = build_system_prompt(purpose, self.dtype.key, style_notes)
+        self.system_prompt = build_system_prompt(purpose, self.dtype.key, style_notes, levels(self.policy))
         self.output_schema = build_output_schema(self.dtype)
         self.state = state
         self.llm = llm
@@ -72,6 +74,11 @@ class FacilitatorAgent:
         self.history: list[TickRecord] = []
         self.last_tick_time: float | None = None
         self.skipped_due: str | None = None  # 直近の should_tick で、定期分析の時刻なのに見送った理由
+        self.off_topic_streak = 0  # 直近の LLM 判断で、続けて脱線(off_topic)と判断した回数
+
+    def _param(self, key: str) -> Any:
+        """介入ポリシーの段階で変わる判断条件。段階が上書きしていなければ settings の値。"""
+        return self.level_settings.get(key, getattr(self.settings, key))
 
     # ================= Observe =================
     def _gate(self, now: float) -> tuple[str, list[Action], str | None]:
@@ -104,6 +111,8 @@ class FacilitatorAgent:
             return "blocked:short_pause", [], None
 
         allowed = list(FREE_ACTIONS)
+        if self.off_topic_streak < self._param("drift_confirm_ticks"):
+            allowed.remove(Action.redirect_topic)
         if st.speaker_info_usable() and st.names_confirmed:
             allowed.append(Action.invite_person)
         if s.enable_return_to_speaker:
@@ -123,14 +132,16 @@ class FacilitatorAgent:
     def phase_status(self, now: float) -> tuple[str, int | None, bool]:
         """(目標フェーズ, 目標 - 実際のフェーズの段階差, 移行を促してよい程度に遅れているか)。
         実際のフェーズは前回の LLM 判断のままなので、遅れは LLM への判断材料にとどめ、ルールの介入条件には使わない。"""
-        st, s = self.state, self.settings
+        st = self.state
         frac = st.elapsed_fraction(now)
         target = self.dtype.target_phase(frac).key
         observed = self.dtype.index(st.observed_phase)
         if observed is None:
             return target, None, False
         gap = self.dtype.index(target) - observed
-        behind = gap >= s.phase_behind_gap or (gap >= s.phase_behind_late_gap and frac >= s.phase_behind_late_fraction)
+        behind = gap >= self._param("phase_behind_gap") or (
+            gap >= self._param("phase_behind_late_gap") and frac >= self._param("phase_behind_late_fraction")
+        )
         return target, gap, behind
 
     def _context(self, now: float, trigger: str, allowed: list[Action], note: str | None) -> dict:
@@ -179,7 +190,28 @@ class FacilitatorAgent:
             "transcript": transcript,
             "allowed_actions": [a.value for a in allowed],
             "note": note,
+            "phase_behind_note": PHASE_BEHIND_NOTES[self.policy.progress.value],
+            "quiet_member_sec": self._param("quiet_member_sec"),
+            "quiet_members": self._quiet_members(now) if usable else [],
+            "stall_silence_sec": self._param("silence_trigger_sec"),  # モック LLM が停滞とみなす沈黙の長さ
         }
+
+    def _quiet_members(self, now: float) -> list[str]:
+        """④: quiet_member_sec 以上発言していない人間の参加者(AI 参加者は含めない)。0 なら示さない。
+        一度も発言していない人は、GD の経過が quiet_member_sec 以上のときだけ含める。"""
+        th, st = self._param("quiet_member_sec"), self.state
+        if th <= 0:
+            return []
+        out = []
+        for x in st.speaker_stats(now):
+            if x.is_bot:
+                continue
+            since = x.since_last_spoke_sec
+            if since is None and st.elapsed(now) < th or since is not None and since < th:
+                continue
+            who = f"{x.label}({x.speaker_id})" if x.label_confirmed else x.speaker_id
+            out.append(f"{who}: " + ("一度も発言なし" if since is None else f"最後の発言から{since:.0f}秒"))
+        return out
 
     # ================= Decide (LLM 後の検証) =================
     def _validate(self, d: Decision, allowed: list[Action], now: float) -> tuple[Decision, str | None]:
@@ -308,6 +340,7 @@ class FacilitatorAgent:
                 out = AgentOutput.model_validate(raw)
                 raw_action = out.decision.action.value
                 st.analysis = out.analysis
+                self.off_topic_streak = self.off_topic_streak + 1 if out.analysis.health == "off_topic" else 0
                 st.update_phase(out.analysis.phase, self.dtype.keys, now)
                 decision, overridden = self._validate(out.decision, allowed, now)
             except (LLMError, ValidationError) as e:
@@ -389,7 +422,8 @@ class FacilitatorAgent:
         if silence < s.min_silence_for_intervention_sec:
             self.skipped_due = "short_silence" if due else None
             return None  # 短い間では分析しない(定期分析のタイマーを無駄に消費しない)
-        if silence >= s.silence_trigger_sec and (last is None or now - last >= s.silence_trigger_sec):
+        trigger_sec = self._param("silence_trigger_sec")
+        if silence >= trigger_sec and (last is None or now - last >= trigger_sec):
             return "silence"
         if last is None or now - last >= s.analysis_interval_sec:
             return "periodic"
