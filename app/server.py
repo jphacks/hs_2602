@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from config import load_settings  # noqa: E402
+from config import CUSTOM_KEYS, PRESETS, load_settings  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
 
 STATIC = Path(__file__).parent / "static"
@@ -33,6 +33,9 @@ class StartReq(BaseModel):
     intro: bool = True
     tts: bool = True
     use_speaker_info: bool = True
+    purpose: str = "job"
+    preset: str = "A"
+    custom: dict[str, float] = {}
 
 
 class TextReq(BaseModel):
@@ -60,10 +63,48 @@ def start(req: StartReq) -> dict:
     if len(names) < 2:
         return {"ok": False, "error": "参加者は2〜4人を入力してください"}
     try:
-        engine.start(SessionConfig(req.theme.strip(), req.minutes, names, req.mode, req.intro, req.tts, req.use_speaker_info))
+        engine.start(
+            SessionConfig(
+                req.theme.strip(),
+                req.minutes,
+                names,
+                req.mode,
+                req.intro,
+                req.tts,
+                req.use_speaker_info,
+                purpose=req.purpose if req.purpose in ("job", "general") else "job",
+                preset=req.preset if req.preset in ("A", "B", "custom") else "A",
+                custom=req.custom,
+            )
+        )
     except Exception as e:  # マイク・STT の起動失敗を UI に伝える(キー等の秘匿情報は含まれない)
         engine.stop()
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    return {"ok": True}
+
+
+@app.get("/api/info")
+def info() -> dict:
+    """画面の初期値。モック版(mock-test ブランチ)ではテキスト入力を既定にする。"""
+    base = load_settings()
+    mock = base.llm_provider == "mock"
+    defaults = {k: getattr(base, k) for k in sorted(CUSTOM_KEYS)}
+    return {
+        "llm": "mock" if mock else base.llm_model,
+        "default_mode": "text" if mock else "voice",
+        "presets": {name: {**defaults, **vals} for name, vals in PRESETS.items()},
+    }
+
+
+@app.post("/api/pause")
+def pause() -> dict:
+    engine.pause()
+    return {"ok": True}
+
+
+@app.post("/api/resume")
+def resume() -> dict:
+    engine.resume()
     return {"ok": True}
 
 

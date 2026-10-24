@@ -58,6 +58,20 @@ class Settings:
     log_transcript_text: bool = False  # 個人情報保護のためデフォルトで発話本文はログに残さない
 
 
+# 画面で選ぶ進行スタイル。A は Step 1 で評価した既定値
+PRESETS: dict[str, dict[str, float]] = {
+    "A": {},  # 標準(推奨)
+    "B": {  # 積極サポート: 沈黙や停滞により早く介入する
+        "cooldown_sec": 30.0,
+        "silence_trigger_sec": 8.0,
+        "analysis_interval_sec": 15.0,
+        "min_silence_for_intervention_sec": 1.5,
+    },
+}
+# カスタム設定で画面から変更できる項目
+CUSTOM_KEYS = {"cooldown_sec", "silence_trigger_sec", "analysis_interval_sec", "min_silence_for_intervention_sec"}
+
+
 def load_settings(**overrides) -> Settings:
     s = Settings()
     for k, v in overrides.items():

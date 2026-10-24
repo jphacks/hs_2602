@@ -4,186 +4,671 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI Facilitator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #6b7280; --line: #e5e7eb;
-  --accent: #2563eb; --accent-soft: #e8efff; --ai: #7c3aed; --ai-soft: #f3edff;
-  --ok: #059669; --warn: #d97706; --bad: #dc2626; --chip: #eef0f3;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1218; --panel: #171b23; --text: #e6e8ec; --muted: #9aa3b2; --line: #2a303b;
-    --accent: #6b9bff; --accent-soft: #1c2740; --ai: #b48cff; --ai-soft: #251d3a;
-    --ok: #34d399; --warn: #fbbf24; --bad: #f87171; --chip: #232934;
-  }
+  --bg-0: #071822; --bg-1: #0c2433; --bg-2: #123247;
+  --card: rgba(255, 255, 255, 0.055); --card-strong: rgba(255, 255, 255, 0.09);
+  --line: rgba(255, 255, 255, 0.10); --line-strong: rgba(255, 255, 255, 0.18);
+  --text: #eaf3f8; --muted: #8fa9b8; --faint: #5d7a8b;
+  --accent: #3ec6e0; --accent-2: #2a8fb0; --accent-glow: rgba(62, 198, 224, 0.35);
+  --ai: #b39dff; --ai-soft: rgba(179, 157, 255, 0.12); --ai-glow: rgba(179, 157, 255, 0.45);
+  --warn: #f5b84b; --bad: #ff7a7a; --ok: #4fd8a5;
+  --radius: 22px; --radius-sm: 14px;
+  --font: "Noto Sans JP", "Hiragino Sans", system-ui, sans-serif;
+  --num: "Inter", "Noto Sans JP", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; font-size: 14px; }
-header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-header h1 { font-size: 15px; margin: 0; font-weight: 700; }
-#theme { font-size: 16px; font-weight: 600; flex: 1; min-width: 200px; }
-#timer { font-variant-numeric: tabular-nums; font-size: 28px; font-weight: 700; }
-#timer.low { color: var(--bad); }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--chip); font-size: 12px; color: var(--muted); }
-.chip.on { background: var(--accent-soft); color: var(--accent); }
-.chip.ai { background: var(--ai-soft); color: var(--ai); }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; padding: 16px 20px; height: calc(100vh - 64px); }
-.col { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-height: 0; }
-.panel h2 { font-size: 12px; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: .04em; display: flex; justify-content: space-between; align-items: center; }
-#log-panel { flex: 1; display: flex; flex-direction: column; }
-#log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-.utt { display: grid; grid-template-columns: 48px 92px 1fr; gap: 8px; align-items: baseline; padding: 4px 6px; border-radius: 8px; }
-.utt .t { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.utt select { font-size: 12px; padding: 1px 2px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); max-width: 92px; }
-.utt.ai { background: var(--ai-soft); }
-.utt.ai .who { color: var(--ai); font-weight: 700; }
-.utt .lowconf { color: var(--warn); font-size: 11px; }
-#partial { color: var(--muted); font-style: italic; min-height: 20px; padding: 4px 6px; }
-#input-row { display: flex; gap: 8px; margin-top: 8px; }
-#input-row select, #input-row input, button, .setup input, .setup select { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
-#input-row input { flex: 1; }
-button { cursor: pointer; background: var(--accent); color: #fff; border: none; font-weight: 600; }
-button.ghost { background: var(--chip); color: var(--text); }
-.bar-row { display: grid; grid-template-columns: 80px 1fr 110px; gap: 8px; align-items: center; margin: 6px 0; font-size: 13px; }
-.bar { height: 10px; background: var(--chip); border-radius: 999px; overflow: hidden; }
-.bar > div { height: 100%; background: var(--accent); border-radius: 999px; transition: width .4s; }
-.bar-row .meta { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
-.state-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.state-grid h3 { font-size: 12px; margin: 0 0 4px; color: var(--muted); font-weight: 600; }
-.state-grid ul { margin: 0; padding-left: 16px; font-size: 13px; }
-#summary { font-size: 13px; margin-bottom: 8px; }
-#decisions-panel { flex: 1; display: flex; flex-direction: column; }
-#decisions { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-.dec { border-left: 3px solid var(--line); padding: 4px 10px; }
-.dec.act { border-left-color: var(--ai); background: var(--ai-soft); border-radius: 0 8px 8px 0; }
-.dec.cancel { border-left-color: var(--warn); }
-.dec .head { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
-.dec .action { font-weight: 700; color: var(--text); }
-.dec.act .action { color: var(--ai); }
-.dec .why { font-size: 13px; margin-top: 2px; }
-.dec .speech { font-size: 13px; margin-top: 4px; font-weight: 600; }
-.health { font-weight: 700; }
-.health.progressing, .health.converging { color: var(--ok); }
-.health.stalled, .health.off_topic, .health.conflicting { color: var(--warn); }
-#events { font-size: 12px; color: var(--muted); max-height: 60px; overflow-y: auto; }
-.setup-wrap { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.setup { background: var(--panel); border-radius: 14px; padding: 22px; width: min(520px, 100%); display: flex; flex-direction: column; gap: 12px; }
-.setup h2 { margin: 0; font-size: 18px; }
-.setup label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
-.setup .names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.setup .opts { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; }
-.setup .opts label { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
-.err { color: var(--bad); font-size: 13px; min-height: 18px; }
+html, body { height: 100%; }
+body {
+  margin: 0; color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.6;
+  background: radial-gradient(1200px 700px at 85% -10%, #164763 0%, transparent 60%),
+              radial-gradient(900px 600px at -10% 110%, #0f3a4f 0%, transparent 55%),
+              linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  background-attachment: fixed; -webkit-font-smoothing: antialiased;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.screen { display: none; min-height: 100vh; animation: fade .45s ease both; }
+.screen.active { display: block; }
+@keyframes fade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* ---------- 共通 ---------- */
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .02em; }
+.brand-mark { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--accent), var(--ai)); box-shadow: 0 0 24px var(--accent-glow); }
+.brand-mark svg { width: 17px; height: 17px; }
+.steps { display: flex; gap: 8px; align-items: center; color: var(--faint); font-size: 13px; }
+.steps span { display: inline-flex; align-items: center; gap: 6px; }
+.steps i { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-style: normal;
+  border: 1px solid var(--line-strong); font-family: var(--num); font-size: 12px; }
+.steps .on { color: var(--text); } .steps .on i { background: var(--accent); border-color: var(--accent); color: #04202b; font-weight: 700; }
+.steps .sep { width: 24px; height: 1px; background: var(--line-strong); }
+.topline { display: flex; justify-content: space-between; align-items: center; padding: 22px 36px; }
+.btn { border: 1px solid var(--line-strong); background: var(--card); padding: 10px 18px; border-radius: 12px;
+  font-weight: 600; transition: .2s; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; flex: none; }
+.btn:hover { background: var(--card-strong); border-color: rgba(255,255,255,.3); }
+.btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; color: #03202b;
+  box-shadow: 0 8px 28px -8px var(--accent-glow); }
+.btn.primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.btn.danger:hover { border-color: var(--bad); color: var(--bad); }
+.btn:disabled { opacity: .35; pointer-events: none; }
+.btn svg { width: 16px; height: 16px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; font-size: 12.5px;
+  background: var(--card); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.chip:empty { display: none; }
+.chip.warn { color: var(--warn); border-color: rgba(245,184,75,.35); }
+.glass { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+
+/* ---------- 1. 用途 ---------- */
+.hero { max-width: 1040px; margin: 6vh auto 0; padding: 0 28px; }
+.eyebrow { color: var(--accent); font-weight: 600; letter-spacing: .14em; font-size: 12.5px; }
+.hero h1 { font-size: clamp(28px, 4vw, 42px); line-height: 1.3; margin: 10px 0 8px; letter-spacing: .01em; }
+.hero p.lead { color: var(--muted); margin: 0 0 40px; }
+.purpose-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+.purpose { position: relative; text-align: left; padding: 34px 32px 30px; border-radius: 26px; overflow: hidden;
+  background: var(--card); border: 1px solid var(--line); transition: transform .25s, border-color .25s, box-shadow .25s; }
+.purpose::before { content: ""; position: absolute; inset: -40% -20% auto auto; width: 280px; height: 280px; border-radius: 50%;
+  background: radial-gradient(circle, var(--glow, var(--accent-glow)), transparent 70%); opacity: .5; transition: .3s; }
+.purpose:hover { transform: translateY(-4px); border-color: var(--line-strong); box-shadow: 0 24px 60px -24px rgba(0,0,0,.6); }
+.purpose:hover::before { opacity: .95; }
+.purpose .icon { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; margin-bottom: 22px;
+  background: rgba(255,255,255,.07); border: 1px solid var(--line-strong); }
+.purpose .icon svg { width: 28px; height: 28px; }
+.purpose h2 { margin: 0; font-size: 23px; }
+.purpose .sub { color: var(--accent); font-weight: 600; margin: 2px 0 14px; }
+.purpose ul { margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 14px; }
+.purpose li { padding-left: 18px; position: relative; margin: 4px 0; }
+.purpose li::before { content: ""; position: absolute; left: 0; top: .72em; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+.purpose .go { position: absolute; right: 26px; bottom: 26px; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
+  border: 1px solid var(--line-strong); transition: .25s; }
+.purpose:hover .go { background: var(--accent); color: #04202b; border-color: var(--accent); }
+.purpose.general { --glow: var(--ai-glow); }
+.purpose.general .sub { color: var(--ai); }
+
+/* ---------- 2. 設定 ---------- */
+.setup-wrap { max-width: 860px; margin: 2vh auto 60px; padding: 0 28px; }
+.setup-card { padding: 34px 36px; }
+.setup-card h1 { margin: 6px 0 24px; font-size: 28px; }
+.field { margin-bottom: 24px; }
+.field > label, .field .label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 8px; letter-spacing: .04em; }
+.input { width: 100%; padding: 13px 16px; border-radius: var(--radius-sm); background: rgba(0,0,0,.22); border: 1px solid var(--line);
+  outline: none; transition: .2s; }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(62,198,224,.15); }
+.suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.suggest button { font-size: 12.5px; padding: 5px 12px; border-radius: 999px; background: transparent; border: 1px dashed var(--line-strong); color: var(--muted); }
+.suggest button:hover { color: var(--text); border-color: var(--accent); }
+.seg { display: inline-flex; padding: 4px; gap: 4px; border-radius: 14px; background: rgba(0,0,0,.25); border: 1px solid var(--line); flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; padding: 8px 16px; border-radius: 10px; color: var(--muted); font-weight: 600; transition: .2s; }
+.seg button.on { background: var(--card-strong); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.minutes { width: 92px; text-align: center; font-family: var(--num); }
+.people { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.person-in { position: relative; }
+.person-in .dot { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; }
+.person-in .input { padding-left: 34px; }
+.presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.preset { text-align: left; padding: 16px 18px; border-radius: 16px; background: rgba(0,0,0,.2); border: 1px solid var(--line); transition: .2s; }
+.preset b { display: block; font-size: 15px; }
+.preset span { color: var(--muted); font-size: 12.5px; }
+.preset .tag { font-family: var(--num); font-weight: 700; color: var(--accent); margin-right: 6px; }
+.preset.on { border-color: var(--accent); background: rgba(62,198,224,.08); box-shadow: 0 0 0 3px rgba(62,198,224,.12); }
+.advanced { overflow: hidden; max-height: 0; opacity: 0; transition: max-height .45s ease, opacity .3s, margin .3s; }
+.advanced.open { max-height: 900px; opacity: 1; margin-top: 14px; }
+.adv-inner { padding: 22px; border-radius: 18px; border: 1px solid var(--line); background: rgba(0,0,0,.18); }
+.adv-inner h3 { margin: 0 0 14px; font-size: 14px; color: var(--muted); }
+.slider { display: grid; grid-template-columns: 200px 1fr 64px; gap: 14px; align-items: center; margin: 12px 0; font-size: 14px; }
+.slider output { font-family: var(--num); text-align: right; color: var(--accent); font-weight: 600; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.toggles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.toggle { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); font-size: 13.5px; cursor: pointer; }
+.toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+.setup-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 28px; }
+.err { color: var(--bad); font-size: 13.5px; }
+.hint { color: var(--faint); font-size: 12.5px; margin-top: 6px; }
+
+/* ---------- 3. 進行 ---------- */
+.bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 16px; padding: 14px 28px;
+  background: rgba(7,24,34,.72); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
+.bar .theme { flex: 1; min-width: 0; font-weight: 700; font-size: 16.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar .chips { display: flex; gap: 8px; }
+.bar .actions { display: flex; gap: 8px; }
+.stage { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; padding: 20px 28px 28px; height: calc(100vh - 68px); }
+.left { display: grid; grid-template-rows: auto 1fr; gap: 20px; min-height: 0; }
+.clock { padding: 30px 34px 26px; position: relative; overflow: hidden; }
+.clock::after { content: ""; position: absolute; right: -80px; top: -80px; width: 300px; height: 300px; border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-glow), transparent 70%); opacity: .45; pointer-events: none; }
+.clock .lab { color: var(--muted); font-size: 13px; letter-spacing: .12em; font-weight: 600; }
+.clock .time { font-family: var(--num); font-weight: 600; font-size: clamp(64px, 9vw, 112px); line-height: 1; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; margin: 8px 0 4px; }
+.clock .limit { font-family: var(--num); color: var(--muted); font-size: 18px; }
+.clock .limit b { color: var(--text); }
+.clock.low .time { color: var(--warn); }
+.clock.over .time { color: var(--bad); }
+.progress { height: 6px; border-radius: 999px; background: rgba(255,255,255,.08); margin: 22px 0 18px; overflow: hidden; }
+.progress div { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--ai)); transition: width .6s; }
+.phases { display: flex; gap: 6px; flex-wrap: wrap; }
+.phases span { font-size: 12.5px; padding: 3px 12px; border-radius: 999px; color: var(--faint); border: 1px solid var(--line); }
+.phases span.done { color: var(--muted); }
+.phases span.now { color: #04202b; background: var(--accent); border-color: var(--accent); font-weight: 700; }
+.ai-line { display: flex; gap: 14px; align-items: flex-start; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.orb { flex: none; width: 38px; height: 38px; border-radius: 50%; position: relative;
+  background: radial-gradient(circle at 35% 30%, #e6dcff, var(--ai) 45%, #5a45b8); box-shadow: 0 0 18px var(--ai-glow); }
+.orb.thinking { animation: breathe 1.4s ease-in-out infinite; }
+.orb.speaking::before, .orb.speaking::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--ai);
+  animation: ripple 1.6s ease-out infinite; }
+.orb.speaking::after { animation-delay: .8s; }
+@keyframes breathe { 50% { transform: scale(.88); box-shadow: 0 0 34px var(--ai-glow); } }
+@keyframes ripple { from { transform: scale(.9); opacity: .9; } to { transform: scale(1.6); opacity: 0; } }
+.ai-line .state { font-weight: 700; font-size: 14px; }
+.ai-line .say { color: var(--muted); font-size: 14px; margin-top: 2px; }
+.people-row { display: grid; gap: 16px; min-height: 0; align-content: start; }
+.pcard { padding: 22px 20px 18px; position: relative; text-align: center; transition: border-color .3s, box-shadow .3s, transform .3s; }
+.pcard.active { border-color: var(--c); box-shadow: 0 0 0 1px var(--c), 0 18px 50px -18px var(--c); transform: translateY(-2px); }
+.avatar { width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 24px;
+  color: #04202b; background: var(--c); position: relative; }
+.pcard.active .avatar::after { content: ""; position: absolute; inset: -7px; border-radius: 50%; border: 2px solid var(--c); animation: ripple 1.4s ease-out infinite; }
+.pcard .name { font-weight: 700; font-size: 17px; }
+.pcard .meta { color: var(--muted); font-size: 13px; font-family: var(--num); margin-top: 2px; }
+.share { height: 5px; border-radius: 999px; background: rgba(255,255,255,.08); margin-top: 14px; overflow: hidden; }
+.share div { height: 100%; background: var(--c); transition: width .6s; }
+.badges { position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); }
+.badge.quiet { color: var(--warn); border-color: rgba(245,184,75,.4); }
+.badge.voice { color: var(--ok); border-color: rgba(79,216,165,.35); }
+.logbox { display: flex; flex-direction: column; min-height: 0; padding: 22px 22px 16px; }
+.logbox .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.logbox .head h2 { margin: 0; font-size: 15px; letter-spacing: .06em; color: var(--muted); }
+.log { flex: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
+.log::-webkit-scrollbar { width: 6px; } .log::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 6px; }
+.msg { display: grid; grid-template-columns: 34px 1fr; gap: 10px; animation: fade .35s ease both; }
+.msg .av { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: #04202b; background: var(--c, #6b8796); }
+.msg .who { font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.msg .who select { background: transparent; border: 0; color: var(--text); font-weight: 600; font-size: 12.5px; padding: 0; cursor: pointer; }
+.msg .who select:hover { color: var(--accent); }
+.msg .who time { font-family: var(--num); color: var(--faint); }
+.msg .bubble { margin-top: 3px; padding: 10px 14px; border-radius: 4px 16px 16px 16px; background: rgba(255,255,255,.06); border: 1px solid var(--line); }
+.msg.ai .av { background: linear-gradient(135deg, #e6dcff, var(--ai)); }
+.msg.ai .bubble { background: var(--ai-soft); border-color: rgba(179,157,255,.3); }
+.msg.ai .who b { color: var(--ai); }
+.msg .low { color: var(--warn); font-size: 11px; }
+.partial { color: var(--faint); font-style: italic; min-height: 22px; padding: 6px 4px 0; font-size: 14px; }
+.composer { display: flex; gap: 8px; margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.composer select { background: rgba(0,0,0,.25); border: 1px solid var(--line); border-radius: 12px; padding: 0 10px; }
+.composer .input { padding: 10px 14px; }
+.empty { color: var(--faint); text-align: center; margin: auto; font-size: 14px; }
+
+/* オーバーレイ・ドロワー */
+.overlay { position: fixed; inset: 0; z-index: 30; display: none; place-items: center; background: rgba(4,14,20,.6); backdrop-filter: blur(6px); padding: 20px; }
+.overlay.show { display: grid; animation: fade .35s ease both; }
+.modal { width: min(520px, 100%); padding: 34px; text-align: center; }
+.modal h2 { margin: 12px 0 6px; font-size: 24px; }
+.modal p { color: var(--muted); margin: 0 0 18px; }
+.mic { width: 84px; height: 84px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; position: relative;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #04202b; }
+.mic svg { width: 34px; height: 34px; }
+.mic::before, .mic::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid var(--accent); animation: ripple 1.8s ease-out infinite; }
+.mic::after { animation-delay: .9s; }
+.enrolled { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.enrolled span { font-size: 13px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--faint); }
+.enrolled span.ok { color: var(--ok); border-color: rgba(79,216,165,.4); }
+.enrolled span.now { color: var(--accent); border-color: var(--accent); }
+.summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0 24px; }
+.summary-grid div { padding: 14px; border-radius: 14px; background: rgba(0,0,0,.2); border: 1px solid var(--line); }
+.summary-grid b { display: block; font-family: var(--num); font-size: 26px; }
+.summary-grid span { color: var(--muted); font-size: 12.5px; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 92vw); z-index: 25; transform: translateX(105%); transition: transform .35s ease;
+  background: rgba(9,28,40,.96); border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+.drawer.open { transform: none; box-shadow: -30px 0 80px rgba(0,0,0,.5); }
+.drawer header { display: flex; justify-content: space-between; align-items: center; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+.drawer header h2 { margin: 0; font-size: 16px; }
+.decs { flex: 1; overflow-y: auto; padding: 16px 22px; display: flex; flex-direction: column; gap: 12px; }
+.dec { padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.03); }
+.dec.act { border-color: rgba(179,157,255,.4); background: var(--ai-soft); }
+.dec.cancel { border-color: rgba(245,184,75,.35); }
+.dec .h { display: flex; gap: 10px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.dec .h b { color: var(--text); font-size: 13.5px; }
+.dec.act .h b { color: var(--ai); }
+.dec .h time { font-family: var(--num); }
+.dec .why { font-size: 13.5px; margin-top: 6px; }
+.dec .sp { font-size: 13.5px; margin-top: 6px; font-weight: 600; }
+.dec .ov { font-size: 12px; color: var(--warn); margin-top: 4px; }
 .hidden { display: none !important; }
-@media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } #log { max-height: 50vh; } }
+
+@media (max-width: 980px) {
+  .purpose-grid, .presets, .toggles { grid-template-columns: 1fr; }
+  .people { grid-template-columns: 1fr; }
+  .stage { grid-template-columns: 1fr; height: auto; }
+  .logbox { min-height: 60vh; }
+  .slider { grid-template-columns: 1fr 64px; } .slider span { grid-column: 1 / -1; }
+  .bar { flex-wrap: wrap; } .bar .chips { display: none; }
+  .topline { padding: 18px 20px; }
+}
 </style>
 </head>
 <body>
-<header>
-  <h1>AI Facilitator</h1>
-  <div id="theme">—</div>
-  <span class="chip" id="chip-llm" title="判断に使っている AI">—</span>
-  <span class="chip" id="chip-phase">待機中</span>
-  <span class="chip" id="chip-listen"><span class="dot"></span>発話検知</span>
-  <span class="chip" id="chip-ai"><span class="dot"></span>AI</span>
-  <div id="timer">--:--</div>
-  <button class="ghost" id="btn-stop">終了</button>
-  <button class="ghost" id="btn-new">新規</button>
-</header>
 
-<main>
-  <div class="col">
-    <section class="panel" id="log-panel">
-      <h2>議論ログ <span id="intro-status"></span></h2>
-      <div id="log"></div>
-      <div id="partial"></div>
-      <div id="input-row">
-        <select id="in-speaker"></select>
-        <input id="in-text" placeholder="テキストで発言を追加(話者を選んで Enter)">
-        <button id="btn-send">送信</button>
-      </div>
-    </section>
-    <section class="panel"><h2>システム</h2><div id="events"></div></section>
+<!-- ============ 1. 用途 ============ -->
+<section class="screen" id="s-purpose">
+  <div class="topline">
+    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span>AI Facilitator</div>
+    <div class="steps"><span class="on"><i>1</i>用途</span><span class="sep"></span><span><i>2</i>設定</span><span class="sep"></span><span><i>3</i>進行</span></div>
   </div>
-  <div class="col">
-    <section class="panel">
-      <h2>発言量(暫定) <label style="font-weight:400"><input type="checkbox" id="tg-speaker"> 話者情報を使う</label></h2>
-      <div id="stats"></div>
-      <div id="reliability" style="font-size:12px;color:var(--muted);margin-top:6px"></div>
-    </section>
-    <section class="panel">
-      <h2>議論の状態 <span>健全性: <span class="health" id="health">—</span></span></h2>
-      <div id="summary"></div>
-      <div class="state-grid">
-        <div><h3>論点</h3><ul id="issues"></ul></div>
-        <div><h3>対立点</h3><ul id="conflicts"></ul></div>
-        <div><h3>合意事項</h3><ul id="agreements"></ul></div>
-        <div><h3>足りない観点</h3><ul id="missing"></ul></div>
-      </div>
-    </section>
-    <section class="panel" id="decisions-panel">
-      <h2>AIの判断(介入した/しなかった理由) <span id="count"></span></h2>
-      <div id="decisions"></div>
-    </section>
-  </div>
-</main>
-
-<div class="setup-wrap" id="setup">
-  <form class="setup" id="setup-form">
-    <h2>グループディスカッションの設定</h2>
-    <label>テーマ<input id="f-theme" value="大学の学食の混雑を改善するには？" required></label>
-    <label>制限時間(分)<input id="f-min" type="number" min="1" max="60" step="0.5" value="8"></label>
-    <label>参加者(話す順・ニックネーム可)
-      <div class="names">
-        <input class="f-name" placeholder="1人目"><input class="f-name" placeholder="2人目">
-        <input class="f-name" placeholder="3人目"><input class="f-name" placeholder="4人目(任意)">
-      </div>
-    </label>
-    <div class="opts">
-      <label><input type="radio" name="mode" value="voice" checked> 音声</label>
-      <label><input type="radio" name="mode" value="text"> テキスト入力のみ</label>
-      <label><input type="checkbox" id="f-intro" checked> 自己紹介で声を登録</label>
-      <label><input type="checkbox" id="f-tts" checked> AIの声を出す</label>
-      <label><input type="checkbox" id="f-spk" checked> 話者情報を使う</label>
+  <div class="hero">
+    <div class="eyebrow">AUTONOMOUS DISCUSSION FACILITATOR</div>
+    <h1>どんなディスカッションを<br>進行しますか？</h1>
+    <p class="lead">AI が議論を聞き取り、必要なときだけ問いかけ・論点整理・時間管理を行います。</p>
+    <div class="purpose-grid">
+      <button class="purpose" data-purpose="job">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#3ec6e0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7M3 12.5h18"/></svg></div>
+        <h2>グループディスカッション</h2>
+        <div class="sub">就活</div>
+        <ul><li>選考形式の GD を AI が進行</li><li>全員が考えを示せるよう発言機会を調整</li><li>答えは与えず、学生自身の思考を尊重</li></ul>
+        <span class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </button>
+      <button class="purpose general" data-purpose="general">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#b39dff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg></div>
+        <h2>グループディスカッション</h2>
+        <div class="sub">就活以外</div>
+        <ul><li>授業・会議・ワークショップに</li><li>停滞や脱線をやさしく立て直す</li><li>納得感のある結論づくりを支援</li></ul>
+        <span class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </button>
     </div>
-    <div class="err" id="f-err"></div>
-    <button type="submit">開始</button>
-  </form>
+  </div>
+</section>
+
+<!-- ============ 2. 設定 ============ -->
+<section class="screen" id="s-setup">
+  <div class="topline">
+    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span>AI Facilitator</div>
+    <div class="steps"><span class="on"><i>1</i>用途</span><span class="sep"></span><span class="on"><i>2</i>設定</span><span class="sep"></span><span><i>3</i>進行</span></div>
+  </div>
+  <div class="setup-wrap">
+    <form class="glass setup-card" id="setup-form" autocomplete="off">
+      <div class="eyebrow" id="purpose-label">就活 GD</div>
+      <h1>ディスカッションの設定</h1>
+
+      <div class="field">
+        <label for="f-theme">テーマ</label>
+        <input class="input" id="f-theme" required placeholder="例：大学の学食の混雑を改善するには？">
+        <div class="suggest" id="suggest"></div>
+      </div>
+
+      <div class="field">
+        <span class="label">制限時間</span>
+        <div class="row">
+          <div class="seg" id="seg-min"><button type="button" data-v="5">5分</button><button type="button" data-v="8">8分</button><button type="button" data-v="10">10分</button><button type="button" data-v="15">15分</button></div>
+          <input class="input minutes" id="f-min" type="number" min="1" max="60" step="0.5" value="8"><span style="color:var(--muted)">分</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="label">参加者(話す順・ニックネーム可、2〜4人)</span>
+        <div class="people" id="people"></div>
+      </div>
+
+      <div class="field">
+        <span class="label">入力方法</span>
+        <div class="seg" id="seg-mode"><button type="button" data-v="voice">🎙 音声</button><button type="button" data-v="text">⌨ テキスト入力</button></div>
+        <div class="hint" id="mode-hint"></div>
+      </div>
+
+      <div class="field">
+        <span class="label">進行スタイル</span>
+        <div class="presets" id="presets">
+          <button type="button" class="preset" data-v="A"><b><span class="tag">A</span>標準</b><span>順調なときは見守り、停滞・脱線・偏りに対応(推奨)</span></button>
+          <button type="button" class="preset" data-v="B"><b><span class="tag">B</span>積極サポート</b><span>沈黙や停滞に早めに声をかける</span></button>
+          <button type="button" class="preset" data-v="custom"><b><span class="tag">⚙</span>カスタム</b><span>介入の間隔などを細かく調整</span></button>
+        </div>
+        <div class="advanced" id="advanced">
+          <div class="adv-inner">
+            <h3>詳細設定</h3>
+            <div class="slider"><span>介入の最低間隔</span><input type="range" id="c-cooldown_sec" min="15" max="120" step="5"><output></output></div>
+            <div class="slider"><span>この秒数の沈黙で判断する</span><input type="range" id="c-silence_trigger_sec" min="5" max="30" step="1"><output></output></div>
+            <div class="slider"><span>定期的な見直しの間隔</span><input type="range" id="c-analysis_interval_sec" min="10" max="60" step="5"><output></output></div>
+            <div class="slider"><span>割り込まないための間</span><input type="range" id="c-min_silence_for_intervention_sec" min="0.5" max="5" step="0.5"><output></output></div>
+            <div class="toggles">
+              <label class="toggle"><input type="checkbox" id="f-intro" checked>自己紹介で声を登録</label>
+              <label class="toggle"><input type="checkbox" id="f-tts" checked>AI の声を出す</label>
+              <label class="toggle"><input type="checkbox" id="f-spk" checked>話者情報を使う</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="setup-actions">
+        <button type="button" class="btn" id="back-purpose">← 用途に戻る</button>
+        <span class="err" id="f-err"></span>
+        <button type="submit" class="btn primary">準備完了 →</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- ============ 3. 進行 ============ -->
+<section class="screen" id="s-session">
+  <div class="bar">
+    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span></div>
+    <div class="theme" id="b-theme">—</div>
+    <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-llm"></span></div>
+    <div class="actions">
+      <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>開始</button>
+      <button class="btn" id="btn-pause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>一時停止</span></button>
+      <button class="btn danger" id="btn-stop" disabled><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>終了</button>
+      <button class="btn" id="btn-decisions" title="AIの判断ログ"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.8V16h5v-.3c0-.7.4-1.4 1-1.8A6 6 0 0 0 12 3z"/></svg>判断</button>
+      <button class="btn" id="btn-setup" title="設定に戻る"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="left">
+      <div class="glass clock" id="clock">
+        <div class="lab">経過時間</div>
+        <div class="time" id="c-time">00:00</div>
+        <div class="limit">制限時間 <b id="c-limit">8</b> 分 <span id="c-remain" style="margin-left:14px"></span></div>
+        <div class="progress"><div id="c-bar"></div></div>
+        <div class="phases" id="phases"></div>
+        <div class="ai-line">
+          <div class="orb" id="orb"></div>
+          <div><div class="state" id="ai-state">「開始」を押すと AI が進行を始めます</div><div class="say" id="ai-say"></div></div>
+        </div>
+      </div>
+      <div class="people-row" id="pcards"></div>
+    </div>
+    <div class="glass logbox">
+      <div class="head"><h2>会話ログ</h2><span class="chip" id="silence"></span></div>
+      <div class="log" id="log"><div class="empty">発言がここに表示されます</div></div>
+      <div class="partial" id="partial"></div>
+      <div class="composer">
+        <select id="in-speaker"></select>
+        <input class="input" id="in-text" placeholder="テキストで発言を追加(Enter で送信)">
+        <button class="btn" id="btn-send">送信</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 自己紹介 -->
+<div class="overlay" id="ov-intro">
+  <div class="glass modal">
+    <div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
+    <h2 id="intro-title">自己紹介</h2>
+    <p>名前と一言を、5秒ほど話してください。AI が声を覚えます。</p>
+    <div class="enrolled" id="intro-list"></div>
+  </div>
 </div>
+
+<!-- 終了 -->
+<div class="overlay" id="ov-done">
+  <div class="glass modal">
+    <div class="eyebrow">SESSION COMPLETE</div>
+    <h2>お疲れさまでした</h2>
+    <p id="done-theme"></p>
+    <div class="summary-grid">
+      <div><b id="d-time">--:--</b><span>経過時間</span></div>
+      <div><b id="d-utts">0</b><span>発言数</span></div>
+      <div><b id="d-ai">0</b><span>AIの介入</span></div>
+    </div>
+    <div class="row" style="justify-content:center">
+      <button class="btn" id="d-close">ログを見る</button>
+      <button class="btn primary" id="d-new">新しく始める</button>
+    </div>
+  </div>
+</div>
+
+<!-- 判断ログ -->
+<aside class="drawer" id="drawer">
+  <header><h2>AI の判断(介入した / しなかった理由)</h2><button class="btn" id="drawer-close">✕</button></header>
+  <div class="decs" id="decs"><div class="empty">まだ判断はありません</div></div>
+</aside>
 
 <script>
 const $ = (id) => document.getElementById(id);
+const COLORS = ["#3ec6e0", "#ff8fb1", "#f5c451", "#5fe0a8"];
 const ACTION_JA = {
-  no_intervention: "見守り", start_gd: "開始", ask_question: "質問", redirect_topic: "軌道修正",
-  organize_issues: "論点整理", compare_criteria: "比較基準", invite_all: "全体へ発言促進",
-  invite_person: "個人へ発言促進", return_to_speaker: "発言を戻す", time_warning: "時間告知", close_gd: "終了",
+  no_intervention: "見守り", start_gd: "開始の説明", ask_question: "問いかけ", redirect_topic: "軌道修正",
+  organize_issues: "論点整理", compare_criteria: "比較基準の提示", invite_all: "全体へ発言を促す",
+  invite_person: "個人へ発言を促す", return_to_speaker: "発言を戻す", time_warning: "時間の告知", close_gd: "終了・結論の確認",
 };
-const PHASE_JA = { opening: "開始", ideation: "案出し", comparison: "比較検討", conclusion: "結論", closing: "終了" };
-const HEALTH_JA = { progressing: "順調", stalled: "停滞", off_topic: "脱線", conflicting: "対立", converging: "収束中" };
+const PHASES = [["opening", "開始"], ["ideation", "案出し"], ["comparison", "比較検討"], ["conclusion", "結論"], ["closing", "終了"]];
+const SUGGEST = {
+  job: ["大学の学食の混雑を改善するには？", "新しい観光名所をつくるなら？", "10年後に残る仕事・なくなる仕事", "地方の若者流出を止めるには？"],
+  general: ["次の学園祭の企画を決めよう", "チームの会議を短くするには？", "研究室の共有スペースの使い方", "新歓イベントのアイデア"],
+};
+const PRESET_JA = { A: "A 標準", B: "B 積極サポート", custom: "カスタム" };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const mmss = (s) => `${String(Math.floor(Math.max(0, s) / 60)).padStart(2, "0")}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, "0")}`;
+const mmss = (s) => { s = Math.max(0, Math.floor(s)); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
 const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then((r) => r.json());
 
-let seen = false, snap = null, lastLogKey = "", lastDecKey = "", speakerOptsKey = "";
+const ui = { purpose: "job", minutes: 8, mode: "voice", preset: "A", info: null, config: null, started: false };
+let snap = null, logKey = "", decKey = "", doneShown = false;
 
-$("setup-form").addEventListener("submit", async (ev) => {
+function show(id) {
+  document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === id));
+  window.scrollTo(0, 0);
+}
+
+/* ---------- 1. 用途 ---------- */
+document.querySelectorAll(".purpose").forEach((b) => b.onclick = () => {
+  ui.purpose = b.dataset.purpose;
+  $("purpose-label").textContent = ui.purpose === "job" ? "就活 GD" : "グループディスカッション(就活以外)";
+  $("suggest").innerHTML = SUGGEST[ui.purpose].map((t) => `<button type="button">${esc(t)}</button>`).join("");
+  $("suggest").querySelectorAll("button").forEach((x) => x.onclick = () => { $("f-theme").value = x.textContent; });
+  show("s-setup");
+});
+
+/* ---------- 2. 設定 ---------- */
+$("people").innerHTML = [0, 1, 2, 3].map((i) => `<div class="person-in"><span class="dot" style="background:${COLORS[i]}"></span>
+  <input class="input f-name" placeholder="${i + 1}人目${i === 3 ? "(任意)" : ""}"></div>`).join("");
+
+function seg(id, key, after) {
+  const el = $(id);
+  const sync = () => el.querySelectorAll("button").forEach((b) => b.classList.toggle("on", String(ui[key]) === b.dataset.v));
+  el.querySelectorAll("button").forEach((b) => b.onclick = () => { ui[key] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; sync(); after && after(); });
+  sync();
+  return sync;
+}
+const syncMin = seg("seg-min", "minutes", () => { $("f-min").value = ui.minutes; });
+$("f-min").oninput = () => { ui.minutes = +$("f-min").value; syncMin(); };
+const syncMode = seg("seg-mode", "mode", modeHint);
+function modeHint() {
+  $("mode-hint").textContent = ui.mode === "voice"
+    ? "PC のマイクで会話を聞き取ります(文字起こしは AssemblyAI。従量課金)。"
+    : "話者を選んで発言を入力します。マイクは使いません。";
+}
+
+const CUSTOM = ["cooldown_sec", "silence_trigger_sec", "analysis_interval_sec", "min_silence_for_intervention_sec"];
+function fillSliders(from) {
+  CUSTOM.forEach((k) => { const r = $("c-" + k); r.value = from[k]; r.nextElementSibling.textContent = `${r.value}秒`; });
+}
+CUSTOM.forEach((k) => $("c-" + k).oninput = (e) => { e.target.nextElementSibling.textContent = `${e.target.value}秒`; });
+function syncPreset() {
+  document.querySelectorAll(".preset").forEach((b) => b.classList.toggle("on", b.dataset.v === ui.preset));
+  $("advanced").classList.toggle("open", ui.preset === "custom");
+}
+document.querySelectorAll(".preset").forEach((b) => b.onclick = () => {
+  ui.preset = b.dataset.v;
+  if (ui.preset !== "custom" && ui.info) fillSliders(ui.info.presets[ui.preset]);
+  syncPreset();
+});
+$("back-purpose").onclick = () => show("s-purpose");
+
+$("setup-form").onsubmit = (ev) => {
   ev.preventDefault();
   const names = [...document.querySelectorAll(".f-name")].map((e) => e.value.trim()).filter(Boolean);
-  $("f-err").textContent = "起動中…";
-  const r = await post("/api/start", {
-    theme: $("f-theme").value, minutes: parseFloat($("f-min").value), names,
-    mode: document.querySelector("input[name=mode]:checked").value,
+  if (!$("f-theme").value.trim()) { $("f-err").textContent = "テーマを入力してください"; return; }
+  if (names.length < 2) { $("f-err").textContent = "参加者を2人以上入力してください"; return; }
+  $("f-err").textContent = "";
+  const custom = {}; CUSTOM.forEach((k) => custom[k] = +$("c-" + k).value);
+  ui.config = {
+    theme: $("f-theme").value.trim(), minutes: +$("f-min").value || 8, names, mode: ui.mode,
     intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
-  });
-  if (!r.ok) { $("f-err").textContent = r.error; return; }
-  $("f-err").textContent = ""; $("setup").classList.add("hidden");
-});
-$("btn-stop").onclick = () => post("/api/stop");
-$("btn-new").onclick = () => $("setup").classList.remove("hidden");
-$("tg-speaker").onchange = (e) => post("/api/toggle", { use_speaker_info: e.target.checked });
+    purpose: ui.purpose, preset: ui.preset, custom,
+  };
+  snap = null; logKey = ""; decKey = ""; doneShown = false; ui.started = false;
+  renderReady();
+  show("s-session");
+};
+
+/* ---------- 3. 進行 ---------- */
+function names() {
+  if (snap && snap.names) return snap.names;
+  const o = {}; (ui.config?.names || []).forEach((n, i) => o[`speaker_${i + 1}`] = n); return o;
+}
+function color(sid) { const i = +String(sid).split("_")[1] - 1; return COLORS[i] || "#6b8796"; }
+function llmChip(llm) {
+  const mock = llm === "mock";
+  $("b-llm").textContent = mock ? "モックAI(トークン消費なし)" : String(llm || "").replace("anthropic:", "");
+  $("b-llm").classList.toggle("warn", mock);
+}
+
+function renderReady() {
+  const c = ui.config;
+  $("b-theme").textContent = c.theme;
+  $("b-purpose").textContent = c.purpose === "general" ? "就活以外" : "就活";
+  $("b-preset").textContent = PRESET_JA[c.preset] || "";
+  llmChip(ui.info?.llm);
+  $("c-limit").textContent = c.minutes; $("c-time").textContent = "00:00"; $("c-remain").textContent = "";
+  $("c-bar").style.width = "0"; $("clock").classList.remove("low", "over");
+  $("btn-start").disabled = false; $("btn-pause").disabled = true; $("btn-stop").disabled = true;
+  $("ai-state").textContent = "「開始」を押すと AI が進行を始めます"; $("ai-say").textContent = ""; $("orb").className = "orb";
+  $("log").innerHTML = '<div class="empty">発言がここに表示されます</div>'; $("partial").textContent = ""; $("silence").textContent = "";
+  $("decs").innerHTML = '<div class="empty">まだ判断はありません</div>';
+  renderPhases("opening");
+  renderPeople();
+  $("in-speaker").innerHTML = Object.entries(names()).map(([id, n]) => `<option value="${id}">${esc(n)}</option>`).join("");
+}
+
+function renderPhases(phase) {
+  const idx = PHASES.findIndex(([k]) => k === phase);
+  $("phases").innerHTML = PHASES.map(([k, ja], i) => `<span class="${i < idx ? "done" : i === idx ? "now" : ""}">${ja}</span>`).join("");
+}
+
+function renderPeople() {
+  const n = names(), ids = Object.keys(n);
+  const stats = Object.fromEntries((snap?.stats || []).map((s) => [s.speaker_id, s]));
+  const max = Math.max(1, ...Object.values(stats).map((s) => s.total_speech_sec));
+  const sum = Object.values(stats).reduce((a, s) => a + s.total_speech_sec, 0) || 1;
+  const enrolled = new Set(snap?.intro?.enrolled || []);
+  $("pcards").style.gridTemplateColumns = `repeat(${ids.length}, minmax(0, 1fr))`;
+  $("pcards").innerHTML = ids.map((id) => {
+    const s = stats[id] || { total_speech_sec: 0, turns: 0, since_last_spoke_sec: null };
+    const active = snap?.active_speaker === id;
+    const quiet = snap?.started && (s.since_last_spoke_sec == null || s.since_last_spoke_sec > 90);
+    const share = snap?.started ? Math.round((s.total_speech_sec / sum) * 100) : 0;
+    return `<div class="glass pcard ${active ? "active" : ""}" style="--c:${color(id)}">
+      <div class="badges">${enrolled.has(n[id]) ? '<span class="badge voice">声 ✓</span>' : ""}${quiet ? `<span class="badge quiet">${s.since_last_spoke_sec == null ? "未発言" : "しばらく発言なし"}</span>` : ""}</div>
+      <div class="avatar">${esc(n[id].slice(0, 1))}</div>
+      <div class="name">${esc(n[id])}</div>
+      <div class="meta">${s.turns}回 · ${Math.round(s.total_speech_sec)}秒 · ${share}%</div>
+      <div class="share"><div style="width:${(s.total_speech_sec / max) * 100}%"></div></div>
+    </div>`;
+  }).join("");
+}
+
+function render() {
+  const s = snap; if (!s || !s.theme) return;
+  const running = s.status === "running" || s.status === "intro";
+  $("b-theme").textContent = s.theme;
+  $("b-purpose").textContent = s.purpose === "general" ? "就活以外" : "就活";
+  $("b-preset").textContent = PRESET_JA[s.preset] || "";
+  llmChip(s.llm);
+
+  // 時計
+  $("c-time").textContent = mmss(s.elapsed);
+  $("c-limit").textContent = +(s.duration / 60).toFixed(1);
+  $("c-remain").textContent = s.started ? `残り ${mmss(s.remaining)}` : "";
+  $("c-bar").style.width = `${Math.min(100, (s.elapsed / s.duration) * 100)}%`;
+  $("clock").classList.toggle("low", s.started && s.remaining <= 60 && s.remaining > 0);
+  $("clock").classList.toggle("over", s.started && s.remaining <= 0);
+  renderPhases(s.status === "finished" ? "closing" : s.phase);
+
+  // ボタン
+  $("btn-start").disabled = running || s.status === "finished";
+  $("btn-pause").disabled = s.status !== "running";
+  $("btn-pause").querySelector("span").textContent = s.paused ? "再開" : "一時停止";
+  $("btn-stop").disabled = !running;
+
+  // AI の状態
+  const lastAi = [...s.utterances].reverse().find((u) => u.source === "ai");
+  $("orb").className = "orb" + (s.ai_speaking ? " speaking" : s.thinking ? " thinking" : "");
+  $("ai-state").textContent = s.paused ? "一時停止中" : s.status === "intro" ? "自己紹介を聞いています"
+    : s.ai_speaking ? "AI が話しています" : s.thinking ? "AI が状況を考えています…" : s.status === "finished" ? "ディスカッションは終了しました" : "AI は見守っています";
+  $("ai-say").textContent = lastAi ? `「${lastAi.text}」` : "";
+  $("silence").textContent = s.mode === "voice" ? (s.speaking ? "● 発話中" : `沈黙 ${Math.floor(s.silence)}秒`) : "テキスト入力";
+
+  renderPeople();
+  renderLog(s);
+  renderDecisions(s);
+  $("partial").textContent = s.partial ? `… ${s.partial}` : "";
+
+  // 自己紹介
+  $("ov-intro").classList.toggle("show", s.status === "intro" && !!s.intro.current);
+  if (s.status === "intro") {
+    $("intro-title").textContent = s.intro.current ? `${s.intro.current}さん、どうぞ` : "自己紹介";
+    $("intro-list").innerHTML = Object.values(s.names).map((n) => `<span class="${s.intro.enrolled.includes(n) ? "ok" : n === s.intro.current ? "now" : ""}">${s.intro.enrolled.includes(n) ? "✓ " : ""}${esc(n)}</span>`).join("");
+  }
+  // 終了
+  if (s.status === "finished" && s.started && !doneShown) {
+    doneShown = true;
+    $("done-theme").textContent = s.theme;
+    $("d-time").textContent = mmss(s.elapsed);
+    $("d-utts").textContent = s.utterances.filter((u) => u.source === "human").length;
+    $("d-ai").textContent = s.interventions;
+    $("ov-done").classList.add("show");
+  }
+}
+
+function renderLog(s) {
+  const key = JSON.stringify(s.utterances.map((u) => [u.id, u.speaker_id, u.text]));
+  if (key === logKey || document.activeElement?.classList?.contains("relabel")) return;
+  logKey = key;
+  const box = $("log"); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  if (!s.utterances.length) { box.innerHTML = '<div class="empty">発言がここに表示されます</div>'; return; }
+  const opts = (sel) => Object.entries(s.names).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${esc(n)}</option>`).join("")
+    + `<option value="unknown" ${sel === "unknown" ? "selected" : ""}>不明</option>`;
+  box.innerHTML = s.utterances.map((u) => u.source === "ai"
+    ? `<div class="msg ai"><div class="av">AI</div><div><div class="who"><b>AI ファシリテーター</b><time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`
+    : `<div class="msg" style="--c:${u.speaker_id === "unknown" ? "#6b8796" : color(u.speaker_id)}"><div class="av">${esc((s.names[u.speaker_id] || "?").slice(0, 1))}</div>
+       <div><div class="who"><select class="relabel" data-id="${u.id}" title="話者を修正">${opts(u.speaker_id)}</select><time>${mmss(u.t)}</time>
+       ${u.conf < 0.7 && u.speaker_id !== "unknown" ? '<span class="low">低確信</span>' : ""}</div><div class="bubble">${esc(u.text)}</div></div></div>`).join("");
+  box.querySelectorAll(".relabel").forEach((el) => el.onchange = () => { post("/api/relabel", { id: +el.dataset.id, speaker_id: el.value }); el.blur(); });
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+function renderDecisions(s) {
+  const key = JSON.stringify(s.ticks.map((d) => [d.t, d.action, d.overridden]));
+  if (key === decKey) return; decKey = key;
+  const items = s.ticks.slice().reverse().filter((d) => !d.gate.startsWith("blocked"));
+  $("decs").innerHTML = items.length ? items.map((d) => {
+    const cancelled = (d.overridden || "").startsWith("発話取りやめ");
+    const acted = d.action !== "no_intervention" && !cancelled;
+    return `<div class="dec ${acted ? "act" : cancelled ? "cancel" : ""}"><div class="h"><time>${mmss(d.t)}</time><b>${ACTION_JA[d.action] || d.action}</b><span>${d.latency ? d.latency.toFixed(1) + "s" : ""}</span></div>
+      <div class="why">${esc(d.reasoning)}</div>${d.speech ? `<div class="sp">「${esc(d.speech)}」</div>` : ""}${d.overridden ? `<div class="ov">${esc(d.overridden)}</div>` : ""}</div>`;
+  }).join("") : '<div class="empty">まだ判断はありません</div>';
+}
+
+$("btn-start").onclick = async () => {
+  if (!ui.config) return show("s-setup");
+  $("btn-start").disabled = true;
+  const r = await post("/api/start", ui.config);
+  if (!r.ok) { $("btn-start").disabled = false; $("ai-state").textContent = r.error; return; }
+  ui.started = true; doneShown = false;
+};
+$("btn-pause").onclick = () => post(snap?.paused ? "/api/resume" : "/api/pause");
+$("btn-stop").onclick = () => { if (confirm("ディスカッションを終了しますか？")) post("/api/stop"); };
+$("btn-setup").onclick = () => {
+  const live = snap && (snap.status === "running" || snap.status === "intro");
+  if (live && !confirm("進行中のセッションを終了して設定に戻りますか？")) return;
+  if (live) post("/api/stop");
+  ui.started = false; show("s-setup");
+};
+$("btn-decisions").onclick = () => $("drawer").classList.toggle("open");
+$("drawer-close").onclick = () => $("drawer").classList.remove("open");
+$("d-close").onclick = () => $("ov-done").classList.remove("show");
+$("d-new").onclick = () => { $("ov-done").classList.remove("show"); ui.started = false; show("s-purpose"); };
 const send = () => {
   const text = $("in-text").value.trim(); if (!text) return;
   post("/api/text", { speaker_id: $("in-speaker").value, text }); $("in-text").value = "";
@@ -191,84 +676,25 @@ const send = () => {
 $("btn-send").onclick = send;
 $("in-text").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) send(); });
 
-function speakerOptions(sel) {
-  const names = snap.names || {};
-  return Object.entries(names).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${esc(n)}</option>`).join("")
-    + `<option value="unknown" ${sel === "unknown" ? "selected" : ""}>不明</option>`;
-}
-
-function render() {
-  const s = snap; if (!s || !s.theme) return;
-  $("theme").textContent = s.theme;
-  const mock = s.llm === "mock";
-  $("chip-llm").textContent = mock ? "モックAI(トークン消費なし)" : s.llm.replace("anthropic:", "");
-  $("chip-llm").style.color = mock ? "var(--warn)" : "";
-  const t = s.started ? s.remaining : s.duration;
-  $("timer").textContent = mmss(t); $("timer").classList.toggle("low", s.started && s.remaining <= 120);
-  $("chip-phase").textContent = s.status === "intro" ? "自己紹介" : s.status === "finished" ? "終了" : (PHASE_JA[s.phase] || s.phase);
-  $("chip-listen").classList.toggle("on", s.speaking);
-  $("chip-listen").lastChild.textContent = s.mode === "voice" ? (s.speaking ? "発話中" : "沈黙 " + Math.floor(s.silence) + "秒") : "テキスト";
-  $("chip-ai").classList.toggle("ai", s.ai_speaking || s.thinking);
-  $("chip-ai").lastChild.textContent = s.ai_speaking ? "AI発話中" : s.thinking ? "AI判断中…" : "AI待機";
-  $("tg-speaker").checked = s.use_speaker_info;
-  $("intro-status").textContent = s.intro.current ? `自己紹介: ${s.intro.current}さん` : (s.intro.enrolled.length ? `声の登録: ${s.intro.enrolled.join("・")}` : "");
-
-  // 入力欄の話者
-  const optKey = JSON.stringify(s.names);
-  if (optKey !== speakerOptsKey) { $("in-speaker").innerHTML = speakerOptions(Object.keys(s.names)[0]); speakerOptsKey = optKey; }
-
-  // 議論ログ(変化があったときだけ描き直す。select 操作中は保持)
-  const logKey = JSON.stringify(s.utterances.map((u) => [u.id, u.speaker_id, u.text]));
-  if (logKey !== lastLogKey && !document.activeElement?.classList?.contains("relabel")) {
-    const box = $("log"); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
-    box.innerHTML = s.utterances.map((u) => u.source === "ai"
-      ? `<div class="utt ai"><span class="t">${mmss(u.t)}</span><span class="who">AI</span><span>${esc(u.text)}</span></div>`
-      : `<div class="utt"><span class="t">${mmss(u.t)}</span><span><select class="relabel" data-id="${u.id}">${speakerOptions(u.speaker_id)}</select>${u.speaker_id === "unknown" ? "" : ""}</span><span>${esc(u.text)}${u.conf < 0.7 && u.speaker_id !== "unknown" ? ' <span class="lowconf">(低確信)</span>' : ""}</span></div>`).join("");
-    box.querySelectorAll(".relabel").forEach((el) => el.onchange = () => { post("/api/relabel", { id: +el.dataset.id, speaker_id: el.value }); el.blur(); });
-    if (atBottom) box.scrollTop = box.scrollHeight;
-    lastLogKey = logKey;
-  }
-  $("partial").textContent = s.partial ? "… " + s.partial : "";
-
-  // 発言量
-  const max = Math.max(1, ...s.stats.map((x) => x.total_speech_sec));
-  $("stats").innerHTML = s.stats.map((x) => `<div class="bar-row"><span>${esc(x.label || x.speaker_id)}</span>
-    <div class="bar"><div style="width:${(x.total_speech_sec / max) * 100}%"></div></div>
-    <span class="meta">${Math.round(x.total_speech_sec)}秒・${x.turns}回${x.since_last_spoke_sec == null ? "・未発言" : ""}</span></div>`).join("");
-  $("reliability").textContent = `話者識別の信頼度 ${Math.round(s.reliability * 100)}%(直近の発話のうち話者を特定できた割合)` + (s.use_speaker_info ? "" : " / 話者情報オフ: 全体への呼びかけのみ");
-
-  // 議論の状態
-  const a = s.analysis;
-  $("health").textContent = HEALTH_JA[a.health] || a.health; $("health").className = "health " + a.health;
-  $("summary").textContent = a.recent_summary || "";
-  const li = (arr) => (arr || []).map((x) => `<li>${esc(x)}</li>`).join("") || '<li style="list-style:none;color:var(--muted)">—</li>';
-  $("issues").innerHTML = li(a.issues); $("conflicts").innerHTML = li(a.conflicts);
-  $("agreements").innerHTML = li(a.agreements); $("missing").innerHTML = li(a.missing_perspectives);
-
-  // AI の判断
-  const decKey = JSON.stringify(s.ticks.map((d) => [d.t, d.action, d.overridden]));
-  if (decKey !== lastDecKey) {
-    $("decisions").innerHTML = s.ticks.slice().reverse().filter((d) => !d.gate.startsWith("blocked")).map((d) => {
-      const acted = d.action !== "no_intervention" && !(d.overridden || "").startsWith("発話取りやめ");
-      const cls = acted ? "act" : (d.overridden || "").startsWith("発話取りやめ") ? "cancel" : "";
-      return `<div class="dec ${cls}"><div class="head"><span>${mmss(d.t)}</span><span class="action">${ACTION_JA[d.action] || d.action}</span>
-        <span>${esc(d.trigger)}</span><span>${d.latency ? d.latency.toFixed(1) + "s" : ""}</span></div>
-        <div class="why">${esc(d.reasoning)}</div>${d.speech ? `<div class="speech">「${esc(d.speech)}」</div>` : ""}
-        ${d.overridden ? `<div class="head">ルール層: ${esc(d.overridden)}</div>` : ""}</div>`;
-    }).join("");
-    lastDecKey = decKey;
-  }
-  $("count").textContent = `介入 ${s.interventions} 回`;
-  $("events").innerHTML = s.events.map(esc).join("<br>");
-}
-
+/* ---------- 起動 ---------- */
+fetch("/api/info").then((r) => r.json()).then((info) => {
+  ui.info = info; ui.mode = info.default_mode; syncMode(); modeHint(); fillSliders(info.presets.A); syncPreset();
+});
+let first = true;
 function connect() {
   const ws = new WebSocket(`ws://${location.host}/ws`);
   ws.onmessage = (ev) => {
-    snap = JSON.parse(ev.data);
-    if (!seen && snap.status && snap.status !== "idle") $("setup").classList.add("hidden");
-    seen = true;
-    render();
+    const s = JSON.parse(ev.data);
+    if (first) {
+      first = false;
+      if (s.status === "running" || s.status === "intro") {  // 再読み込み時は進行画面に戻る
+        ui.config = { theme: s.theme, minutes: s.duration / 60, names: Object.values(s.names), purpose: s.purpose, preset: s.preset };
+        ui.started = true; snap = s; renderReady(); show("s-session");
+      } else show("s-purpose");
+    }
+    // 進行画面で「開始」を押したあとのセッションだけを表示する(前回のセッションの残りは出さない)
+    if (!$("s-session").classList.contains("active") || !ui.started || !s.theme) return;
+    snap = s; render();
   };
   ws.onclose = () => setTimeout(connect, 1000);
 }

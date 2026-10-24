@@ -43,6 +43,8 @@ class DiscussionState:
     names_confirmed: set[str] = field(default_factory=set)
     warned_thresholds: set[float] = field(default_factory=set)
     speaking_now: bool = False  # VAD による発話中フラグ
+    pauses: list[tuple[float, float]] = field(default_factory=list)  # 一時停止した区間(時計の値)
+    paused_at: float | None = None  # 一時停止中なら開始時刻
     _next_id: int = 0
 
     def __post_init__(self) -> None:
@@ -98,8 +100,25 @@ class DiscussionState:
         return [u for u in self.utterances if u.source == "human"]
 
     # ---------- 時間 ----------
+    def _paused_between(self, a: float, b: float) -> float:
+        """[a, b] のうち一時停止していた秒数。"""
+        spans = list(self.pauses) + ([(self.paused_at, b)] if self.paused_at is not None else [])
+        return sum(max(0.0, min(b, e) - max(a, s)) for s, e in spans)
+
+    def pause(self, now: float) -> None:
+        if self.paused_at is None:
+            self.paused_at = now
+
+    def resume(self, now: float) -> None:
+        if self.paused_at is not None:
+            self.pauses.append((self.paused_at, now))
+            self.paused_at = None
+
     def elapsed(self, now: float) -> float:
-        return max(0.0, now - self.start_time) if self.started else 0.0
+        """GD 開始からの経過秒数(一時停止の時間は含めない)。"""
+        if not self.started:
+            return 0.0
+        return max(0.0, now - self.start_time - self._paused_between(self.start_time, now))
 
     def remaining(self, now: float) -> float:
         return max(0.0, self.duration_sec - self.elapsed(now)) if self.started else self.duration_sec
@@ -108,7 +127,7 @@ class DiscussionState:
         """最後の発話(人間・AI問わず)終了からの経過秒数。"""
         ended = [u.end_time for u in self.utterances if u.end_time <= now]
         last = max(ended) if ended else (self.start_time if self.started else now)
-        return max(0.0, now - last)
+        return max(0.0, now - last - self._paused_between(last, now))
 
     def is_speaking(self, now: float) -> bool:
         """VAD の発話中フラグ、または最後の発話終了直後の短い間。"""
