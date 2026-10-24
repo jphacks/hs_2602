@@ -612,6 +612,8 @@ class Engine:
                 threading.Thread(target=self._bot_turn, args=(persona, reason, addressed_id, gen), daemon=True).start()
 
     def _bot_pick(self, now: float) -> tuple[Persona, str, int] | None:
+        if self.agent and self.agent.pending_request is not None:
+            return None  # 進行役への依頼には進行役が答える(AI 参加者が先に答えない)
         return pick_bot(
             self.state, self.personas, self.bot_mode, now, self._last_bot_end, self._bot_answered_id, len(self.cfg.names),
             self._interval, self._threshold_cache,

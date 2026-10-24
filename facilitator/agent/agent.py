@@ -13,13 +13,18 @@ from facilitator.agent.prompts import PHASE_BEHIND_NOTES, build_output_schema, b
 from facilitator.discussion_types import get_discussion_type
 from facilitator.llm.base import LLMClient, LLMError
 from facilitator.logging import TickLogger
-from facilitator.models import AI_SPEAKER, UNKNOWN, UNLIMITED_SEC, Action, AgentOutput, Decision, TickRecord
+from facilitator.models import AI_SPEAKER, UNKNOWN, UNLIMITED_SEC, Action, AgentOutput, Decision, TickRecord, Utterance
 from facilitator.agent.content_check import content_flags
+from facilitator.agent.request_detect import detect_request
 from facilitator.policy import CONTENT_ACTIONS, ContentInitiative, InterventionPolicy, level_settings, levels, session_policy
 from facilitator.state import DiscussionState
 
 # ルール層だけが発動させるアクション(LLM が自発的に選ぶことはできない)
 RULE_ONLY = {Action.start_gd, Action.time_warning, Action.close_gd}
+# 進行支援のアクション(停滞時の段階で「まず進行支援」にあたる)
+PROCESS_ACTIONS = {
+    Action.ask_question, Action.organize_issues, Action.compare_criteria, Action.invite_all, Action.invite_person,
+}
 FREE_ACTIONS = [
     Action.no_intervention,
     Action.ask_question,
@@ -83,6 +88,9 @@ class FacilitatorAgent:
         self.off_topic_streak = 0  # 直近の LLM 判断で、続けて脱線(off_topic)と判断した回数
         self.content_log: list[tuple[float, Action, str | None]] = []  # 内容支援を行った (時刻, アクション, 許可の理由)
         self.content_reason: str | None = None  # 直近の _gate で内容支援を許可した理由
+        self.support_step = 0  # 停滞が続く間の支援の段階(0: なし / 1: 進行支援をした / 2: ヒントを出した / 3: 具体案を出した)
+        self.pending_request: Utterance | None = None  # まだ応じていない、進行役への依頼の候補
+        self._scanned_id = -1  # 依頼を探し終えた発言 id
 
     def _param(self, key: str) -> Any:
         """介入ポリシーの段階で変わる判断条件。段階が上書きしていなければ settings の値。"""
@@ -113,7 +121,8 @@ class FacilitatorAgent:
                     f"残り約{int(remaining // 60)}分{int(remaining % 60)}秒です。time_warning を選んでください。",
                 )
 
-        if since is not None and since < s.cooldown_sec:
+        # 進行役への依頼にはクールダウン中でも応じる(1つの依頼につき1回。発話中・2秒の間の条件は変えない)
+        if since is not None and since < s.cooldown_sec and self.pending_request is None:
             return "blocked:cooldown", [], None
         if st.silence_sec(now) < s.min_silence_for_intervention_sec:
             return "blocked:short_pause", [], None
@@ -132,14 +141,42 @@ class FacilitatorAgent:
     # ================= 内容支援(介入ポリシー⑥) =================
     def _content_actions(self, now: float) -> tuple[list[Action], str | None]:
         """いま許可する内容支援のアクションと、その理由。範囲(⑥-A)の外のアクションはどの理由でも許可しない。
-        - proactive: 自発的な支援が「積極的」なら offer_hint だけ(具体案は依頼か停滞の段階を踏んだときだけ)
-        自発的な支援には、内容支援どうしの間隔と、1回の GD での上限をかける。"""
+        - request: 進行役への依頼があれば、範囲の中のアクションをすべて(自発性の設定によらない)
+        - stalled: 自発性が「停滞時のみ」以上で、前回の判断が停滞なら、段階を踏む。進行支援をした後なら offer_hint、
+          ヒントを出した後なら propose_idea(具体案まで のとき)
+        - proactive: 自発性が「積極的」なら、停滞していなくても offer_hint だけ(具体案は依頼か停滞の段階を踏んだときだけ)
+        自発的な支援(stalled / proactive)には、内容支援どうしの間隔と、1回の GD での上限をかける。"""
         p = self.policy
         if not p.content_support:
             return [], None
-        if p.content_initiative == ContentInitiative.proactive and self._spontaneous_ok(now):
+        if self.pending_request is not None:
+            return p.content_actions, "request"
+        if p.content_initiative == ContentInitiative.none or not self._spontaneous_ok(now):
+            return [], None
+        if self.state.analysis.health == "stalled":
+            ladder = [a for a, step in ((Action.offer_hint, 1), (Action.propose_idea, 2)) if self.support_step >= step]
+            ladder = [a for a in ladder if a in p.content_actions]
+            if ladder:
+                return ladder, "stalled"
+        if p.content_initiative == ContentInitiative.proactive:
             return [Action.offer_hint], "proactive"
         return [], None
+
+    def _scan_requests(self, now: float) -> None:
+        """新しい人間の発言から、進行役への依頼の候補を探す(内容支援が有効なときだけ)。古い依頼は見送る。"""
+        st = self.state
+        if not self.policy.content_support:
+            return
+        bots = [st.speaker_names.get(b, "") for b in st.bot_ids]
+        for u in st.utterances:
+            if u.id <= self._scanned_id or u.end_time > now:
+                continue
+            self._scanned_id = max(self._scanned_id, u.id)
+            if u.source == "human" and detect_request(u.text, bots):
+                self.pending_request = u
+        r = self.pending_request
+        if r is not None and now - r.end_time > self.settings.request_expire_sec:
+            self.pending_request = None
 
     def _spontaneous_ok(self, now: float) -> bool:
         spont = [t for t, _a, reason in self.content_log if reason != "request"]
@@ -223,7 +260,13 @@ class FacilitatorAgent:
             "quiet_member_sec": self._param("quiet_member_sec"),
             "quiet_members": self._quiet_members(now) if usable else [],
             "stall_silence_sec": self._param("silence_trigger_sec"),  # モック LLM が停滞とみなす沈黙の長さ
+            "request": self._request_line() if self.pending_request is not None else None,
         }
+
+    def _request_line(self) -> str:
+        st, u = self.state, self.pending_request
+        who = st.speaker_names[u.speaker_id] if u.speaker_id in st.names_confirmed else u.speaker_id
+        return f"[{_mmss(st.elapsed(u.start_time))}] {who}: {u.text}"
 
     def _quiet_members(self, now: float) -> list[str]:
         """④: quiet_member_sec 以上発言していない人間の参加者(AI 参加者は含めない)。0 なら示さない。
@@ -334,6 +377,9 @@ class FacilitatorAgent:
         st.record_intervention(now, d)
         if d.action in CONTENT_ACTIONS:
             self.content_log.append((now, d.action, content_reason))
+        if st.analysis.health == "stalled":  # 停滞が続く間の支援の段階: 進行支援 → ヒント → 具体案
+            step = {Action.offer_hint: 2, Action.propose_idea: 3}.get(d.action, 1 if d.action in PROCESS_ACTIONS else 0)
+            self.support_step = max(self.support_step, step)
         if d.action == Action.time_warning:
             for th in self._warn_thresholds():
                 if remaining_before <= th:
@@ -347,6 +393,8 @@ class FacilitatorAgent:
         (実時間モードで、LLM の応答待ちの間に誰かが話し始めていないかを確認するため)。"""
         self.last_tick_time = now
         st = self.state
+        self._scan_requests(now)
+        request = self.pending_request
         gate, allowed, note = self._gate(now)
         raw_action, overridden = None, None
         _, gap, behind = self.phase_status(now)  # 判断前(前回判断のフェーズ)の値を記録する
@@ -372,6 +420,8 @@ class FacilitatorAgent:
                 raw_action = out.decision.action.value
                 st.analysis = out.analysis
                 self.off_topic_streak = self.off_topic_streak + 1 if out.analysis.health == "off_topic" else 0
+                if out.analysis.health != "stalled":
+                    self.support_step = 0  # 停滞が終わったら、支援の段階を最初に戻す
                 st.update_phase(out.analysis.phase, self.dtype.keys, now)
                 decision, overridden = self._validate(out.decision, allowed, now)
             except (LLMError, ValidationError) as e:
@@ -383,6 +433,8 @@ class FacilitatorAgent:
                     decision = Decision(reasoning="LLM失敗のため見送り")
                 overridden = f"LLM失敗: {type(e).__name__}: {str(e)[:80]}"
 
+        if llm_called and request is not None:
+            self.pending_request = None  # 1つの依頼には1回だけ判断させる(依頼でないと LLM が判断した場合も)
         latency = self.clock.monotonic() - t0
         record = TickRecord(
             time=now,
@@ -455,6 +507,9 @@ class FacilitatorAgent:
         if silence < s.min_silence_for_intervention_sec:
             self.skipped_due = "short_silence" if due else None
             return None  # 短い間では分析しない(定期分析のタイマーを無駄に消費しない)
+        self._scan_requests(now)
+        if self.pending_request is not None:
+            return "request"  # 進行役への依頼(内容支援が有効なときだけ検出する)
         trigger_sec = self._param("silence_trigger_sec")
         if silence >= trigger_sec and (last is None or now - last >= trigger_sec):
             return "silence"

@@ -1,0 +1,23 @@
+id: 23_request
+title: 参加者どうしの質問と、進行役への明示的な依頼
+theme: 次の学園祭の企画を決めよう
+purpose: general
+discussion_type: idea_generation
+duration_sec: 600
+start_elapsed: 120
+initial_phase: divergence
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+policy: {preset: general_gw}
+# 参加者どうしの質問・AI を話題にした発言は依頼ではない。「AIさん、〜ヒントもらえますか?」だけが進行役への依頼(期待は仮説)
+utterances:
+  - {t: 120, d: 4, s: speaker_1, c: 0.9, text: 学園祭の企画、何がいいですかね。}
+  - {t: 125, d: 4, s: speaker_2, c: 0.88, text: AIを使った占いの企画とかどうですか？}
+  - {t: 130, d: 4, s: speaker_1, c: 0.9, text: はなこさん、他に何かやりたいことあります？}
+  - {t: 137, d: 5, s: speaker_2, c: 0.88, text: うーん、体験型の企画とかやってみたいです。}
+  - {t: 143, d: 4, s: speaker_3, c: 0.9, text: 体験型いいですね。でも具体的には…。}
+  - {t: 148, d: 3, s: speaker_4, c: 0.86, text: うーん…。}
+  - {t: 152, d: 4, s: speaker_3, c: 0.9, text: AIさん、何かヒントもらえますか？}
+checkpoints:
+  - {at: 136.5, expect: [no_intervention], why: 参加者どうしの質問への回答待ち。AI を話題にした発言も依頼ではない}
+  - {at: 158.5, when: {content_scope: [hint, concrete]}, expect: [offer_hint, propose_idea], forbid: [no_intervention], why: 進行役への明示的な依頼。範囲の中で応じる}
+  - {at: 158.5, when: {content_scope: none}, expect: [no_intervention, ask_question, organize_issues], why: 内容支援なし。依頼の検出もせず、案や観点は出さない}

@@ -1,0 +1,33 @@
+id: 24_stall_ladder
+title: 停滞が続くときの段階的な支援(進行支援 → ヒント → 具体案)
+theme: 次の学園祭の企画を決めよう
+purpose: general
+discussion_type: idea_generation
+duration_sec: 900
+start_elapsed: 120
+initial_phase: divergence
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+policy: {preset: general_gw}
+# 停滞が3回続く。1回目は進行支援だけ、2回目はヒントまで、3回目(内容支援の間隔120秒の後)は具体案まで許可される(ルール層)。
+# 範囲(content_scope)を変えて流す: --set content_scope=concrete など(期待は仮説)
+utterances:
+  - {t: 120, d: 4, s: speaker_1, c: 0.9, text: 企画を考えましょうか。}
+  - {t: 125, d: 4, s: speaker_2, c: 0.88, text: そうですね…何がいいかな。}
+  - {t: 131, d: 3, s: speaker_3, c: 0.9, text: うーん…。}
+  - {t: 136, d: 3, s: speaker_4, c: 0.86, text: 思いつかないですね。}
+  - {t: 162, d: 4, s: speaker_1, c: 0.9, text: 去年と同じだとつまらないですよね。}
+  - {t: 168, d: 3, s: speaker_2, c: 0.88, text: そうなんですよね…。}
+  - {t: 173, d: 3, s: speaker_3, c: 0.9, text: うーん、何か新しいこと…。}
+  - {t: 178, d: 2, s: speaker_4, c: 0.86, text: …。}
+  - {t: 212, d: 4, s: speaker_1, c: 0.9, text: 体験できるものがいいのかな。}
+  - {t: 218, d: 3, s: speaker_2, c: 0.88, text: たしかに。でも何を…。}
+  - {t: 240, d: 3, s: speaker_3, c: 0.9, text: うーん…。}
+  - {t: 270, d: 3, s: speaker_4, c: 0.86, text: 難しいですね。}
+  - {t: 300, d: 3, s: speaker_1, c: 0.9, text: 何かきっかけがあればなあ。}
+  - {t: 315, d: 2, s: speaker_2, c: 0.88, text: うーん。}
+checkpoints:
+  - {at: 150, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention, offer_hint, propose_idea], why: 1回目の停滞。まず進行支援(内容支援はまだ許可されない)}
+  - {at: 200, when: {content_scope: [hint, concrete]}, expect: [offer_hint, ask_question, organize_issues], forbid: [no_intervention, propose_idea], why: 進行支援の後も止まっている。ヒントまで許可される}
+  - {at: 200, when: {content_scope: none}, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention], why: 内容支援なし。進行支援を続ける}
+  - {at: 330, when: {content_scope: concrete}, expect: [propose_idea, offer_hint, ask_question], forbid: [no_intervention], why: ヒントの後も止まっている。具体案まで許可される}
+  - {at: 330, when: {content_scope: hint}, expect: [offer_hint, ask_question, organize_issues], forbid: [no_intervention, propose_idea], why: ヒントまでの設定なので具体案は出さない}

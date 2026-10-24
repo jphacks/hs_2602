@@ -360,6 +360,11 @@ def build_user_prompt(ctx: dict[str, Any]) -> str:
         lines.append(f"\n# 発言の少ない参加者(目安: {ctx['quiet_member_sec']:.0f}秒以上発言なし)")
         lines.extend(f"- {q}" for q in ctx["quiet_members"])
 
+    if ctx.get("request"):  # 内容支援が有効で、進行役への依頼の候補があるときだけ
+        lines.append("\n# 進行役への依頼(の可能性がある発言)")
+        lines.append(f"- {ctx['request']}")
+        lines.append(REQUEST_NOTE)
+
     lines.append("\n# 許可されたアクション")
     lines.append(", ".join(ctx["allowed_actions"]))
     if ctx.get("phase_behind"):
@@ -373,6 +378,11 @@ PHASE_BEHIND_NOTE = (
     "前回判断のフェーズのままなら、目標フェーズより遅れていて時間が不足しています。"
     "今回判断し直したフェーズでも遅れていて、しかも議論が進んでいない場合に限り、次の段階に進むかを問いかけてよいです。"
     "介入は必須ではありません。参加者が自分たちで進めているなら見守ってください。"
+)
+REQUEST_NOTE = (
+    "進行役のあなたへの依頼なら、許可されたアクションの範囲で応じてください"
+    "(考えるヒントやアイデアを求められたら内容支援、時間や進め方の質問なら進行支援)。"
+    "参加者どうしのやり取りや、AI を話題にしているだけなら no_intervention を選んでください。"
 )
 # 介入ポリシー①の段階ごとの「時間配分」の注意(標準は PHASE_BEHIND_NOTE)
 PHASE_BEHIND_NOTES = {
