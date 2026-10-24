@@ -122,7 +122,11 @@ def main() -> None:
             out("")
             out(vs.summary())
             path = vs.report.write(s.log_dir)
+            txt = path.with_suffix(".txt")
             out(f"📄 まとめログ: {path.relative_to(ROOT)}")
+            out(f"📄 テキスト版: {txt.relative_to(ROOT)}")
+            # transcript.txt は次のセッションで上書きされるので、セッションごとのテキスト版を logs/ に残す
+            txt.write_text(TRANSCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
             status("done")
             return
         out(f"  … 経過 {vs.et(vs.t) // 60:02.0f}:{vs.et(vs.t) % 60:04.1f} / 残り {st.remaining(vs.t) // 60:02.0f}:{st.remaining(vs.t) % 60:02.0f}")
