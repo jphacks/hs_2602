@@ -38,6 +38,8 @@ class StartReq(BaseModel):
     preset: str = "A"
     custom: dict[str, float] = {}
     discussion_type: str | None = None  # 就活GDは必須(problem_solving / idea_generation / decision_making / planning)
+    ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
+    ai_level: int = 2  # AI 参加者のレベル(1〜3)
 
 
 class TextReq(BaseModel):
@@ -62,8 +64,9 @@ def index() -> FileResponse:
 @app.post("/api/start")
 def start(req: StartReq) -> dict:
     names = [n.strip() for n in req.names if n.strip()][:4]
-    if len(names) < 2:
-        return {"ok": False, "error": "参加者は2〜4人を入力してください"}
+    ai_count = max(0, min(3, req.ai_count))
+    if not names or len(names) + ai_count < 2:
+        return {"ok": False, "error": "人間1人以上、合計2人以上にしてください"}
     purpose = req.purpose if req.purpose in ("job", "general") else "job"
     if purpose == "job" and not req.theme.strip():
         return {"ok": False, "error": "テーマを入力してください"}
@@ -85,6 +88,8 @@ def start(req: StartReq) -> dict:
                 preset=req.preset if req.preset in ("A", "B", "custom") else "A",
                 custom=req.custom,
                 discussion_type=req.discussion_type or None,
+                ai_count=ai_count,
+                ai_level=req.ai_level if req.ai_level in (1, 2, 3) else 2,
             )
         )
     except Exception as e:  # マイク・STT の起動失敗を UI に伝える(キー等の秘匿情報は含まれない)

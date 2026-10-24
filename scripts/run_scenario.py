@@ -17,6 +17,7 @@ from config import load_settings  # noqa: E402
 from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
 from facilitator.llm.factory import make_llm  # noqa: E402
 from facilitator.logging import TickLogger  # noqa: E402
+from facilitator.report import RecordingLLM, TestReport  # noqa: E402
 from facilitator.scenario import load_scenario  # noqa: E402
 from facilitator.state import DiscussionState  # noqa: E402
 
@@ -28,7 +29,7 @@ def mmss(sec: float) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("scenario", type=Path)
-    ap.add_argument("--llm", choices=["anthropic", "mock"])
+    ap.add_argument("--llm", choices=["anthropic", "mock", "handoff"])
     ap.add_argument("--until", type=float, help="再生終了時刻(経過秒)。省略時は最後の発話+30秒")
     ap.add_argument("--step", type=float, default=0.5, help="仮想時計の刻み(秒)")
     args = ap.parse_args()
@@ -39,12 +40,16 @@ def main() -> None:
     for sid, name in (sc.get("participants") or {}).items():
         state.set_speaker_name(sid, name, confirmed=sc.get("names_confirmed", True))
     t = float(sc.get("start_elapsed", 0))
-    agent = FacilitatorAgent(state, make_llm(settings), settings, logger=TickLogger(settings.log_dir, sc["id"]),
+    llm = RecordingLLM(make_llm(settings))
+    agent = FacilitatorAgent(state, llm, settings, logger=TickLogger(settings.log_dir, sc["id"]),
                              discussion_type=sc.get("discussion_type"))
     if t > 0:
         state.started, state.start_time = True, 0.0
         state.observed_phase = sc.get("initial_phase", "")
         state.phase_observed_at = 0.0 if state.observed_phase else None
+    report = TestReport("シナリオ再生(scripts/run_scenario.py)", sc["id"], {"LLM": llm.name})
+    sec = report.section(sc["title"])
+    sec.state, sec.info = state, {"テーマ": sc["theme"]}
     pending = sorted(sc["utterances"], key=lambda u: u["t"] + u["d"])
     end = args.until or max(u["t"] + u["d"] for u in pending) + 30
 
@@ -61,7 +66,9 @@ def main() -> None:
         if agent.skipped_due:
             skipped.setdefault(agent.skipped_due, []).append(t)
         if trigger:
+            m = llm.mark()
             rec = agent.tick(t, trigger)
+            sec.decision(rec, llm.since(m))
             d = rec.decision
             tag = f"{trigger}/{rec.gate}"
             if d.action.value == "no_intervention":
@@ -81,6 +88,7 @@ def main() -> None:
                 spans.append(f"{mmss(start)}-{mmss(a)}")
                 start = b
         print(f"定期分析の時刻だったが見送り({label.get(reason, reason)}): 計{len(ts) * args.step:.1f}秒 [{', '.join(spans)}]")
+    print(f"📄 まとめログ: {report.write(settings.log_dir)}")
 
 
 if __name__ == "__main__":

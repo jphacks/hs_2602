@@ -110,6 +110,18 @@ button { cursor: pointer; }
 .person-in { position: relative; }
 .person-in .dot { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; }
 .person-in .input { padding-left: 34px; }
+.counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.count { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px 12px 18px; border-radius: 16px;
+  background: rgba(0,0,0,.2); border: 1px solid var(--line); }
+.count b { display: block; font-size: 15px; } .count small { color: var(--muted); font-size: 12px; }
+.stepper { display: flex; align-items: center; gap: 4px; }
+.stepper button { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--card); font-size: 18px; line-height: 1; }
+.stepper button:disabled { opacity: .3; pointer-events: none; }
+.stepper output { width: 34px; text-align: center; font-family: var(--num); font-size: 20px; font-weight: 700; }
+.count.ai output { color: var(--ai); }
+.botmode { margin-top: 10px; padding: 10px 14px; border-radius: 12px; font-size: 13px; color: var(--muted);
+  background: var(--ai-soft); border: 1px solid rgba(179,157,255,.25); }
+.botmode b { color: var(--ai); }
 .presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .preset { text-align: left; padding: 16px 18px; border-radius: 16px; background: rgba(0,0,0,.2); border: 1px solid var(--line); transition: .2s; }
 .preset b { display: block; font-size: 15px; }
@@ -180,6 +192,15 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--muted); }
 .badge.quiet { color: var(--warn); border-color: rgba(245,184,75,.4); }
 .badge.voice { color: var(--ok); border-color: rgba(79,216,165,.35); }
+.badge.ai { color: var(--ai); border-color: rgba(179,157,255,.45); }
+.pcard.bot .avatar { background: linear-gradient(135deg, #f1ebff, var(--c)); }
+.pcard.bot .avatar svg { width: 30px; height: 30px; }
+.stance { display: inline-block; margin-top: 6px; font-size: 12px; padding: 2px 10px; border-radius: 999px; color: var(--c);
+  border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
+.opinion { color: var(--faint); font-size: 12px; margin-top: 6px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; }
+.msg.bot .bubble { border-color: color-mix(in srgb, var(--c) 35%, transparent); }
+.msg .aitag { font-size: 10.5px; padding: 0 6px; border-radius: 6px; color: var(--ai); border: 1px solid rgba(179,157,255,.45); }
 .logbox { display: flex; flex-direction: column; min-height: 0; padding: 22px 22px 16px; }
 .logbox .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .logbox .head h2 { margin: 0; font-size: 15px; letter-spacing: .06em; color: var(--muted); }
@@ -240,7 +261,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .hidden { display: none !important; }
 
 @media (max-width: 980px) {
-  .purpose-grid, .presets, .toggles { grid-template-columns: 1fr; }
+  .purpose-grid, .presets, .toggles, .counts { grid-template-columns: 1fr; }
   .people { grid-template-columns: 1fr; }
   .stage { grid-template-columns: 1fr; height: auto; }
   .logbox { min-height: 60vh; }
@@ -313,8 +334,24 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
       </div>
 
       <div class="field">
-        <span class="label">参加者(話す順・ニックネーム可、2〜4人)</span>
+        <span class="label">参加者の人数</span>
+        <div class="counts">
+          <div class="count"><div><b>人間</b><small>実際に話す人(1〜4人)</small></div>
+            <div class="stepper" data-key="humans" data-min="1" data-max="4"><button type="button">−</button><output>3</output><button type="button">＋</button></div></div>
+          <div class="count ai"><div><b>AI 参加者</b><small>立場を割り当てて議論に加わる(0〜3人)</small></div>
+            <div class="stepper" data-key="bots" data-min="0" data-max="3"><button type="button">−</button><output>0</output><button type="button">＋</button></div></div>
+        </div>
+        <span class="label">人間の参加者の名前(話す順・ニックネーム可)</span>
         <div class="people" id="people"></div>
+        <div class="botmode hidden" id="botmode"></div>
+        <div class="hidden" id="levelbox" style="margin-top:14px">
+          <span class="label">AI 参加者のレベル</span>
+          <div class="presets" id="levels">
+            <button type="button" class="preset" data-v="1"><b><span class="tag">1</span>高校生程度</b><span>身近な例から考える。発言の間隔 4〜6秒</span></button>
+            <button type="button" class="preset" data-v="2"><b><span class="tag">2</span>大学生程度</b><span>根拠や前提を確かめて比べる。間隔 3〜5秒</span></button>
+            <button type="button" class="preset" data-v="3"><b><span class="tag">3</span>大学生程度・速め</b><span>レベル2と同じ思考力。間隔 2〜4秒</span></button>
+          </div>
+        </div>
       </div>
 
       <div class="field">
@@ -360,7 +397,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   <div class="bar">
     <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span></div>
     <div class="theme" id="b-theme">—</div>
-    <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-type"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-llm"></span></div>
+    <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-type"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
     <div class="actions">
       <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>開始</button>
       <button class="btn" id="btn-pause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>一時停止</span></button>
@@ -434,6 +471,8 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 <script>
 const $ = (id) => document.getElementById(id);
 const COLORS = ["#3ec6e0", "#ff8fb1", "#f5c451", "#5fe0a8"];
+const AI_COLORS = ["#b39dff", "#8fb6ff", "#ffad8f"];
+const ROBOT = '<svg viewBox="0 0 24 24" fill="none" stroke="#2a1f55" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 16h5"/></svg>';
 const ACTION_JA = {
   no_intervention: "見守り", start_gd: "開始の説明", ask_question: "問いかけ", redirect_topic: "軌道修正",
   organize_issues: "論点整理", compare_criteria: "比較基準の提示", invite_all: "全体へ発言を促す",
@@ -449,7 +488,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const mmss = (s) => { s = Math.max(0, Math.floor(s)); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
 const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then((r) => r.json());
 
-const ui = { purpose: "job", dtype: null, minutes: 8, mode: "voice", preset: "A", info: null, config: null, started: false };
+const ui = { purpose: "job", dtype: null, minutes: 8, mode: "voice", preset: "A", info: null, config: null, started: false, humans: 3, bots: 0, level: 2 };
 let snap = null, logKey = "", decKey = "", doneShown = false;
 
 function show(id) {
@@ -489,7 +528,30 @@ function renderTypes() {
 }
 
 $("people").innerHTML = [0, 1, 2, 3].map((i) => `<div class="person-in"><span class="dot" style="background:${COLORS[i]}"></span>
-  <input class="input f-name" placeholder="${i + 1}人目${i === 3 ? "(任意)" : ""}"></div>`).join("");
+  <input class="input f-name" placeholder="${i + 1}人目"></div>`).join("");
+function botModeOf(h, b) { return b === 0 ? "" : (h <= 2 || b >= h ? "active" : "reserved"); }
+function syncCounts() {
+  document.querySelectorAll("#levels .preset").forEach((b) => b.onclick = () => { ui.level = +b.dataset.v; syncCounts(); });
+document.querySelectorAll(".stepper").forEach((st) => {
+    const v = ui[st.dataset.key], [minus, plus] = st.querySelectorAll("button");
+    st.querySelector("output").textContent = v;
+    minus.disabled = v <= +st.dataset.min; plus.disabled = v >= +st.dataset.max;
+  });
+  document.querySelectorAll(".person-in").forEach((el, i) => el.classList.toggle("hidden", i >= ui.humans));
+  const m = botModeOf(ui.humans, ui.bots);
+  $("botmode").classList.toggle("hidden", !m);
+  $("levelbox").classList.toggle("hidden", !ui.bots);
+  document.querySelectorAll("#levels .preset").forEach((b) => b.classList.toggle("on", +b.dataset.v === ui.level));
+  $("botmode").innerHTML = m === "active"
+    ? `<b>練習相手モード</b> — 人間が少ないので、AI 参加者は会話に間があれば積極的に意見を出します。開始時に AI ${ui.bots}人分の異なる立場を自動で割り当てます。`
+    : `<b>控えめモード</b> — 人間が主役なので、AI 参加者は名指しされたときと長い沈黙のときだけ話します。開始時に AI ${ui.bots}人分の異なる立場を自動で割り当てます。`;
+}
+document.querySelectorAll(".stepper").forEach((st) => {
+  const [minus, plus] = st.querySelectorAll("button");
+  minus.onclick = () => { ui[st.dataset.key] = Math.max(+st.dataset.min, ui[st.dataset.key] - 1); syncCounts(); };
+  plus.onclick = () => { ui[st.dataset.key] = Math.min(+st.dataset.max, ui[st.dataset.key] + 1); syncCounts(); };
+});
+syncCounts();
 
 function seg(id, key, after) {
   const el = $(id);
@@ -513,10 +575,10 @@ function fillSliders(from) {
 }
 CUSTOM.forEach((k) => $("c-" + k).oninput = (e) => { e.target.nextElementSibling.textContent = `${e.target.value}秒`; });
 function syncPreset() {
-  document.querySelectorAll(".preset").forEach((b) => b.classList.toggle("on", b.dataset.v === ui.preset));
+  document.querySelectorAll("#presets .preset").forEach((b) => b.classList.toggle("on", b.dataset.v === ui.preset));
   $("advanced").classList.toggle("open", ui.preset === "custom");
 }
-document.querySelectorAll(".preset").forEach((b) => b.onclick = () => {
+document.querySelectorAll("#presets .preset").forEach((b) => b.onclick = () => {
   ui.preset = b.dataset.v;
   if (ui.preset !== "custom" && ui.info) fillSliders(ui.info.presets[ui.preset]);
   syncPreset();
@@ -525,16 +587,17 @@ $("back-purpose").onclick = () => show("s-purpose");
 
 $("setup-form").onsubmit = (ev) => {
   ev.preventDefault();
-  const names = [...document.querySelectorAll(".f-name")].map((e) => e.value.trim()).filter(Boolean);
+  const names = [...document.querySelectorAll(".f-name")].slice(0, ui.humans).map((e) => e.value.trim());
   if (!$("f-theme").value.trim()) { $("f-err").textContent = "テーマを入力してください"; return; }
   if (ui.purpose === "job" && !ui.dtype) { $("f-err").textContent = "議論タイプを選択してください"; return; }
-  if (names.length < 2) { $("f-err").textContent = "参加者を2人以上入力してください"; return; }
+  if (names.some((n) => !n)) { $("f-err").textContent = `人間の参加者の名前を${ui.humans}人分入力してください`; return; }
+  if (names.length + ui.bots < 2) { $("f-err").textContent = "合計2人以上にしてください(AI 参加者を追加できます)"; return; }
   $("f-err").textContent = "";
   const custom = {}; CUSTOM.forEach((k) => custom[k] = +$("c-" + k).value);
   ui.config = {
     theme: $("f-theme").value.trim(), minutes: +$("f-min").value || 8, names, mode: ui.mode,
     intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
-    purpose: ui.purpose, preset: ui.preset, custom, discussion_type: ui.dtype || null,
+    purpose: ui.purpose, preset: ui.preset, custom, discussion_type: ui.dtype || null, ai_count: ui.bots, ai_level: ui.level,
   };
   snap = null; logKey = ""; decKey = ""; doneShown = false; ui.started = false;
   renderReady();
@@ -542,11 +605,24 @@ $("setup-form").onsubmit = (ev) => {
 };
 
 /* ---------- 3. 進行 ---------- */
-function names() {
-  if (snap && snap.names) return snap.names;
-  const o = {}; (ui.config?.names || []).forEach((n, i) => o[`speaker_${i + 1}`] = n); return o;
+// 参加者の一覧(人間 + AI 参加者)。開始前は設定から、開始後はサーバーの状態から作る
+function people() {
+  if (snap && snap.names) {
+    const bots = Object.fromEntries((snap.participants || []).map((p) => [p.id, p]));
+    return Object.entries(snap.names).map(([id, name]) => ({ id, name, bot: bots[id] || null }));
+  }
+  const c = ui.config || { names: [], ai_count: 0 };
+  const list = c.names.map((n, i) => ({ id: `speaker_${i + 1}`, name: n, bot: null }));
+  for (let j = 0; j < (c.ai_count || 0); j++) list.push({ id: `speaker_${c.names.length + j + 1}`, name: `AI 参加者 ${j + 1}`, bot: { stance: "開始時に立場を生成", opinion: "" } });
+  return list;
 }
-function color(sid) { const i = +String(sid).split("_")[1] - 1; return COLORS[i] || "#6b8796"; }
+function names() { return Object.fromEntries(people().map((p) => [p.id, p.name])); }
+function humanIds() { return people().filter((p) => !p.bot).map((p) => p.id); }
+function color(sid) {
+  const ps = people(), bi = ps.filter((p) => p.bot).findIndex((p) => p.id === sid);
+  if (bi >= 0) return AI_COLORS[bi % AI_COLORS.length];
+  const i = +String(sid).split("_")[1] - 1; return COLORS[i] || "#6b8796";
+}
 function llmChip(llm) {
   const mock = llm === "mock";
   $("b-llm").textContent = mock ? "モックAI(トークン消費なし)" : String(llm || "").replace("anthropic:", "");
@@ -559,6 +635,7 @@ function renderReady() {
   $("b-purpose").textContent = c.purpose === "general" ? "就活以外" : "就活";
   $("b-type").textContent = typeLabel(c.discussion_type);
   $("b-preset").textContent = PRESET_JA[c.preset] || "";
+  $("b-level").textContent = c.ai_count ? `AI レベル${c.ai_level}` : "";
   llmChip(ui.info?.llm);
   $("c-limit").textContent = c.minutes; $("c-time").textContent = "00:00"; $("c-remain").textContent = "";
   $("c-bar").style.width = "0"; $("clock").classList.remove("low", "over");
@@ -568,7 +645,7 @@ function renderReady() {
   $("decs").innerHTML = '<div class="empty">まだ判断はありません</div>';
   renderPhases("", "");
   renderPeople();
-  $("in-speaker").innerHTML = Object.entries(names()).map(([id, n]) => `<option value="${id}">${esc(n)}</option>`).join("");
+  $("in-speaker").innerHTML = people().filter((p) => !p.bot).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
 }
 
 // phase: 実際のフェーズ(AI の判断、塗り)/ target: 経過時間から見た目標フェーズ(点線)
@@ -582,21 +659,23 @@ function renderPhases(phase, target) {
 }
 
 function renderPeople() {
-  const n = names(), ids = Object.keys(n);
+  const ps = people(), n = names(), ids = ps.map((p) => p.id), botOf = Object.fromEntries(ps.map((p) => [p.id, p.bot]));
   const stats = Object.fromEntries((snap?.stats || []).map((s) => [s.speaker_id, s]));
   const max = Math.max(1, ...Object.values(stats).map((s) => s.total_speech_sec));
   const sum = Object.values(stats).reduce((a, s) => a + s.total_speech_sec, 0) || 1;
   const enrolled = new Set(snap?.intro?.enrolled || []);
-  $("pcards").style.gridTemplateColumns = `repeat(${ids.length}, minmax(0, 1fr))`;
+  $("pcards").style.gridTemplateColumns = `repeat(${ids.length <= 4 ? ids.length : 3}, minmax(0, 1fr))`;
   $("pcards").innerHTML = ids.map((id) => {
     const s = stats[id] || { total_speech_sec: 0, turns: 0, since_last_spoke_sec: null };
     const active = snap?.active_speaker === id;
-    const quiet = snap?.started && (s.since_last_spoke_sec == null || s.since_last_spoke_sec > 90);
+    const bot = botOf[id];
+    const quiet = !bot && snap?.started && (s.since_last_spoke_sec == null || s.since_last_spoke_sec > 90);
     const share = snap?.started ? Math.round((s.total_speech_sec / sum) * 100) : 0;
-    return `<div class="glass pcard ${active ? "active" : ""}" style="--c:${color(id)}">
-      <div class="badges">${enrolled.has(n[id]) ? '<span class="badge voice">声 ✓</span>' : ""}${quiet ? `<span class="badge quiet">${s.since_last_spoke_sec == null ? "未発言" : "しばらく発言なし"}</span>` : ""}</div>
-      <div class="avatar">${esc(n[id].slice(0, 1))}</div>
+    return `<div class="glass pcard ${active ? "active" : ""} ${bot ? "bot" : ""}" style="--c:${color(id)}">
+      <div class="badges">${bot ? '<span class="badge ai">AI</span>' : ""}${enrolled.has(n[id]) ? '<span class="badge voice">声 ✓</span>' : ""}${quiet ? `<span class="badge quiet">${s.since_last_spoke_sec == null ? "未発言" : "しばらく発言なし"}</span>` : ""}</div>
+      <div class="avatar">${bot ? ROBOT : esc(n[id].slice(0, 1))}</div>
       <div class="name">${esc(n[id])}</div>
+      ${bot ? `<div class="stance">${esc(bot.stance)}</div>${bot.opinion ? `<div class="opinion" title="${esc(bot.opinion)}">${esc(bot.opinion)}</div>` : ""}` : ""}
       <div class="meta">${s.turns}回 · ${Math.round(s.total_speech_sec)}秒 · ${share}%</div>
       <div class="share"><div style="width:${(s.total_speech_sec / max) * 100}%"></div></div>
     </div>`;
@@ -610,6 +689,7 @@ function render() {
   $("b-purpose").textContent = s.purpose === "general" ? "就活以外" : "就活";
   $("b-type").textContent = s.discussion_type || "";
   $("b-preset").textContent = PRESET_JA[s.preset] || "";
+  $("b-level").textContent = s.ai_level ? `AI レベル${s.ai_level}` : "";
   llmChip(s.llm);
 
   // 時計
@@ -645,7 +725,7 @@ function render() {
   $("ov-intro").classList.toggle("show", s.status === "intro" && !!s.intro.current);
   if (s.status === "intro") {
     $("intro-title").textContent = s.intro.current ? `${s.intro.current}さん、どうぞ` : "自己紹介";
-    $("intro-list").innerHTML = Object.values(s.names).map((n) => `<span class="${s.intro.enrolled.includes(n) ? "ok" : n === s.intro.current ? "now" : ""}">${s.intro.enrolled.includes(n) ? "✓ " : ""}${esc(n)}</span>`).join("");
+    $("intro-list").innerHTML = (s.humans || Object.keys(s.names)).map((id) => s.names[id]).map((n) => `<span class="${s.intro.enrolled.includes(n) ? "ok" : n === s.intro.current ? "now" : ""}">${s.intro.enrolled.includes(n) ? "✓ " : ""}${esc(n)}</span>`).join("");
   }
   // 終了
   if (s.status === "finished" && s.started && !doneShown) {
@@ -664,10 +744,14 @@ function renderLog(s) {
   logKey = key;
   const box = $("log"); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
   if (!s.utterances.length) { box.innerHTML = '<div class="empty">発言がここに表示されます</div>'; return; }
-  const opts = (sel) => Object.entries(s.names).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${esc(n)}</option>`).join("")
+  const humans = new Set(s.humans || Object.keys(s.names));
+  const opts = (sel) => Object.entries(s.names).filter(([id]) => humans.has(id)).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${esc(n)}</option>`).join("")
     + `<option value="unknown" ${sel === "unknown" ? "selected" : ""}>不明</option>`;
   box.innerHTML = s.utterances.map((u) => u.source === "ai"
     ? `<div class="msg ai"><div class="av">AI</div><div><div class="who"><b>AI ファシリテーター</b><time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`
+    : u.source === "bot"
+    ? `<div class="msg bot" style="--c:${color(u.speaker_id)}"><div class="av" style="background:linear-gradient(135deg,#f1ebff,var(--c))">${ROBOT}</div>
+       <div><div class="who"><b style="color:var(--c)">${esc(s.names[u.speaker_id] || "AI")}</b><span class="aitag">AI参加者</span><time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`
     : `<div class="msg" style="--c:${u.speaker_id === "unknown" ? "#6b8796" : color(u.speaker_id)}"><div class="av">${esc((s.names[u.speaker_id] || "?").slice(0, 1))}</div>
        <div><div class="who"><select class="relabel" data-id="${u.id}" title="話者を修正">${opts(u.speaker_id)}</select><time>${mmss(u.t)}</time>
        ${u.conf < 0.7 && u.speaker_id !== "unknown" ? '<span class="low">低確信</span>' : ""}</div><div class="bubble">${esc(u.text)}</div></div></div>`).join("");
@@ -690,6 +774,7 @@ function renderDecisions(s) {
 $("btn-start").onclick = async () => {
   if (!ui.config) return show("s-setup");
   $("btn-start").disabled = true;
+  if (ui.config.ai_count) $("ai-state").textContent = "AI 参加者の立場を準備しています…";
   const r = await post("/api/start", ui.config);
   if (!r.ok) { $("btn-start").disabled = false; $("ai-state").textContent = r.error; return; }
   ui.started = true; doneShown = false;
@@ -725,7 +810,7 @@ function connect() {
     if (first) {
       first = false;
       if (s.status === "running" || s.status === "intro") {  // 再読み込み時は進行画面に戻る
-        ui.config = { theme: s.theme, minutes: s.duration / 60, names: Object.values(s.names), purpose: s.purpose, preset: s.preset, discussion_type: s.discussion_type_key };
+        ui.config = { theme: s.theme, minutes: s.duration / 60, names: (s.humans || []).map((id) => s.names[id]), ai_count: (s.participants || []).length, purpose: s.purpose, preset: s.preset, discussion_type: s.discussion_type_key };
         ui.started = true; snap = s; renderReady(); show("s-session");
       } else show("s-purpose");
     }

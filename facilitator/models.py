@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 UNKNOWN = "unknown"
+UNLIMITED_SEC = 10**6  # 制限時間なし(この値以上なら「制限時間なし」として扱う)
 AI_SPEAKER = "ai"
 
 
@@ -19,7 +20,7 @@ class Utterance(BaseModel):
     start_time: float
     end_time: float
     speaker_confidence: float = 0.0
-    source: Literal["human", "ai"] = "human"
+    source: Literal["human", "ai", "bot"] = "human"  # bot = AI 参加者(進行役の AI とは別)
 
     @property
     def duration(self) -> float:
@@ -77,6 +78,7 @@ class SpeakerStats(BaseModel):
     total_speech_sec: float
     turns: int
     since_last_spoke_sec: float | None  # None = 一度も発言なし
+    is_bot: bool = False  # AI 参加者
 
 
 class TickRecord(BaseModel):

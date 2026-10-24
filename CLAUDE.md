@@ -29,6 +29,33 @@ Observe → Understand → Decide → Act の単一エージェント(ルール 
 - 外部サービスはインターフェースの背後に置く: `facilitator/llm/`(anthropic / mock)。STT・TTS・話者識別も同じ方針で `facilitator/stt/` と `facilitator/tts/` に追加する(Step 2〜)。
 - 設定はすべて `config.py`。
 
+## AI 参加者(2026-10-24 追加)
+- 設定画面で「人間の人数(1〜4)」と「AI 参加者の人数(0〜3)」を入力する。speaker_id は人間が speaker_1..H、AI 参加者がその後ろ。
+- 開始時に、テーマに対して互いに異なる立場を AI の人数分 LLM で生成し、1人ずつ割り当てる(`facilitator/participants.py`)。発言は立場 + 直近の議論から1〜2文で生成する。
+- 話すタイミングは人数比で自動的に決まる(`engine.py` の `_bot_pick`):
+  - **練習相手モード**(人間2人以下、または AI が人間と同数以上): 2.5秒の間で発言する。AI 参加者どうしは6秒以上あけ、人間を挟まずに続けて話すのは2回まで。
+  - **控えめモード**(人間が主役): 名指しされたときと、9秒以上の沈黙のとき(前回の発言から40秒以上)だけ話す。
+  - 名指し = 進行役の個人指名、または参加者の発言に名前が含まれること(進行役の開始の説明などは含めない)。
+  - 進行役が人間を指名した直後は、その人の応答を6秒待つ。生成を待つ間に人間が話し始めたら取りやめる。
+- **誰が話すか**: 名指しされたときは呼ばれた人。それ以外は `participants.choose_and_generate` で、発言の生成と同じ1回の呼び出しの中で文脈から選ぶ(反論・質問を向けられた人 > 話題に立場がかかわる人 > 発言の少ない人。直前の話者は除く)。選んだ理由(why)はログに残す。2026-10-24 のユーザー参加テストで「たろうがサクラに反論したのにリクが答えた」という違和感の指摘を受けて変更。
+- 発言は source="bot" で記録する。発言量の集計には含めるが、話者識別の信頼度の計算からは外す。声は AI ごとに変える(mac: Eddy / Shelley / Reed、Windows: Ichiro / Ayumi / Haruka)。発話はロックで1つずつ行う。
+
+## チャット経由モード(handoff)
+- `LLM_PROVIDER=handoff`: `facilitator/llm/handoff_llm.py`。プロンプトを `exchange/request_NNN.md` に書き出し、`exchange/response_NNN.json` を待つ(既定のタイムアウト 900 秒、`HANDOFF_TIMEOUT_SEC`)。`exchange/` は gitignore 済み。
+- ユーザーに「チャット経由で流して」と頼まれたら、評価やシナリオ再生を `--llm handoff` で背景実行し、リクエストを読んで、システムプロンプトの方針どおりに判断した JSON を返事として書く。
+
+## チャット GD(チャットの中だけで模擬 GD を行う)
+ユーザーに「チャット GD を始めて」と頼まれたときの手順:
+1. `exchange/` を空にしてから、背景で起動する: `.venv/bin/python scripts/chat_gd.py --theme "…" --humans たろう,はなこ --ai 2 --minutes 5`(既定は `--llm handoff`)
+2. 起動直後に AI 参加者の立場の生成リクエストが来るので答える。`exchange/status.txt` が `idle` になったら、`exchange/transcript.txt` の新しい行をユーザーに見せる
+3. ユーザーの発言ごとに `exchange/inbox.jsonl` に1行追記する: `{"type":"say","speaker":"たろう","text":"…","pause":8}`
+   - 「はなこ: …」のように名前があればその人の発言。名前がなければ最初の人間
+   - 「(沈黙15秒)」→ `{"type":"wait","sec":15}`、「終了」→ `{"type":"end"}`
+4. status が `busy` の間に `exchange/request_NNN.md` が出たら、種類(進行役の判断 / AI参加者の発言)に合わせてシステムプロンプトどおりに答える。status が `idle`(または `done`)になったら、新しい transcript の行をそのまま見せる
+5. `done` になったら結果のまとめ(transcript 末尾)を見せる。まとめログは `logs/report-*-chat.md`
+6. 表示は1発言ずつ: 新しい transcript の行が出るたびに(リクエストに答える前に)ユーザーへ見せる。まとめて出さない
+7. 人間なし(AI 参加者のみ)の議論: `--humans` を省略して `--ai 4` などで起動し、起動後すぐ `{"type":"end"}` を送って最後まで流す
+
 ## 技術選定(2026-10 時点の調査。詳細は README)
 - LLM: Claude Opus 5.5(`claude-opus-5-5`)、`effort: low`、構造化出力(`output_config.format` の json_schema)、`fallbacks: "default"`(beta `server-side-fallback-2026-07-01`)。SDK は `anthropic` 1.13。
 - STT + 話者分離: AssemblyAI Universal-3.6 Pro Realtime(`speaker_labels`、`max_speakers`、SpeakerRevision イベント)を予定。日本語 × ストリーミング × 話者分離の組み合わせは**未確認**で、Step 2 で実測する。比較候補は Soniox。

@@ -47,7 +47,7 @@ class Settings:
     phase_behind_late_fraction: float = 0.6  # 経過がこの割合以上
 
     # --- LLM ---
-    llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic")  # anthropic | mock
+    llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic")  # anthropic | mock | handoff(チャット経由)
     llm_model: str = os.getenv("LLM_MODEL", "claude-opus-5-5")
     llm_effort: str = os.getenv("LLM_EFFORT", "low")
     llm_max_tokens: int = 8000

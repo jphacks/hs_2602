@@ -141,6 +141,61 @@ def test_pause_excludes_time():
     assert st.remaining(200) == pytest.approx(460)
 
 
+@pytest.mark.parametrize(
+    "humans,bots,mode",
+    [(1, 1, "active"), (2, 1, "active"), (3, 3, "active"), (3, 1, "reserved"), (4, 2, "reserved"), (3, 0, "")],
+)
+def test_bot_mode_by_headcount(humans, bots, mode):
+    from facilitator.engine import Engine, SessionConfig
+
+    e = Engine(load_settings(), llm_provider="mock")  # セッションごとの設定にもモックを引き継ぐ
+    # 就活GDは議論タイプの指定が必須
+    e.start(SessionConfig("t", 1, [f"h{i}" for i in range(humans)], mode="text", tts=False, ai_count=bots, discussion_type="problem_solving"))
+    try:
+        assert e.bot_mode == mode
+        assert len(e.personas) == bots
+        assert e.state.bot_ids == {f"speaker_{humans + i + 1}" for i in range(bots)}
+    finally:
+        e.stop()
+
+
+def _bot_state():
+    from facilitator.participants import Persona
+
+    s = load_settings()
+    st = DiscussionState(settings=s, theme="t", duration_sec=600)
+    st.started, st.start_time = True, 0.0
+    st.set_speaker_name("speaker_1", "たろう")
+    ps = [Persona("speaker_2", "ミサキ", "a", "a", "a"), Persona("speaker_3", "ユウ", "b", "b", "b")]
+    for p in ps:
+        st.set_speaker_name(p.speaker_id, p.name)
+        st.bot_ids.add(p.speaker_id)
+    return st, ps
+
+
+def test_bot_name_mention_only_counts_in_last_sentence():
+    from facilitator.participants import pick_bot
+
+    st, ps = _bot_state()
+    st.add_utterance("speaker_3", "私もミサキさんに近い考えです。たろうさんはどう思いますか？", 10, 20, 1.0, source="bot")
+    # ミサキは名指しされていない。たろう(人間)が名指しされたので AI 参加者は待つ
+    assert pick_bot(st, ps, "active", 22, 20, -1, 1) is None
+    # 6秒待ってもたろうが答えなければ、ほかの AI 参加者が話してよい
+    picked = pick_bot(st, ps, "active", 27, 20, -1, 1)
+    assert picked and "名指し" not in picked[1]
+
+
+def test_bot_chain_resets_after_facilitator():
+    from facilitator.participants import pick_bot
+
+    st, ps = _bot_state()
+    st.add_utterance("speaker_2", "意見A", 10, 15, 1.0, source="bot")
+    st.add_utterance("speaker_3", "意見B", 16, 20, 1.0, source="bot")
+    assert pick_bot(st, ps, "active", 30, 20, -1, 1) is None  # AI が2回続いた
+    st.add_utterance("ai", "どんな基準で比べますか？", 40, 45, 1.0, source="ai")
+    assert pick_bot(st, ps, "active", 48, 20, -1, 1) is not None  # 進行役の問いかけでリセット
+
+
 def test_close_gd_keeps_final_announcement_when_truncated():
     speech = "時間になりました。結論はAです。理由はBです。発表はCさんです。お疲れさまでした。"
     _, ag, _ = make(d("close_gd", speech))
