@@ -74,6 +74,9 @@ class VirtualSession:
         else:
             self.personas = generate_personas(llm, theme, purpose, ai_count, list(humans.values()), len(humans) + 1, level)
         sec.personas, sec.persona_call = self.personas, llm.since(m)
+        # 参加者の一覧(集計の対象)を、人間 + 実際の AI 参加者でそろえる(立場をファイルで渡した場合も)
+        st.speaker_ids = list(humans) + [p.speaker_id for p in self.personas]
+        settings.num_participants = len(st.speaker_ids)
         for p in self.personas:
             st.set_speaker_name(p.speaker_id, p.name, confirmed=True)
             st.bot_ids.add(p.speaker_id)
