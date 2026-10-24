@@ -16,7 +16,8 @@
   --accent: #3ec6e0; --accent-2: #2a8fb0; --accent-glow: rgba(62, 198, 224, 0.35);
   --ai: #b39dff; --ai-soft: rgba(179, 157, 255, 0.12); --ai-glow: rgba(179, 157, 255, 0.45);
   --warn: #f5b84b; --bad: #ff7a7a; --ok: #4fd8a5;
-  --radius: 22px; --radius-sm: 14px;
+  --tile: #0f2431; --tile-2: #14303f; --tile-line: rgba(255, 255, 255, 0.07);
+  --radius: 26px; --radius-sm: 14px; --gap: 14px;
   --font: "Noto Sans JP", "Hiragino Sans", system-ui, sans-serif;
   --num: "Inter", "Noto Sans JP", system-ui, sans-serif;
 }
@@ -24,10 +25,7 @@
 html, body { height: 100%; }
 body {
   margin: 0; color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.6;
-  background: radial-gradient(1200px 700px at 85% -10%, #164763 0%, transparent 60%),
-              radial-gradient(900px 600px at -10% 110%, #0f3a4f 0%, transparent 55%),
-              linear-gradient(180deg, var(--bg-1), var(--bg-0));
-  background-attachment: fixed; -webkit-font-smoothing: antialiased;
+  background: var(--bg-0); -webkit-font-smoothing: antialiased;
 }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -40,13 +38,6 @@ button { cursor: pointer; }
 .brand-mark { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center;
   background: linear-gradient(135deg, var(--accent), var(--ai)); box-shadow: 0 0 24px var(--accent-glow); }
 .brand-mark svg { width: 17px; height: 17px; }
-.steps { display: flex; gap: 8px; align-items: center; color: var(--faint); font-size: 13px; }
-.steps span { display: inline-flex; align-items: center; gap: 6px; }
-.steps i { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-style: normal;
-  border: 1px solid var(--line-strong); font-family: var(--num); font-size: 12px; }
-.steps .on { color: var(--text); } .steps .on i { background: var(--accent); border-color: var(--accent); color: #04202b; font-weight: 700; }
-.steps .sep { width: 24px; height: 1px; background: var(--line-strong); }
-.topline { display: flex; justify-content: space-between; align-items: center; padding: 22px 36px; }
 .btn { border: 1px solid var(--line-strong); background: var(--card); padding: 10px 18px; border-radius: 12px;
   font-weight: 600; transition: .2s; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; flex: none; }
 .btn:hover { background: var(--card-strong); border-color: rgba(255,255,255,.3); }
@@ -60,41 +51,48 @@ button { cursor: pointer; }
   background: var(--card); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .chip:empty { display: none; }
 .chip.warn { color: var(--warn); border-color: rgba(245,184,75,.35); }
-.glass { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+/* ベント: 角の丸い不透明なタイルを同じ間隔で格子状に並べる */
+.glass, .tile { background: var(--tile); border: 1px solid var(--tile-line); border-radius: var(--radius); }
+.tile { padding: 22px 24px; min-width: 0; }
+.bento { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); max-width: 1000px; margin: 0 auto; padding: 24px 24px 48px; }
+.span-2 { grid-column: span 2; } .span-3 { grid-column: span 3; } .span-4 { grid-column: span 4; }
+.tile-hero { display: flex; flex-direction: column; justify-content: space-between; gap: 18px;
+  background: linear-gradient(135deg, var(--tile-2), var(--tile)); }
+.tile-hero h1 { margin: 0; font-size: clamp(26px, 3.4vw, 38px); line-height: 1.25; }
+.hero-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.mode-pill { padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; color: var(--accent); background: rgba(62,198,224,.12); }
+.tile-steps { display: grid; place-items: center; }
+.steps-v { display: flex; flex-direction: column; gap: 10px; color: var(--faint); font-weight: 600; }
+.steps-v span { display: flex; align-items: center; gap: 10px; }
+.steps-v i { width: 26px; height: 26px; border-radius: 9px; display: grid; place-items: center; font-style: normal; font-family: var(--num);
+  font-size: 13px; background: var(--tile-2); }
+.steps-v .on { color: var(--text); } .steps-v .on i { background: var(--accent); color: #04202b; }
+.tile-ai { background: linear-gradient(160deg, rgba(179,157,255,.10), var(--tile) 60%); }
 
-/* ---------- 1. 用途 ---------- */
-.hero { max-width: 1040px; margin: 6vh auto 0; padding: 0 28px; }
+/* ---------- 1. モード選択 ---------- */
 .eyebrow { color: var(--accent); font-weight: 600; letter-spacing: .14em; font-size: 12.5px; }
-.hero h1 { font-size: clamp(28px, 4vw, 42px); line-height: 1.3; margin: 10px 0 8px; letter-spacing: .01em; }
-.hero p.lead { color: var(--muted); margin: 0 0 40px; }
-.purpose-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
-.purpose { position: relative; text-align: left; padding: 34px 32px 30px; border-radius: 26px; overflow: hidden;
-  background: var(--card); border: 1px solid var(--line); transition: transform .25s, border-color .25s, box-shadow .25s; }
-.purpose::before { content: ""; position: absolute; inset: -40% -20% auto auto; width: 280px; height: 280px; border-radius: 50%;
-  background: radial-gradient(circle, var(--glow, var(--accent-glow)), transparent 70%); opacity: .5; transition: .3s; }
-.purpose:hover { transform: translateY(-4px); border-color: var(--line-strong); box-shadow: 0 24px 60px -24px rgba(0,0,0,.6); }
-.purpose:hover::before { opacity: .95; }
-.purpose .icon { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; margin-bottom: 22px;
-  background: rgba(255,255,255,.07); border: 1px solid var(--line-strong); }
+.bento-mode { margin-top: 4vh; }
+.purpose { position: relative; text-align: left; padding: 28px 28px 26px; min-height: 230px; overflow: hidden;
+  display: flex; flex-direction: column; transition: transform .25s, border-color .25s, background .25s; }
+.purpose:hover { transform: translateY(-3px); border-color: var(--line-strong); background: var(--tile-2); }
+.purpose .icon { width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; margin-bottom: auto;
+  background: rgba(62,198,224,.12); }
+.purpose.general .icon { background: var(--ai-soft); }
 .purpose .icon svg { width: 28px; height: 28px; }
-.purpose h2 { margin: 0; font-size: 23px; }
-.purpose .sub { color: var(--accent); font-weight: 600; margin: 2px 0 14px; }
-.purpose ul { margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 14px; }
-.purpose li { padding-left: 18px; position: relative; margin: 4px 0; }
-.purpose li::before { content: ""; position: absolute; left: 0; top: .72em; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
-.purpose .go { position: absolute; right: 26px; bottom: 26px; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
-  border: 1px solid var(--line-strong); transition: .25s; }
-.purpose:hover .go { background: var(--accent); color: #04202b; border-color: var(--accent); }
-.purpose.general { --glow: var(--ai-glow); }
+.purpose h2 { margin: 28px 0 0; font-size: 26px; }
+.purpose .sub { color: var(--accent); font-weight: 600; margin-top: 2px; }
 .purpose.general .sub { color: var(--ai); }
+.purpose .go { position: absolute; right: 24px; top: 24px; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--tile-2); transition: .25s; }
+.purpose:hover .go { background: var(--accent); color: #04202b; }
+.purpose.general:hover .go { background: var(--ai); }
 
 /* ---------- 2. 設定 ---------- */
-.setup-wrap { max-width: 860px; margin: 2vh auto 60px; padding: 0 28px; }
-.setup-card { padding: 34px 36px; }
-.setup-card h1 { margin: 6px 0 24px; font-size: 28px; }
-.field { margin-bottom: 24px; }
-.field > label, .field .label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 8px; letter-spacing: .04em; }
+.bento-setup { align-items: start; }
+/* 詳細を開いたら、スタイルと詳細をそれぞれ横いっぱいにする(隣に空きを作らない) */
+.bento-setup:has(#f-detail:checked) .tile-style, .bento-setup:has(#f-detail:checked) .detail { grid-column: span 4; }
+.bento-setup:has(#f-detail:checked) .choice2 { grid-template-columns: repeat(2, minmax(0, 220px)); }
+.tile > .label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 8px; letter-spacing: .04em; }
 .input { width: 100%; padding: 13px 16px; border-radius: var(--radius-sm); background: rgba(0,0,0,.22); border: 1px solid var(--line);
   outline: none; transition: .2s; }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(62,198,224,.15); }
@@ -130,7 +128,7 @@ button { cursor: pointer; }
 .preset.on { border-color: var(--accent); background: rgba(62,198,224,.08); box-shadow: 0 0 0 3px rgba(62,198,224,.12); }
 .advanced { overflow: hidden; max-height: 0; opacity: 0; transition: max-height .45s ease, opacity .3s, margin .3s; }
 .advanced.open { max-height: 900px; opacity: 1; margin-top: 14px; }
-.adv-inner { padding: 22px; border-radius: 18px; border: 1px solid var(--line); background: rgba(0,0,0,.18); }
+.adv-inner { padding: 6px 0 0; }
 .adv-inner h3 { margin: 0 0 14px; font-size: 14px; color: var(--muted); }
 .slider { display: grid; grid-template-columns: 200px 1fr 64px; gap: 14px; align-items: center; margin: 12px 0; font-size: 14px; }
 .slider output { font-family: var(--num); text-align: right; color: var(--accent); font-weight: 600; }
@@ -150,7 +148,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   background: rgba(0,0,0,.22); }
 .unitbox input { width: 56px; background: transparent; border: 0; outline: none; text-align: right; font-family: var(--num); font-size: 18px; }
 .unitbox span { color: var(--muted); }
-.choice2 { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 12px; }
+.choice2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .choice2 button { padding: 16px; border-radius: 14px; border: 1px solid var(--line-strong); background: rgba(0,0,0,.2); font-weight: 700; font-size: 15px; transition: .2s; }
 .choice2 button.on { border-color: var(--accent); background: rgba(62,198,224,.1); box-shadow: 0 0 0 3px rgba(62,198,224,.12); }
 .detail-head { display: flex !important; align-items: center; justify-content: space-between; cursor: pointer; }
@@ -167,19 +165,21 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .choice3 button { padding: 12px 8px; border-radius: 14px; border: 1px solid var(--line-strong); background: rgba(0,0,0,.2); font-weight: 700; font-size: 15px; transition: .2s; }
 .choice3 button small { display: block; font-weight: 500; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 .choice3 button.on { border-color: var(--ai); background: var(--ai-soft); box-shadow: 0 0 0 3px rgba(179,157,255,.15); }
-.setup-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 28px; }
+.setup-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.setup-actions .btn { padding: 14px 22px; border-radius: 16px; }
 .err { color: var(--bad); font-size: 13.5px; }
 .hint { color: var(--faint); font-size: 12.5px; margin-top: 6px; }
 
 /* ---------- 3. 進行 ---------- */
-.bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 16px; padding: 14px 28px;
-  background: rgba(7,24,34,.72); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
+.bar { position: sticky; top: 10px; z-index: 10; display: flex; align-items: center; gap: 16px; padding: 12px 14px 12px 20px; margin: 14px 14px 0;
+  background: var(--tile); border: 1px solid var(--tile-line); border-radius: 22px; }
 .bar .theme { flex: 1; min-width: 0; font-weight: 700; font-size: 16.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bar .chips { display: flex; gap: 8px; }
 .bar .actions { display: flex; gap: 8px; }
-.stage { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; padding: 20px 28px 28px; height: calc(100vh - 68px); }
-.left { display: grid; grid-template-rows: auto 1fr; gap: 20px; min-height: 0; }
+.stage { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: var(--gap); padding: var(--gap); height: calc(100vh - 82px); }
+.left { display: grid; grid-template-rows: auto 1fr; gap: var(--gap); min-height: 0; }
 .clock { padding: 30px 34px 26px; position: relative; overflow: hidden; }
+.clock { background: linear-gradient(135deg, var(--tile-2), var(--tile)); }
 .clock::after { content: ""; position: absolute; right: -80px; top: -80px; width: 300px; height: 300px; border-radius: 50%;
   background: radial-gradient(circle, var(--accent-glow), transparent 70%); opacity: .45; pointer-events: none; }
 .clock .lab { color: var(--muted); font-size: 13px; letter-spacing: .12em; font-weight: 600; }
@@ -208,7 +208,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .ai-line .state { font-weight: 700; font-size: 14px; }
 .ai-line .say { color: var(--muted); font-size: 14px; margin-top: 2px; }
 /* 参加者カード: 同じ幅で始まり、発言量に応じて幅が伸び縮みする(高さは一定) */
-.people-row { display: flex; gap: 14px; min-height: 0; align-items: stretch; }
+.people-row { display: flex; gap: var(--gap); min-height: 0; align-items: stretch; }
 .pcard { flex: 1 1 0; min-width: 84px; padding: 22px 14px 18px; position: relative; text-align: center; overflow: hidden;
   transition: flex-grow .8s cubic-bezier(.2,.8,.2,1), border-color .3s, box-shadow .3s, transform .3s; }
 .pcard .name, .pcard .meta, .pcard .stance { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
@@ -276,8 +276,8 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .summary-grid div { padding: 14px; border-radius: 14px; background: rgba(0,0,0,.2); border: 1px solid var(--line); }
 .summary-grid b { display: block; font-family: var(--num); font-size: 26px; }
 .summary-grid span { color: var(--muted); font-size: 12.5px; }
-.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 92vw); z-index: 25; transform: translateX(105%); transition: transform .35s ease;
-  background: rgba(9,28,40,.96); border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+.drawer { position: fixed; top: 10px; right: 10px; bottom: 10px; width: min(440px, 92vw); z-index: 25; transform: translateX(110%); transition: transform .35s ease;
+  background: var(--tile); border: 1px solid var(--tile-line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; }
 .drawer.open { transform: none; box-shadow: -30px 0 80px rgba(0,0,0,.5); }
 .drawer header { display: flex; justify-content: space-between; align-items: center; padding: 20px 22px; border-bottom: 1px solid var(--line); }
 .drawer header h2 { margin: 0; font-size: 16px; }
@@ -295,7 +295,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .hidden { display: none !important; }
 
 @media (max-width: 980px) {
-  .purpose-grid, .presets, .toggles, .counts { grid-template-columns: 1fr; }
+  .presets, .toggles, .counts { grid-template-columns: 1fr; }
   .stepper2 { grid-template-columns: 40px 80px 40px; }
   .people-row { flex-wrap: wrap; } .pcard { flex-basis: 40%; }
   .people { grid-template-columns: 1fr; }
@@ -303,20 +303,23 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   .logbox { min-height: 60vh; }
   .slider { grid-template-columns: 1fr 64px; } .slider span { grid-column: 1 / -1; }
   .bar { flex-wrap: wrap; } .bar .chips { display: none; }
-  .topline { padding: 18px 20px; }
 }
 
+@media (max-width: 760px) {
+  .bento { grid-template-columns: minmax(0, 1fr); }
+  .bento > * { grid-column: 1 / -1 !important; }
+  .tile-steps { display: none; }
+}
 /* スマホ: 文字とタップ領域を大きく、説明は省く */
 @media (max-width: 600px) {
   body { font-size: 17px; }
-  .purpose ul, .steps { display: none; }
-  .purpose { padding: 22px; }
-  .purpose h2 { font-size: 26px; }
-  .purpose .sub { font-size: 16px; margin-bottom: 0; }
-  .setup-wrap { padding: 0 16px; }
-  .setup-card { padding: 24px 18px; }
-  .setup-card h1 { font-size: 26px; }
-  .field > label, .field .label { font-size: 16px; }
+  :root { --gap: 10px; --radius: 22px; }
+  .bento { padding: 14px 16px 36px; }
+  .bento-mode { margin-top: 0; }
+  .tile { padding: 20px 18px; }
+  .purpose { min-height: 190px; padding: 22px; }
+  .purpose .sub { font-size: 16px; }
+  .tile > .label { font-size: 16px; }
   .input { font-size: 17px; padding: 15px 16px; }
   .theme-row { flex-direction: column; }
   .theme-row .btn { font-size: 16px; padding: 14px; }
@@ -345,95 +348,92 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 
 <!-- ============ 1. モード選択 ============ -->
 <section class="screen" id="s-purpose">
-  <div class="topline">
-    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span>AI Facilitator</div>
-    <div class="steps"><span class="on"><i>1</i>モード</span><span class="sep"></span><span><i>2</i>設定</span><span class="sep"></span><span><i>3</i>進行</span></div>
-  </div>
-  <div class="hero">
-    <div class="eyebrow">AUTONOMOUS DISCUSSION FACILITATOR</div>
-    <h1>モード選択</h1>
-    <div class="purpose-grid">
-      <button class="purpose" data-mode="human">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#3ec6e0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.5"/><path d="M15.8 14.2c2.5-.3 4.3 1.3 4.8 4.3"/></svg></div>
-        <h2>人間だけ</h2>
-        <div class="sub">参加者は全員人間</div>
-        <ul><li>AI は進行役に徹する</li><li>停滞・脱線・発言の偏りに対応</li><li>答えは与えず、参加者の思考を尊重</li></ul>
-        <span class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-      </button>
-      <button class="purpose general" data-mode="ai">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#b39dff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 16h5"/></svg></div>
-        <h2>AI参加者あり</h2>
-        <div class="sub">AI も参加者として議論に加わる</div>
-        <ul><li>人数が足りないときの練習に</li><li>AI ごとに異なる立場を自動で割り当て</li><li>思考力のレベルを選べる</li></ul>
-        <span class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
-      </button>
+  <div class="bento bento-mode">
+    <div class="tile tile-hero span-3">
+      <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span>AI Facilitator</div>
+      <h1>モード選択</h1>
     </div>
+    <div class="tile tile-steps">
+      <div class="steps-v"><span class="on"><i>1</i>モード</span><span><i>2</i>設定</span><span><i>3</i>進行</span></div>
+    </div>
+    <button class="tile purpose span-2" data-mode="human">
+      <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#3ec6e0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.5"/><path d="M15.8 14.2c2.5-.3 4.3 1.3 4.8 4.3"/></svg></div>
+      <h2>人間だけ</h2>
+      <div class="sub">参加者は全員人間</div>
+      <span class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+    </button>
+    <button class="tile purpose general span-2" data-mode="ai">
+      <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="#b39dff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 16h5"/></svg></div>
+      <h2>AI参加者あり</h2>
+      <div class="sub">AI も参加者として議論に加わる</div>
+      <span class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+    </button>
   </div>
 </section>
 
 <!-- ============ 2. 設定 ============ -->
 <section class="screen" id="s-setup">
-  <div class="topline">
-    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span>AI Facilitator</div>
-    <div class="steps"><span class="on"><i>1</i>モード</span><span class="sep"></span><span class="on"><i>2</i>設定</span><span class="sep"></span><span><i>3</i>進行</span></div>
-  </div>
-  <div class="setup-wrap">
-    <form class="glass setup-card" id="setup-form" autocomplete="off">
-      <div class="eyebrow" id="mode-label">人間だけ</div>
-      <h1>ディスカッションの設定</h1>
-
-      <div class="field">
-        <label for="f-theme">テーマ</label>
-        <div class="theme-row">
-          <input class="input" id="f-theme" placeholder="例：大学の学食の混雑を改善するには？">
-          <button type="button" class="btn primary" id="btn-theme">自動生成</button>
-        </div>
+  <form class="bento bento-setup" id="setup-form" autocomplete="off">
+    <div class="tile tile-hero span-4">
+      <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span>AI Facilitator</div>
+      <div class="hero-row">
+        <h1>ディスカッションの設定</h1>
+        <span class="mode-pill" id="mode-label">人間だけ</span>
       </div>
+    </div>
 
-      <div class="field">
-        <span class="label">制限時間</span>
-        <div class="numrow" data-key="minutes" data-min="1" data-max="60" data-unit="分"></div>
+    <div class="tile span-4">
+      <label class="label" for="f-theme">テーマ</label>
+      <div class="theme-row">
+        <input class="input" id="f-theme" placeholder="例：大学の学食の混雑を改善するには？">
+        <button type="button" class="btn primary" id="btn-theme">自動生成</button>
       </div>
+    </div>
 
-      <div class="field">
-        <span class="label">参加者の人数</span>
-        <div class="numrow" data-key="humans" data-min="1" data-max="4" data-unit="人"></div>
+    <div class="tile span-2">
+      <span class="label">制限時間</span>
+      <div class="numrow" data-key="minutes" data-min="1" data-max="60" data-unit="分"></div>
+    </div>
+
+    <div class="tile span-2">
+      <span class="label">参加者の人数</span>
+      <div class="numrow" data-key="humans" data-min="1" data-max="4" data-unit="人"></div>
+    </div>
+
+    <div class="tile span-4">
+      <span class="label">名前</span>
+      <div class="people" id="people"></div>
+    </div>
+
+    <div class="tile tile-ai span-2 ai-only">
+      <span class="label">AI参加者</span>
+      <div class="numrow" data-key="bots" data-min="1" data-max="3" data-unit="人"></div>
+      <div class="botmode" id="botmode"></div>
+    </div>
+
+    <div class="tile tile-ai span-2 ai-only">
+      <span class="label">AI参加者のレベル</span>
+      <div class="choice3" id="seg-level">
+        <button type="button" data-v="1">レベル1<small>高校生</small></button>
+        <button type="button" data-v="2">レベル2<small>大学生</small></button>
+        <button type="button" data-v="3">レベル3<small>大学生・速め</small></button>
       </div>
+    </div>
 
-      <div class="field">
-        <span class="label">名前</span>
-        <div class="people" id="people"></div>
+    <div class="tile span-2 tile-style">
+      <span class="label">スタイル</span>
+      <div class="choice2" id="purpose">
+        <button type="button" data-v="job">就活</button>
+        <button type="button" data-v="general">就活以外</button>
       </div>
+    </div>
 
-      <div class="field ai-only">
-        <span class="label">AI参加者</span>
-        <div class="numrow" data-key="bots" data-min="1" data-max="3" data-unit="人"></div>
-        <div class="botmode" id="botmode"></div>
-      </div>
-
-      <div class="field ai-only">
-        <span class="label">AI参加者のレベル</span>
-        <div class="choice3" id="seg-level">
-          <button type="button" data-v="1">レベル1<small>高校生</small></button>
-          <button type="button" data-v="2">レベル2<small>大学生</small></button>
-          <button type="button" data-v="3">レベル3<small>大学生・速め</small></button>
-        </div>
-      </div>
-
-      <div class="field">
-        <span class="label">スタイル</span>
-        <div class="choice2" id="purpose">
-          <button type="button" data-v="job">就活</button>
-          <button type="button" data-v="general">就活以外</button>
-        </div>
-      </div>
-
-      <div class="field detail">
-        <label class="detail-head">
-          <span class="label" style="margin:0">詳細</span>
-          <span class="switch"><input type="checkbox" id="f-detail"><i></i></span>
-        </label>
-        <div class="advanced" id="detail-body">
+    <div class="tile span-2 detail" id="detail-tile">
+      <label class="detail-head">
+        <span class="label" style="margin:0">詳細</span>
+        <span class="switch"><input type="checkbox" id="f-detail"><i></i></span>
+      </label>
+      <div class="advanced" id="detail-body">
           <div class="adv-inner">
             <div id="knobs"></div>
             <h3 style="margin-top:22px">その他</h3>
@@ -446,15 +446,14 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
             </div>
           </div>
         </div>
-      </div>
+    </div>
 
-      <div class="setup-actions">
-        <button type="button" class="btn" id="back-purpose">← モード選択に戻る</button>
-        <span class="err" id="f-err"></span>
-        <button type="submit" class="btn primary">準備完了 →</button>
-      </div>
-    </form>
-  </div>
+    <div class="setup-actions span-4">
+      <button type="button" class="btn" id="back-purpose">← モード選択に戻る</button>
+      <span class="err" id="f-err"></span>
+      <button type="submit" class="btn primary">準備完了 →</button>
+    </div>
+  </form>
 </section>
 
 <!-- ============ 3. 進行 ============ -->
