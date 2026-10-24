@@ -44,6 +44,7 @@ class StartReq(BaseModel):
     discussion_type: str | None = None  # 就活GDは必須(problem_solving / idea_generation / decision_making / planning)
     ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
     ai_level: int = 2  # AI 参加者のレベル(1〜3)
+    ai_stances: list[str] = []  # AI 参加者ごとの立場(空文字は自動)
     knobs: dict[str, int] = {}  # 詳細の5項目(0=控えめ / 1=標準 / 2=積極的)
 
 
@@ -105,6 +106,7 @@ def start(req: StartReq) -> dict:
                 discussion_type=req.discussion_type or None,
                 ai_count=ai_count,
                 ai_level=req.ai_level if req.ai_level in (1, 2, 3) else 2,
+                ai_stances=[str(x).strip()[:20] for x in req.ai_stances[:ai_count]],
                 knobs={k: v for k, v in req.knobs.items() if k in STYLE_KNOBS and v in (0, 1, 2)},
             )
         )

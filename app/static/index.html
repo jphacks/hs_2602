@@ -354,6 +354,7 @@ body { font-size: 17px; }
 /* 議論タイプ: 2列。数が奇数のときは先頭(指定なし)を横いっぱいに */
 .type-grid button:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
 .type-grid button { font-size: 15px !important; }
+.sub-label { display: block; font-size: 13px !important; font-weight: 600; color: var(--muted); margin: 14px 0 8px; }
 </style>
 </head>
 <body>
@@ -419,6 +420,8 @@ body { font-size: 17px; }
     <div class="tile tile-ai span-2 ai-only">
       <span class="label">AI参加者</span>
       <div class="numrow" data-key="bots" data-min="1" data-max="3" data-unit="人"></div>
+      <span class="label sub-label">立場(空欄なら自動で決めます)</span>
+      <div class="people" id="stances"></div>
     </div>
 
     <div class="tile tile-ai span-2 ai-only">
@@ -584,6 +587,9 @@ document.querySelectorAll(".purpose").forEach((b) => b.onclick = () => {
 /* ---------- 2. 設定 ---------- */
 const LEVEL_NAMES = { 1: "やさしい", 2: "ふつう", 3: "むずかしい" };
 const KNOB_LEVELS = ["控えめ", "標準", "積極的"];
+// AI 参加者ごとの立場(空欄は自動)
+$("stances").innerHTML = [0, 1, 2].map((i) => `<div class="person-in stance-in"><span class="dot" style="background:${AI_COLORS[i]}"></span>
+  <input class="input f-stance" maxlength="20" placeholder="AI ${i + 1}人目の立場(例：${["コスト重視", "満足度重視", "手軽さ重視"][i]})"></div>`).join("");
 $("people").innerHTML = [0, 1, 2, 3].map((i) => `<div class="person-in"><span class="dot" style="background:${COLORS[i]}"></span>
   <input class="input f-name" placeholder="${i + 1}人目"></div>`).join("");
 
@@ -647,7 +653,8 @@ function syncSetup() {
     row.querySelector("input").value = v;
     minus.disabled = v <= +row.dataset.min; plus.disabled = v >= +row.dataset.max;
   });
-  document.querySelectorAll(".person-in").forEach((el, i) => el.classList.toggle("hidden", i >= ui.humans));
+  document.querySelectorAll("#people .person-in").forEach((el, i) => el.classList.toggle("hidden", i >= ui.humans));
+  document.querySelectorAll("#stances .person-in").forEach((el, i) => el.classList.toggle("hidden", i >= ui.bots));
   document.querySelectorAll(".ai-only").forEach((el) => el.classList.toggle("hidden", !ui.withAI));
   const on = (id, v) => $(id).querySelectorAll("button").forEach((b) => b.classList.toggle("on", String(v) === b.dataset.v));
   on("purpose", ui.purpose); on("seg-input", ui.input); on("seg-level", ui.level);
@@ -688,7 +695,8 @@ $("setup-form").onsubmit = (ev) => {
   ui.config = {
     theme: $("f-theme").value.trim(), minutes: ui.minutes, names, mode: ui.input,
     intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
-    purpose: ui.purpose, preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level, knobs: { ...ui.knobs },
+    purpose: ui.purpose, preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots,
+    ai_stances: [...document.querySelectorAll(".f-stance")].slice(0, bots).map((e) => e.value.trim()), ai_level: ui.level, knobs: { ...ui.knobs },
   };
   snap = null; logKey = ""; decKey = ""; doneShown = false; ui.started = false;
   renderReady();

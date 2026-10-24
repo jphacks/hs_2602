@@ -65,6 +65,7 @@ class SessionConfig:
     custom: dict[str, float] = field(default_factory=dict)
     ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
     ai_level: int | None = 2  # AI 参加者のレベル(1〜3)。思考力と発言の間隔が変わる。None なら従来の間隔
+    ai_stances: list[str] = field(default_factory=list)  # AI 参加者ごとの立場(主催者が指定。空文字は自動)
     knobs: dict[str, int] = field(default_factory=dict)  # 詳細の5項目(0=控えめ / 1=標準 / 2=積極的)
 
 
@@ -165,7 +166,7 @@ class Engine:
         self._interval = level_interval(self.ai_level)
         self._threshold_cache: dict[int, float] = {}
         self.personas = generate_personas(
-            llm, cfg.theme, cfg.purpose, bots, list(cfg.names), humans + 1, self.ai_level
+            llm, cfg.theme, cfg.purpose, bots, list(cfg.names), humans + 1, self.ai_level, cfg.ai_stances
         )
         for p in self.personas:
             self.state.set_speaker_name(p.speaker_id, p.name, confirmed=True)
