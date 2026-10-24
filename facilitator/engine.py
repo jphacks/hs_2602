@@ -30,6 +30,7 @@ from facilitator.participants import (
     pick_bot,
     transcript_for_bot,
 )
+from facilitator.report import RecordingLLM, TestReport
 from facilitator.state import DiscussionState
 from facilitator.stt.base import TranscriptEvent, is_noise_text
 
@@ -98,6 +99,10 @@ class Engine:
         self._last_bot_end = -1e9
         self._speaking_as: str | None = None  # 今声を出している話者(AI_SPEAKER / AI 参加者の ID)
         self._speak_lock = threading.Lock()
+        # まとめログ(セッション終了時に logs/report-*.md へ書き出す)
+        self.report: TestReport | None = None
+        self._sec = None
+        self._report_written = True
 
     # ================= 時計 =================
     def now(self) -> float:
@@ -125,13 +130,28 @@ class Engine:
         for i, name in enumerate(cfg.names):
             # text モードは入力者が話者を選ぶので名前は確定。voice モードは自己紹介で声を登録できた人だけ確定にする
             self.state.set_speaker_name(f"speaker_{i + 1}", name, confirmed=cfg.mode == "text")
-        llm = make_llm(s)
+        llm = RecordingLLM(make_llm(s))  # 入力と返事をまとめログに残す
+        self.report = TestReport("アプリ(app/server.py)", "live", {"LLM": llm.name})
+        self._sec = sec = self.report.section(cfg.theme)
+        self._report_written = False
+        m = llm.mark()
         # AI 参加者: 人数分の異なる立場を生成して割り当てる
         self.personas = generate_personas(llm, cfg.theme, cfg.purpose, bots, list(cfg.names), humans + 1)
         for p in self.personas:
             self.state.set_speaker_name(p.speaker_id, p.name, confirmed=True)
             self.state.bot_ids.add(p.speaker_id)
         self.bot_mode = bot_mode_for(humans, bots)
+        sec.state, sec.personas, sec.persona_call = self.state, self.personas, llm.since(m)
+        sec.hide_human_text = not s.log_transcript_text  # 実際の人の発言本文は既定で残さない(プライバシー)
+        sec.info = {
+            "テーマ": cfg.theme,
+            "用途": "就活" if cfg.purpose == "job" else "就活以外",
+            "入力方法": "音声" if cfg.mode == "voice" else "テキスト",
+            "進行スタイル": cfg.preset,
+            "人数": f"人間 {humans}人 / AI参加者 {bots}人",
+            "AI参加者のモード": {"active": "練習相手モード", "reserved": "控えめモード"}.get(self.bot_mode, "なし"),
+            "制限時間": f"{cfg.minutes:g}分",
+        }
         self._bot_busy, self._bot_attempt_at, self._bot_answered_id, self._last_bot_end = False, -1e9, -1, -1e9
         self.agent = FacilitatorAgent(
             self.state,
@@ -175,6 +195,13 @@ class Engine:
 
     def stop(self) -> None:
         self._stop.set()
+        if self.report and not self._report_written and self.state:
+            self._report_written = True
+            try:
+                path = self.report.write(self.settings.log_dir)
+                self._note(f"まとめログ: {path.name}")
+            except OSError as e:
+                self._note(f"まとめログを書き出せませんでした({type(e).__name__})")
         if self.state and self._ended_at is None:
             self._ended_at = self.now()
         if self._mic:
@@ -304,7 +331,10 @@ class Engine:
 
     def _run_tick(self, trigger: str) -> None:
         try:
+            m = self.agent.llm.mark()
             rec = self.agent.tick(self.now(), trigger, act=False)
+            if self._sec is not None:
+                self._sec.decision(rec, self.agent.llm.since(m))  # 取りやめた場合も rec に追記されて残る
             d = rec.decision
             if d.action == Action.no_intervention:
                 return
@@ -348,9 +378,10 @@ class Engine:
         text = rec.decision.speech
         est = len(text) / self.settings.tts_chars_per_sec
         self.agent.commit(rec, self.now(), est)
-        self._say(text, record=False)
+        utt = next((u for u in reversed(self.state.utterances) if u.source == "ai"), None)
+        self._say(text, record=False, utt=utt)
 
-    def _say(self, text: str, record: bool = True, speaker: str = AI_SPEAKER) -> None:
+    def _say(self, text: str, record: bool = True, speaker: str = AI_SPEAKER, utt: Any = None) -> Any:
         """AI(進行役 / AI 参加者)の発話。発話中はマイクをミュートする。record=True なら議論ログにも追加する。
         複数の AI が同時に話さないよう、発話はロックで1つずつにする。"""
         is_bot = speaker != AI_SPEAKER
@@ -359,7 +390,7 @@ class Engine:
             if record:
                 now = self.now()
                 dur = len(text) / 5.6 if tts else min(3.0, len(text) / self.settings.tts_chars_per_sec)
-                self.state.add_utterance(speaker, text, now, now + dur, 1.0, source="bot" if is_bot else "ai")
+                utt = self.state.add_utterance(speaker, text, now, now + dur, 1.0, source="bot" if is_bot else "ai")
             self.ai_speaking = True
             self._speaking_as = speaker
             try:
@@ -377,9 +408,12 @@ class Engine:
                 if not spoken:
                     time.sleep(min(3.0, len(text) / self.settings.tts_chars_per_sec))
             finally:
+                if utt is not None:
+                    utt.end_time = max(utt.start_time, self.now())  # 実際に読み上げが終わった時刻を記録
                 self.ai_speaking = False
                 self._speaking_as = None
                 self._ai_mute_until = self.now() + ECHO_TAIL_SEC
+        return utt
 
     # ================= AI 参加者 =================
     def _bot_loop(self) -> None:
@@ -407,6 +441,7 @@ class Engine:
         try:
             last_id = st.utterances[-1].id if st.utterances else -1
             transcript = transcript_for_bot(st)
+            m = self.agent.llm.mark()
             try:
                 text = generate_utterance(self.agent.llm, p, self.cfg.purpose, st.theme, transcript, reason)
             except LLMError as e:
@@ -421,7 +456,10 @@ class Engine:
             if addressed_id >= 0:
                 self._bot_answered_id = addressed_id
             p.spoken += 1
-            self._say(text, speaker=p.speaker_id)
+            call = self.agent.llm.since(m)
+            utt = self._say(text, speaker=p.speaker_id)
+            if utt is not None and self._sec is not None:
+                self._sec.bot(p.speaker_id, utt.start_time, reason, call)
             self._last_bot_end = self.now()
         finally:
             self._bot_busy = False

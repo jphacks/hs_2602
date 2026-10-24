@@ -17,6 +17,7 @@ from config import load_settings  # noqa: E402
 from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
 from facilitator.llm.factory import make_llm  # noqa: E402
 from facilitator.logging import TickLogger  # noqa: E402
+from facilitator.report import RecordingLLM, TestReport  # noqa: E402
 from facilitator.scenario import load_scenario  # noqa: E402
 from facilitator.state import DiscussionState  # noqa: E402
 
@@ -42,7 +43,11 @@ def main() -> None:
     if t > 0:
         state.started, state.start_time, state.phase = True, 0.0, sc.get("initial_phase", "ideation")
 
-    agent = FacilitatorAgent(state, make_llm(settings), settings, logger=TickLogger(settings.log_dir, sc["id"]))
+    llm = RecordingLLM(make_llm(settings))
+    agent = FacilitatorAgent(state, llm, settings, logger=TickLogger(settings.log_dir, sc["id"]))
+    report = TestReport("シナリオ再生(scripts/run_scenario.py)", sc["id"], {"LLM": llm.name})
+    sec = report.section(sc["title"])
+    sec.state, sec.info = state, {"テーマ": sc["theme"]}
     pending = sorted(sc["utterances"], key=lambda u: u["t"] + u["d"])
     end = args.until or max(u["t"] + u["d"] for u in pending) + 30
 
@@ -56,7 +61,9 @@ def main() -> None:
         state.speaking_now = any(u["t"] <= t < u["t"] + u["d"] for u in pending)
         trigger = agent.should_tick(t)
         if trigger:
+            m = llm.mark()
             rec = agent.tick(t, trigger)
+            sec.decision(rec, llm.since(m))
             d = rec.decision
             tag = f"{trigger}/{rec.gate}"
             if d.action.value == "no_intervention":
@@ -67,6 +74,7 @@ def main() -> None:
                     print(f"      ルール層: {rec.overridden}")
         t += args.step
     print(f"=== 終了 phase={state.phase} 介入{len(state.interventions)}回 ===")
+    print(f"📄 まとめログ: {report.write(settings.log_dir)}")
 
 
 if __name__ == "__main__":
