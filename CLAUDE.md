@@ -26,6 +26,16 @@ Observe → Understand → Decide → Act の単一エージェント(ルール 
 - 外部サービスはインターフェースの背後に置く: `facilitator/llm/`(anthropic / mock)。STT・TTS・話者識別も同じ方針で `facilitator/stt/` と `facilitator/tts/` に追加する(Step 2〜)。
 - 設定はすべて `config.py`。
 
+## AI 参加者(2026-10-24 追加)
+- 設定画面で「人間の人数(1〜4)」と「AI 参加者の人数(0〜3)」を入力する。speaker_id は人間が speaker_1..H、AI 参加者がその後ろ。
+- 開始時に、テーマに対して互いに異なる立場を AI の人数分 LLM で生成し、1人ずつ割り当てる(`facilitator/participants.py`)。発言は立場 + 直近の議論から1〜2文で生成する。
+- 話すタイミングは人数比で自動的に決まる(`engine.py` の `_bot_pick`):
+  - **練習相手モード**(人間2人以下、または AI が人間と同数以上): 2.5秒の間で発言する。AI 参加者どうしは6秒以上あけ、人間を挟まずに続けて話すのは2回まで。
+  - **控えめモード**(人間が主役): 名指しされたときと、9秒以上の沈黙のとき(前回の発言から40秒以上)だけ話す。
+  - 名指し = 進行役の個人指名、または参加者の発言に名前が含まれること(進行役の開始の説明などは含めない)。
+  - 進行役が人間を指名した直後は、その人の応答を6秒待つ。生成を待つ間に人間が話し始めたら取りやめる。
+- 発言は source="bot" で記録する。発言量の集計には含めるが、話者識別の信頼度の計算からは外す。声は AI ごとに変える(mac: Eddy / Shelley / Reed、Windows: Ichiro / Ayumi / Haruka)。発話はロックで1つずつ行う。
+
 ## 技術選定(2026-10 時点の調査。詳細は README)
 - LLM: Claude Opus 5.5(`claude-opus-5-5`)、`effort: low`、構造化出力(`output_config.format` の json_schema)、`fallbacks: "default"`(beta `server-side-fallback-2026-07-01`)。SDK は `anthropic` 1.13。
 - STT + 話者分離: AssemblyAI Universal-3.6 Pro Realtime(`speaker_labels`、`max_speakers`、SpeakerRevision イベント)を予定。日本語 × ストリーミング × 話者分離の組み合わせは**未確認**で、Step 2 で実測する。比較候補は Soniox。

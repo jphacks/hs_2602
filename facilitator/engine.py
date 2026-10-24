@@ -20,7 +20,9 @@ from config import CUSTOM_KEYS, PRESETS, Settings, load_settings
 from facilitator.agent.agent import FacilitatorAgent
 from facilitator.llm.factory import make_llm
 from facilitator.logging import TickLogger
+from facilitator.llm.base import LLMError
 from facilitator.models import AI_SPEAKER, UNKNOWN, Action, TickRecord
+from facilitator.participants import Persona, generate_personas, generate_utterance
 from facilitator.state import DiscussionState
 from facilitator.stt.base import TranscriptEvent, is_noise_text
 
@@ -30,6 +32,19 @@ INTRO_END_SILENCE_SEC = 2.5
 INTRO_TIMEOUT_SEC = 25.0
 FORCED_PAUSE_SEC = 0.6  # 強制イベントはこの長さの間で話し始める
 FORCED_WAIT_MAX_SEC = 12.0  # これ以上間がなければ、割り込んででも話す
+
+# ---- AI 参加者の話すタイミング ----
+# active(練習相手): 人間が2人以下、または AI が人間と同数以上のとき。間があれば積極的に話す
+# reserved(控えめ): 人間が主役のとき。名指しされたときと長い沈黙のときだけ話す
+BOT_ADDRESSED_PAUSE_SEC = 1.2  # 名指しされたら、この間のあとに答える
+BOT_ACTIVE_PAUSE_SEC = 2.5
+BOT_ACTIVE_GAP_SEC = 6.0  # AI 参加者どうしの発言の最低間隔
+BOT_ACTIVE_MAX_CHAIN = 2  # 人間の発言を挟まずに AI 参加者が続けて話す上限
+BOT_WAIT_FOR_INVITED_HUMAN_SEC = 6.0  # 進行役が人間を指名した直後は、その人の応答を待つ
+BOT_RESERVED_PAUSE_SEC = 9.0
+BOT_RESERVED_GAP_SEC = 40.0
+MAC_BOT_VOICES = ["Eddy (日本語（日本）)", "Shelley (日本語（日本）)", "Reed (日本語（日本）)"]
+WIN_BOT_VOICES = ["Microsoft Ichiro Desktop", "Microsoft Ayumi Desktop", "Microsoft Haruka Desktop"]
 
 
 @dataclass
@@ -44,6 +59,7 @@ class SessionConfig:
     purpose: str = "job"  # job(就活) | general(就活以外)
     preset: str = "A"  # A | B | custom
     custom: dict[str, float] = field(default_factory=dict)
+    ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
 
 
 @dataclass
@@ -75,6 +91,16 @@ class Engine:
         self.events: list[str] = []  # UI に出すシステムメッセージ
         self._mic = self._stt = self._vid = self._buf = self._vad = self._tts = None
         self._q: queue.Queue = queue.Queue()
+        # AI 参加者
+        self.personas: list[Persona] = []
+        self.bot_mode = ""  # "" | active | reserved
+        self._bot_tts: dict[str, Any] = {}
+        self._bot_busy = False
+        self._bot_attempt_at = -1e9
+        self._bot_answered_id = -1  # 名指しに答えた発言 ID(二重に答えない)
+        self._last_bot_end = -1e9
+        self._speaking_as: str | None = None  # 今声を出している話者(AI_SPEAKER / AI 参加者の ID)
+        self._speak_lock = threading.Lock()
 
     # ================= 時計 =================
     def now(self) -> float:
@@ -95,15 +121,24 @@ class Engine:
         self.settings = s = load_settings(**{**self._base_overrides, **overrides})
         self.paused = False
         self._ended_at = None
-        s.num_participants = len(cfg.names)
+        humans, bots = len(cfg.names), max(0, min(3, cfg.ai_count))
+        s.num_participants = humans + bots
         s.use_speaker_info = cfg.use_speaker_info
         self.state = DiscussionState(settings=s, theme=cfg.theme, duration_sec=cfg.minutes * 60)
         for i, name in enumerate(cfg.names):
             # text モードは入力者が話者を選ぶので名前は確定。voice モードは自己紹介で声を登録できた人だけ確定にする
             self.state.set_speaker_name(f"speaker_{i + 1}", name, confirmed=cfg.mode == "text")
+        llm = make_llm(s)
+        # AI 参加者: 人数分の異なる立場を生成して割り当てる
+        self.personas = generate_personas(llm, cfg.theme, cfg.purpose, bots, list(cfg.names), humans + 1)
+        for p in self.personas:
+            self.state.set_speaker_name(p.speaker_id, p.name, confirmed=True)
+            self.state.bot_ids.add(p.speaker_id)
+        self.bot_mode = "" if not bots else ("active" if humans <= 2 or bots >= humans else "reserved")
+        self._bot_busy, self._bot_attempt_at, self._bot_answered_id, self._last_bot_end = False, -1e9, -1, -1e9
         self.agent = FacilitatorAgent(
             self.state,
-            make_llm(s),
+            llm,
             s,
             logger=TickLogger(s.log_dir, "live", include_speech=True),
             purpose=cfg.purpose,
@@ -112,20 +147,31 @@ class Engine:
         self.events = []
         self._t0 = time.monotonic()
         self._tts = None
+        self._bot_tts = {}
         if cfg.tts:
             if sys.platform == "win32":
                 from facilitator.tts.windows_tts import WindowsTTS
 
                 self._tts = WindowsTTS()
+                for i, p in enumerate(self.personas):
+                    self._bot_tts[p.speaker_id] = WindowsTTS(voice=WIN_BOT_VOICES[i % len(WIN_BOT_VOICES)])
             else:
                 from facilitator.tts.say_tts import SayTTS
 
                 self._tts = SayTTS()
+                for i, p in enumerate(self.personas):
+                    self._bot_tts[p.speaker_id] = SayTTS(voice=MAC_BOT_VOICES[i % len(MAC_BOT_VOICES)])
 
         if cfg.mode == "voice":
             self._start_audio()
         self.status = "intro" if (cfg.mode == "voice" and cfg.intro) else "running"
         threading.Thread(target=self._agent_loop, daemon=True).start()
+        if self.personas:
+            threading.Thread(target=self._bot_loop, daemon=True).start()
+            self._note(
+                "AI参加者: " + "、".join(f"{p.name}({p.stance})" for p in self.personas)
+                + f" / {'練習相手モード' if self.bot_mode == 'active' else '控えめモード'}"
+            )
         if self.status == "intro":
             threading.Thread(target=self._intro_flow, daemon=True).start()
         self._note(f"セッション開始({cfg.mode} モード)")
@@ -145,6 +191,8 @@ class Engine:
             self._vid = None
         if self._tts:
             self._tts.stop()
+        for t in self._bot_tts.values():
+            t.stop()
         if self.status in ("intro", "running"):
             self.status = "finished"
 
@@ -305,26 +353,144 @@ class Engine:
         self.agent.commit(rec, self.now(), est)
         self._say(text, record=False)
 
-    def _say(self, text: str, record: bool = True) -> None:
-        """AI の発話。発話中はマイクをミュートする。record=True なら議論ログにも追加する。"""
-        if record:
+    def _say(self, text: str, record: bool = True, speaker: str = AI_SPEAKER) -> None:
+        """AI(進行役 / AI 参加者)の発話。発話中はマイクをミュートする。record=True なら議論ログにも追加する。
+        複数の AI が同時に話さないよう、発話はロックで1つずつにする。"""
+        is_bot = speaker != AI_SPEAKER
+        tts = self._bot_tts.get(speaker) if is_bot else self._tts
+        with self._speak_lock:
+            if record:
+                now = self.now()
+                dur = len(text) / 5.6 if tts else min(3.0, len(text) / self.settings.tts_chars_per_sec)
+                self.state.add_utterance(speaker, text, now, now + dur, 1.0, source="bot" if is_bot else "ai")
+            self.ai_speaking = True
+            self._speaking_as = speaker
+            try:
+                spoken = False
+                if tts:
+                    try:
+                        tts.speak(text)
+                        spoken = True
+                    except Exception as e:  # TTS が使えなくても進行は止めない(以降は声なしで続ける)
+                        self._note(f"音声出力に失敗したため、声なしで続けます({type(e).__name__})")
+                        if is_bot:
+                            self._bot_tts.pop(speaker, None)
+                        else:
+                            self._tts = None
+                if not spoken:
+                    time.sleep(min(3.0, len(text) / self.settings.tts_chars_per_sec))
+            finally:
+                self.ai_speaking = False
+                self._speaking_as = None
+                self._ai_mute_until = self.now() + ECHO_TAIL_SEC
+
+    # ================= AI 参加者 =================
+    def _bot_loop(self) -> None:
+        while not self._stop.is_set():
+            time.sleep(0.3)
+            if self.status != "running" or self.paused or self._bot_busy or self.ai_speaking:
+                continue
             now = self.now()
-            self.state.add_utterance(AI_SPEAKER, text, now, now + len(text) / 5.6, 1.0, source="ai")
-        self.ai_speaking = True
+            if now < self._ai_mute_until or now - self._bot_attempt_at < 3.0:
+                continue
+            picked = self._bot_pick(now)
+            if picked:
+                persona, reason, addressed_id = picked
+                self._bot_busy = True
+                self._bot_attempt_at = now
+                threading.Thread(target=self._bot_turn, args=(persona, reason, addressed_id), daemon=True).start()
+
+    def _bot_pick(self, now: float) -> tuple[Persona, str, int] | None:
+        """今 AI 参加者が話すべきなら (誰が, 理由, 名指しされた発言 ID or -1) を返す。"""
+        st = self.state
+        if not st.started or st.speaking_now or st.elapsed(now) < 3.0 or not st.utterances:
+            return None
+        silence = st.silence_sec(now)
+        last = st.utterances[-1]
+        by_id = {p.speaker_id: p for p in self.personas}
+
+        # 1. 名指しされた(進行役の個人指名、または発言の中で名前を呼ばれた)
+        if silence >= BOT_ADDRESSED_PAUSE_SEC and last.id != self._bot_answered_id:
+            target = None
+            iv = st.last_intervention()
+            if last.source == "ai" and iv and iv.action == Action.invite_person and iv.target_speaker in by_id:
+                target = iv.target_speaker
+            if target is None and last.source != "ai":  # 進行役の発言は個人指名のときだけ名指しとみなす
+                for p in self.personas:
+                    if p.name in last.text and last.speaker_id != p.speaker_id:
+                        target = p.speaker_id
+                        break
+            if target:
+                who = "進行役" if last.source == "ai" else (st.speaker_names.get(last.speaker_id) or "参加者")
+                return by_id[target], f"{who}から名指しで話を振られたので、それに答える", last.id
+
+        # 進行役が人間を指名した直後は、その人が答えるのを待つ
+        iv = st.last_intervention()
+        if (
+            last.source == "ai"
+            and iv
+            and iv.action == Action.invite_person
+            and iv.target_speaker not in by_id
+            and silence < BOT_WAIT_FOR_INVITED_HUMAN_SEC
+        ):
+            return None
+
+        # 2. 間があいた
+        if self.bot_mode == "active":
+            if silence < BOT_ACTIVE_PAUSE_SEC or now - self._last_bot_end < BOT_ACTIVE_GAP_SEC:
+                return None
+            chain = 0
+            for u in reversed(st.utterances):
+                if u.source == "human":
+                    break
+                chain += u.source == "bot"
+            humans = len(self.cfg.names)
+            if humans and chain >= BOT_ACTIVE_MAX_CHAIN:
+                return None
+            reason = "会話に間があいたので、直前の流れを受けて自分の立場から意見や質問を出す"
+        else:
+            if silence < BOT_RESERVED_PAUSE_SEC or now - self._last_bot_end < BOT_RESERVED_GAP_SEC:
+                return None
+            reason = "しばらく沈黙が続いたので、議論が進むように自分の考えを短く述べる"
+        # 最近話していない AI 参加者を選ぶ(直前の話者は避ける)
+        last_spoke = {
+            p.speaker_id: max((u.end_time for u in st.utterances if u.speaker_id == p.speaker_id), default=-1e9)
+            for p in self.personas
+        }
+        cands = [p for p in self.personas if p.speaker_id != last.speaker_id] or self.personas
+        return min(cands, key=lambda p: last_spoke[p.speaker_id]), reason, -1
+
+    def _bot_turn(self, p: Persona, reason: str, addressed_id: int) -> None:
+        st = self.state
         try:
-            spoken = False
-            if self._tts:
-                try:
-                    self._tts.speak(text)
-                    spoken = True
-                except Exception as e:  # TTS が使えなくても進行は止めない(以降は声なしで続ける)
-                    self._note(f"音声出力に失敗したため、声なしで続けます({type(e).__name__})")
-                    self._tts = None
-            if not spoken:
-                time.sleep(min(3.0, len(text) / self.settings.tts_chars_per_sec))
+            last_id = st.utterances[-1].id if st.utterances else -1
+            transcript = []
+            for u in st.utterances[-20:]:
+                if u.source == "ai":
+                    who = "進行役(AI)"
+                elif u.source == "bot":
+                    who = f"{st.speaker_names.get(u.speaker_id, u.speaker_id)}(AI参加者)"
+                else:
+                    who = st.speaker_names.get(u.speaker_id) or "不明"
+                transcript.append(f"{who}: {u.text}")
+            try:
+                text = generate_utterance(self.agent.llm, p, self.cfg.purpose, st.theme, transcript, reason)
+            except LLMError as e:
+                self._note(f"{p.name}の発言を生成できませんでした({type(e).__name__})")
+                return
+            if not text or self._stop.is_set() or self.paused or self.status != "running":
+                return
+            # 生成を待つ間に人間が話し始めた/新しい発言があった場合は取りやめる(名指しへの応答は除く)
+            newer = st.utterances and st.utterances[-1].id != last_id
+            if st.speaking_now or (newer and addressed_id < 0):
+                return
+            if addressed_id >= 0:
+                self._bot_answered_id = addressed_id
+            p.spoken += 1
+            self._say(text, speaker=p.speaker_id)
+            self._last_bot_end = self.now()
         finally:
-            self.ai_speaking = False
-            self._ai_mute_until = self.now() + ECHO_TAIL_SEC
+            self._bot_busy = False
 
     # ================= UI からの操作 =================
     def add_text(self, speaker_id: str, text: str) -> None:
@@ -358,9 +524,11 @@ class Engine:
     # ================= UI への状態 =================
     def _active_speaker(self, now: float) -> str | None:
         """直近(3秒以内)に発言を終えた人。発話中の人は確定するまで分からないため、直近の話者で近似する。"""
+        if self.ai_speaking and self._speaking_as:
+            return self._speaking_as
         for u in reversed(self.state.utterances):
             if u.source == "ai":
-                return "ai" if self.ai_speaking else None
+                return None
             if now - u.end_time <= 3.0:
                 return u.speaker_id
             return None
@@ -372,6 +540,7 @@ class Engine:
             return {"status": self.status}
         now = self._ended_at if self._ended_at is not None else self.now()
         names = {f"speaker_{i + 1}": n for i, n in enumerate(cfg.names)}
+        names.update({p.speaker_id: p.name for p in self.personas})
         utts = []
         for u in st.utterances[-120:]:
             utts.append(
@@ -410,6 +579,11 @@ class Engine:
             "mode": cfg.mode,
             "theme": cfg.theme,
             "names": names,
+            "humans": [f"speaker_{i + 1}" for i in range(len(cfg.names))],
+            "participants": [
+                {"id": p.speaker_id, "name": p.name, "stance": p.stance, "opinion": p.opinion} for p in self.personas
+            ],
+            "bot_mode": self.bot_mode,
             "started": st.started,
             "elapsed": round(st.elapsed(now), 1),
             "remaining": round(st.remaining(now), 1),

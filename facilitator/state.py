@@ -41,6 +41,7 @@ class DiscussionState:
     speaker_ids: list[str] = field(default_factory=list)
     speaker_names: dict[str, str] = field(default_factory=dict)  # speaker_id -> ニックネーム
     names_confirmed: set[str] = field(default_factory=set)
+    bot_ids: set[str] = field(default_factory=set)  # AI 参加者の speaker_id
     warned_thresholds: set[float] = field(default_factory=set)
     speaking_now: bool = False  # VAD による発話中フラグ
     pauses: list[tuple[float, float]] = field(default_factory=list)  # 一時停止した区間(時計の値)
@@ -97,7 +98,12 @@ class DiscussionState:
                 u.speaker_label = name
 
     def human_utterances(self) -> list[Utterance]:
+        """人間の発言(声で話者を識別したもの)。"""
         return [u for u in self.utterances if u.source == "human"]
+
+    def participant_utterances(self) -> list[Utterance]:
+        """参加者の発言(人間 + AI 参加者)。進行役の AI は含まない。"""
+        return [u for u in self.utterances if u.source in ("human", "bot")]
 
     # ---------- 時間 ----------
     def _paused_between(self, a: float, b: float) -> float:
@@ -180,14 +186,15 @@ class DiscussionState:
         """直近の人間発話のうち、話者が確信度十分で特定できた割合。"""
         recent = self.human_utterances()[-20:]
         if not recent:
-            return 0.0
+            # 人間の発言がまだない(AI 参加者だけ話している)場合は、識別の誤りもないので 1.0
+            return 1.0 if self.bot_ids else 0.0
         ok = [u for u in recent if u.speaker_id not in (UNKNOWN, AI_SPEAKER)]
         return len(ok) / len(recent)
 
     def speaker_stats(self, now: float) -> list[SpeakerStats]:
         stats = []
         for sid in self.speaker_ids:
-            mine = [u for u in self.human_utterances() if u.speaker_id == sid and u.end_time <= now]
+            mine = [u for u in self.participant_utterances() if u.speaker_id == sid and u.end_time <= now]
             stats.append(
                 SpeakerStats(
                     speaker_id=sid,
@@ -196,6 +203,7 @@ class DiscussionState:
                     total_speech_sec=round(sum(u.duration for u in mine), 1),
                     turns=len(mine),
                     since_last_spoke_sec=round(now - max(u.end_time for u in mine), 1) if mine else None,
+                    is_bot=sid in self.bot_ids,
                 )
             )
         return stats

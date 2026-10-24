@@ -36,6 +36,7 @@ class StartReq(BaseModel):
     purpose: str = "job"
     preset: str = "A"
     custom: dict[str, float] = {}
+    ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
 
 
 class TextReq(BaseModel):
@@ -60,8 +61,9 @@ def index() -> FileResponse:
 @app.post("/api/start")
 def start(req: StartReq) -> dict:
     names = [n.strip() for n in req.names if n.strip()][:4]
-    if len(names) < 2:
-        return {"ok": False, "error": "参加者は2〜4人を入力してください"}
+    ai_count = max(0, min(3, req.ai_count))
+    if not names or len(names) + ai_count < 2:
+        return {"ok": False, "error": "人間1人以上、合計2人以上にしてください"}
     try:
         engine.start(
             SessionConfig(
@@ -75,6 +77,7 @@ def start(req: StartReq) -> dict:
                 purpose=req.purpose if req.purpose in ("job", "general") else "job",
                 preset=req.preset if req.preset in ("A", "B", "custom") else "A",
                 custom=req.custom,
+                ai_count=ai_count,
             )
         )
     except Exception as e:  # マイク・STT の起動失敗を UI に伝える(キー等の秘匿情報は含まれない)

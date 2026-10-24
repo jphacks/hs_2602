@@ -19,7 +19,7 @@ class Utterance(BaseModel):
     start_time: float
     end_time: float
     speaker_confidence: float = 0.0
-    source: Literal["human", "ai"] = "human"
+    source: Literal["human", "ai", "bot"] = "human"  # bot = AI 参加者(進行役の AI とは別)
 
     @property
     def duration(self) -> float:
@@ -87,6 +87,7 @@ class SpeakerStats(BaseModel):
     total_speech_sec: float
     turns: int
     since_last_spoke_sec: float | None  # None = 一度も発言なし
+    is_bot: bool = False  # AI 参加者
 
 
 class TickRecord(BaseModel):
