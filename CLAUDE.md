@@ -1,4 +1,4 @@
-# AI Facilitator Agent(JPHACKS 2026 MVP)
+# SHIKAI — AI Facilitator Agent(JPHACKS 2026 MVP)
 
 就活グループディスカッション(GD)で、AI が進行役を自律的に務めるプロトタイプ。開発期間は実質2日間。**動くデモが最優先**で、過剰な設計や汎用化はしない。
 
@@ -47,7 +47,7 @@ Observe → Understand → Decide → Act の単一エージェント(ルール 
    - 就活では「AIからの提案度合い」は標準まで(`JOB_MAX_LEVEL`)。就活の追加ルール「参加者が出していない観点を持ち込まない」と矛盾させないため
    - その他: 入力方法、自己紹介での声の登録、AIの声、話者情報。旧来の進行スタイル A/B/カスタムは画面からは使わない(サーバーは preset を受け付ける)
 3. 進行: 参加者カードの幅が発言量に応じて伸び縮みする
-- 見た目は Apple(iOS / iPadOS)風。背景は白で、色は白・黒(グレーは黒を薄めたもの)・青の3つだけ。参加者のアイコンだけ色分けする。ダークモードなし(ユーザー指定)
+- アプリ名は SHIKAI(アイコン: `app/static/icon.svg`、1024px の PNG は `icon.png`)。見た目は Apple(iOS / iPadOS)風。背景は白で、白のほかは黒(グレーは黒を薄めたもの)・青・紫(AI 参加者)の3色まで。参加者のアイコンは色分けし、会話ログの吹き出しと参加者カードはその色を薄くしたもの。ダークモードなし(ユーザー指定)
 
 ## チャット経由モード(handoff)
 - `LLM_PROVIDER=handoff`: `facilitator/llm/handoff_llm.py`。プロンプトを `exchange/request_NNN.md` に書き出し、`exchange/response_NNN.json` を待つ(既定のタイムアウト 900 秒、`HANDOFF_TIMEOUT_SEC`)。`exchange/` は gitignore 済み。
