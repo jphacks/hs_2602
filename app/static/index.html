@@ -260,7 +260,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .hidden { display: none !important; }
 
 @media (max-width: 980px) {
-  .purpose-grid, .presets, .toggles { grid-template-columns: 1fr; }
+  .purpose-grid, .presets, .toggles, .counts { grid-template-columns: 1fr; }
   .people { grid-template-columns: 1fr; }
   .stage { grid-template-columns: 1fr; height: auto; }
   .logbox { min-height: 60vh; }
@@ -337,6 +337,14 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
         <span class="label">人間の参加者の名前(話す順・ニックネーム可)</span>
         <div class="people" id="people"></div>
         <div class="botmode hidden" id="botmode"></div>
+        <div class="hidden" id="levelbox" style="margin-top:14px">
+          <span class="label">AI 参加者のレベル</span>
+          <div class="presets" id="levels">
+            <button type="button" class="preset" data-v="1"><b><span class="tag">1</span>高校生程度</b><span>身近な例から考える。発言の間隔 4〜6秒</span></button>
+            <button type="button" class="preset" data-v="2"><b><span class="tag">2</span>大学生程度</b><span>根拠や前提を確かめて比べる。間隔 3〜5秒</span></button>
+            <button type="button" class="preset" data-v="3"><b><span class="tag">3</span>大学生程度・速め</b><span>レベル2と同じ思考力。間隔 2〜4秒</span></button>
+          </div>
+        </div>
       </div>
 
       <div class="field">
@@ -382,7 +390,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
   <div class="bar">
     <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#04202b" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span></div>
     <div class="theme" id="b-theme">—</div>
-    <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-llm"></span></div>
+    <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
     <div class="actions">
       <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>開始</button>
       <button class="btn" id="btn-pause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>一時停止</span></button>
@@ -473,7 +481,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const mmss = (s) => { s = Math.max(0, Math.floor(s)); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
 const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then((r) => r.json());
 
-const ui = { purpose: "job", minutes: 8, mode: "voice", preset: "A", info: null, config: null, started: false, humans: 3, bots: 0 };
+const ui = { purpose: "job", minutes: 8, mode: "voice", preset: "A", info: null, config: null, started: false, humans: 3, bots: 0, level: 2 };
 let snap = null, logKey = "", decKey = "", doneShown = false;
 
 function show(id) {
@@ -495,7 +503,8 @@ $("people").innerHTML = [0, 1, 2, 3].map((i) => `<div class="person-in"><span cl
   <input class="input f-name" placeholder="${i + 1}人目"></div>`).join("");
 function botModeOf(h, b) { return b === 0 ? "" : (h <= 2 || b >= h ? "active" : "reserved"); }
 function syncCounts() {
-  document.querySelectorAll(".stepper").forEach((st) => {
+  document.querySelectorAll("#levels .preset").forEach((b) => b.onclick = () => { ui.level = +b.dataset.v; syncCounts(); });
+document.querySelectorAll(".stepper").forEach((st) => {
     const v = ui[st.dataset.key], [minus, plus] = st.querySelectorAll("button");
     st.querySelector("output").textContent = v;
     minus.disabled = v <= +st.dataset.min; plus.disabled = v >= +st.dataset.max;
@@ -503,6 +512,8 @@ function syncCounts() {
   document.querySelectorAll(".person-in").forEach((el, i) => el.classList.toggle("hidden", i >= ui.humans));
   const m = botModeOf(ui.humans, ui.bots);
   $("botmode").classList.toggle("hidden", !m);
+  $("levelbox").classList.toggle("hidden", !ui.bots);
+  document.querySelectorAll("#levels .preset").forEach((b) => b.classList.toggle("on", +b.dataset.v === ui.level));
   $("botmode").innerHTML = m === "active"
     ? `<b>練習相手モード</b> — 人間が少ないので、AI 参加者は会話に間があれば積極的に意見を出します。開始時に AI ${ui.bots}人分の異なる立場を自動で割り当てます。`
     : `<b>控えめモード</b> — 人間が主役なので、AI 参加者は名指しされたときと長い沈黙のときだけ話します。開始時に AI ${ui.bots}人分の異なる立場を自動で割り当てます。`;
@@ -536,10 +547,10 @@ function fillSliders(from) {
 }
 CUSTOM.forEach((k) => $("c-" + k).oninput = (e) => { e.target.nextElementSibling.textContent = `${e.target.value}秒`; });
 function syncPreset() {
-  document.querySelectorAll(".preset").forEach((b) => b.classList.toggle("on", b.dataset.v === ui.preset));
+  document.querySelectorAll("#presets .preset").forEach((b) => b.classList.toggle("on", b.dataset.v === ui.preset));
   $("advanced").classList.toggle("open", ui.preset === "custom");
 }
-document.querySelectorAll(".preset").forEach((b) => b.onclick = () => {
+document.querySelectorAll("#presets .preset").forEach((b) => b.onclick = () => {
   ui.preset = b.dataset.v;
   if (ui.preset !== "custom" && ui.info) fillSliders(ui.info.presets[ui.preset]);
   syncPreset();
@@ -557,7 +568,7 @@ $("setup-form").onsubmit = (ev) => {
   ui.config = {
     theme: $("f-theme").value.trim(), minutes: +$("f-min").value || 8, names, mode: ui.mode,
     intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
-    purpose: ui.purpose, preset: ui.preset, custom, ai_count: ui.bots,
+    purpose: ui.purpose, preset: ui.preset, custom, ai_count: ui.bots, ai_level: ui.level,
   };
   snap = null; logKey = ""; decKey = ""; doneShown = false; ui.started = false;
   renderReady();
@@ -594,6 +605,7 @@ function renderReady() {
   $("b-theme").textContent = c.theme;
   $("b-purpose").textContent = c.purpose === "general" ? "就活以外" : "就活";
   $("b-preset").textContent = PRESET_JA[c.preset] || "";
+  $("b-level").textContent = c.ai_count ? `AI レベル${c.ai_level}` : "";
   llmChip(ui.info?.llm);
   $("c-limit").textContent = c.minutes; $("c-time").textContent = "00:00"; $("c-remain").textContent = "";
   $("c-bar").style.width = "0"; $("clock").classList.remove("low", "over");
@@ -641,6 +653,7 @@ function render() {
   $("b-theme").textContent = s.theme;
   $("b-purpose").textContent = s.purpose === "general" ? "就活以外" : "就活";
   $("b-preset").textContent = PRESET_JA[s.preset] || "";
+  $("b-level").textContent = s.ai_level ? `AI レベル${s.ai_level}` : "";
   llmChip(s.llm);
 
   // 時計

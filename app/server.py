@@ -37,6 +37,7 @@ class StartReq(BaseModel):
     preset: str = "A"
     custom: dict[str, float] = {}
     ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
+    ai_level: int = 2  # AI 参加者のレベル(1〜3)
 
 
 class TextReq(BaseModel):
@@ -78,6 +79,7 @@ def start(req: StartReq) -> dict:
                 preset=req.preset if req.preset in ("A", "B", "custom") else "A",
                 custom=req.custom,
                 ai_count=ai_count,
+                ai_level=req.ai_level if req.ai_level in (1, 2, 3) else 2,
             )
         )
     except Exception as e:  # マイク・STT の起動失敗を UI に伝える(キー等の秘匿情報は含まれない)
