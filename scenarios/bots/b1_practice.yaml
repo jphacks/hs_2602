@@ -1,0 +1,10 @@
+id: b1_practice
+title: 人間1人 + AI参加者2人(練習相手モード)
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 240
+ai_count: 2
+until: 75
+participants: {speaker_1: たろう}
+utterances:
+  - {t: 20, d: 6, s: speaker_1, text: まず混雑の原因から考えたいです。お昼の12時台に人が集中しているのが一番大きいと思います。}
+  - {t: 52, d: 5, s: speaker_1, text: なるほど。でも、アプリを使えない人もいますよね。}
