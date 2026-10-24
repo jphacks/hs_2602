@@ -128,3 +128,14 @@ def test_time_warning_threshold_scales_for_short_gd():
     st.started, st.start_time = True, 0.0
     ag = FacilitatorAgent(st, StubLLM(d("no_intervention", "")), s)
     assert ag._warn_thresholds() == [pytest.approx(63.0)]
+
+
+def test_pause_excludes_time():
+    s = load_settings()
+    st = DiscussionState(settings=s, theme="t", duration_sec=600)
+    st.started, st.start_time = True, 0.0
+    st.pause(100)
+    assert st.elapsed(150) == pytest.approx(100)
+    st.resume(160)
+    assert st.elapsed(200) == pytest.approx(140)
+    assert st.remaining(200) == pytest.approx(460)

@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 
-from config import Settings
+from config import CUSTOM_KEYS, PRESETS, Settings, load_settings
 from facilitator.agent.agent import FacilitatorAgent
 from facilitator.llm.factory import make_llm
 from facilitator.logging import TickLogger
@@ -40,6 +40,9 @@ class SessionConfig:
     intro: bool = True  # 自己紹介で声を登録する(voice モードのみ)
     tts: bool = True
     use_speaker_info: bool = True
+    purpose: str = "job"  # job(就活) | general(就活以外)
+    preset: str = "A"  # A | B | custom
+    custom: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -51,8 +54,11 @@ class IntroState:
 
 
 class Engine:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, **base_overrides: Any) -> None:
         self.settings = settings
+        self._base_overrides = base_overrides  # 起動時に指定された設定(セッションごとに引き継ぐ)
+        self.paused = False
+        self._ended_at: float | None = None  # 終了した時刻(終了後は時計を止める)
         self.status = "idle"  # idle | intro | running | finished
         self.cfg: SessionConfig | None = None
         self.state: DiscussionState | None = None
@@ -82,7 +88,12 @@ class Engine:
         self.stop()
         self._stop = threading.Event()
         self.cfg = cfg
-        s = self.settings
+        overrides: dict[str, Any] = dict(PRESETS.get(cfg.preset, {}))
+        if cfg.preset == "custom":
+            overrides.update({k: float(v) for k, v in cfg.custom.items() if k in CUSTOM_KEYS})
+        self.settings = s = load_settings(**{**self._base_overrides, **overrides})
+        self.paused = False
+        self._ended_at = None
         s.num_participants = len(cfg.names)
         s.use_speaker_info = cfg.use_speaker_info
         self.state = DiscussionState(settings=s, theme=cfg.theme, duration_sec=cfg.minutes * 60)
@@ -90,7 +101,11 @@ class Engine:
             # text モードは入力者が話者を選ぶので名前は確定。voice モードは自己紹介で声を登録できた人だけ確定にする
             self.state.set_speaker_name(f"speaker_{i + 1}", name, confirmed=cfg.mode == "text")
         self.agent = FacilitatorAgent(
-            self.state, make_llm(s), s, logger=TickLogger(s.log_dir, "live", include_speech=True)
+            self.state,
+            make_llm(s),
+            s,
+            logger=TickLogger(s.log_dir, "live", include_speech=True),
+            purpose=cfg.purpose,
         )
         self.intro = IntroState()
         self.events = []
@@ -111,6 +126,8 @@ class Engine:
 
     def stop(self) -> None:
         self._stop.set()
+        if self.state and self._ended_at is None:
+            self._ended_at = self.now()
         if self._mic:
             self._mic.stop()
             self._mic = None
@@ -149,7 +166,7 @@ class Engine:
                 block = self._q.get(timeout=0.5)
             except queue.Empty:
                 continue
-            muted = self.ai_speaking or self.now() < self._ai_mute_until
+            muted = self.paused or self.ai_speaking or self.now() < self._ai_mute_until
             if muted:
                 block = np.zeros_like(block)
                 self.state.speaking_now = False
@@ -167,7 +184,7 @@ class Engine:
         if e.kind == "error":
             self._note(f"STT エラー: {e.text[:80]}")
             return
-        if e.kind != "final" or e.start is None or is_noise_text(e.text):
+        if e.kind != "final" or e.start is None or is_noise_text(e.text) or self.paused:
             return
         self.partial = ""
         if self.status == "intro":
@@ -225,7 +242,7 @@ class Engine:
     def _agent_loop(self) -> None:
         while not self._stop.is_set():
             time.sleep(0.25)
-            if self.status != "running" or self._agent_busy or self.ai_speaking:
+            if self.status != "running" or self.paused or self._agent_busy or self.ai_speaking:
                 continue
             if self.now() < self._ai_mute_until:
                 continue
@@ -241,6 +258,9 @@ class Engine:
             if d.action == Action.no_intervention:
                 return
             # LLM の応答を待つ間に状況が変わっていないか、話す直前にもう一度確認する
+            if self.paused:
+                self.agent.cancel(rec, "一時停止中")
+                return
             now = self.now()
             st = self.state
             forced = rec.gate.startswith("forced")
@@ -307,15 +327,38 @@ class Engine:
         if self.state:
             self.state.update_speaker(utterance_id, speaker_id, 0.0 if speaker_id == UNKNOWN else 1.0)
 
+    def pause(self) -> None:
+        if self.status == "running" and self.state and not self.paused:
+            self.paused = True
+            self.state.pause(self.now())
+            self.state.speaking_now = False
+            self._note("一時停止")
+
+    def resume(self) -> None:
+        if self.paused and self.state:
+            self.paused = False
+            self.state.resume(self.now())
+            self._note("再開")
+
     def set_use_speaker_info(self, on: bool) -> None:
         self.settings.use_speaker_info = on
 
     # ================= UI への状態 =================
+    def _active_speaker(self, now: float) -> str | None:
+        """直近(3秒以内)に発言を終えた人。発話中の人は確定するまで分からないため、直近の話者で近似する。"""
+        for u in reversed(self.state.utterances):
+            if u.source == "ai":
+                return "ai" if self.ai_speaking else None
+            if now - u.end_time <= 3.0:
+                return u.speaker_id
+            return None
+        return None
+
     def snapshot(self) -> dict[str, Any]:
         st, cfg, agent = self.state, self.cfg, self.agent
         if not st or not cfg or not agent:
             return {"status": self.status}
-        now = self.now()
+        now = self._ended_at if self._ended_at is not None else self.now()
         names = {f"speaker_{i + 1}": n for i, n in enumerate(cfg.names)}
         utts = []
         for u in st.utterances[-120:]:
@@ -347,6 +390,10 @@ class Engine:
             )
         return {
             "status": self.status,
+            "paused": self.paused,
+            "purpose": cfg.purpose,
+            "preset": cfg.preset,
+            "active_speaker": self._active_speaker(now),
             "llm": agent.llm.name,
             "mode": cfg.mode,
             "theme": cfg.theme,

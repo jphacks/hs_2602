@@ -9,7 +9,7 @@ from typing import Callable
 from pydantic import ValidationError
 
 from config import Settings
-from facilitator.agent.prompts import OUTPUT_SCHEMA, SYSTEM_PROMPT, build_user_prompt
+from facilitator.agent.prompts import OUTPUT_SCHEMA, build_system_prompt, build_user_prompt
 from facilitator.llm.base import LLMClient, LLMError
 from facilitator.logging import TickLogger
 from facilitator.models import AI_SPEAKER, UNKNOWN, Action, AgentOutput, Decision, TickRecord
@@ -46,7 +46,9 @@ class FacilitatorAgent:
         settings: Settings,
         speak: Callable[[str], float] | None = None,
         logger: TickLogger | None = None,
+        purpose: str = "job",
     ) -> None:
+        self.system_prompt = build_system_prompt(purpose)
         self.state = state
         self.llm = llm
         self.settings = settings
@@ -218,7 +220,7 @@ class FacilitatorAgent:
         else:
             ctx = self._context(now, trigger, allowed, note)
             try:
-                raw = self.llm.generate_json(SYSTEM_PROMPT, build_user_prompt(ctx), OUTPUT_SCHEMA, ctx)
+                raw = self.llm.generate_json(self.system_prompt, build_user_prompt(ctx), OUTPUT_SCHEMA, ctx)
                 out = AgentOutput.model_validate(raw)
                 raw_action = out.decision.action.value
                 st.analysis = out.analysis
