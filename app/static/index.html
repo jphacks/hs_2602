@@ -166,17 +166,8 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .phases span.done { color: var(--muted); }
 .phases span.now { color: #fff; background: var(--accent); font-weight: 600; }
 .phases span.target { color: var(--accent); background: transparent; box-shadow: inset 0 0 0 1px var(--accent); }
-.ai-line { display: flex; gap: 14px; align-items: center; margin-top: 18px; padding-top: 16px; border-top: .5px solid var(--line); }
 /* Siri のような丸いオーブ */
-.orb { flex: none; width: 38px; height: 38px; border-radius: 50%; position: relative; background: #8e8e93; }
-.orb::before { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, rgba(255,255,255,.75), rgba(255,255,255,.15) 60%); }
-.orb.thinking { animation: spin 2.4s linear infinite; }
-.orb.speaking { animation: spin 1.2s linear infinite, breathe 1s ease-in-out infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes breathe { 50% { scale: 1.12; } }
 @keyframes ripple { from { transform: scale(.9); opacity: .9; } to { transform: scale(1.6); opacity: 0; } }
-.ai-line .state { font-weight: 600; font-size: 15px; }
-.ai-line .say { color: var(--muted); font-size: 14px; margin-top: 2px; }
 /* 参加者カード: 同じ幅で始まり、発言量に応じて幅が伸び縮みする(高さは一定) */
 .people-row { display: flex; gap: var(--gap); min-height: 0; align-items: stretch; }
 .pcard { background: color-mix(in srgb, var(--c) 10%, #fff); box-shadow: none; flex: 1 1 0; min-width: 84px; padding: 22px 14px 18px; position: relative; text-align: center; overflow: hidden;
@@ -195,7 +186,6 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .share div { height: 100%; background: var(--text); transition: width .6s; }
 .badges { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; }
 .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--fill); color: var(--muted); }
-.badge.quiet { color: var(--accent); background: var(--accent-soft); }
 .badge.ai { color: var(--ai); background: var(--ai-soft); }
 .pcard.bot .avatar svg { width: 32px; height: 32px; }
 .stance { display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 500; padding: 2px 10px; border-radius: 999px; color: var(--muted);
@@ -332,10 +322,6 @@ body { font-size: 17px; }
 #s-session .clock .limit { display: inline-block; margin-left: 10px; font-size: 14px; }
 #s-session .progress { margin: 8px 0 8px; height: 5px; }
 #s-session .phases span { font-size: 11px; padding: 2px 9px; }
-#s-session .ai-line { margin-top: 8px; padding-top: 8px; gap: 10px; }
-#s-session .orb { width: 26px; height: 26px; }
-#s-session .ai-line .state { font-size: 13px; }
-#s-session .ai-line .say { font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 #s-session .people-row { flex-wrap: nowrap; gap: 8px; }
 #s-session .pcard { flex-basis: 0; min-width: 64px; padding: 12px 8px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 #s-session .avatar { width: 46px; height: 46px; border-radius: 12px; font-size: 20px; margin-bottom: 6px; }
@@ -502,10 +488,6 @@ body { font-size: 17px; }
         <div class="limit">制限時間 <b id="c-limit">8</b> 分 <span id="c-remain" style="margin-left:14px"></span></div>
         <div class="progress"><div id="c-bar"></div></div>
         <div class="phases" id="phases"></div>
-        <div class="ai-line">
-          <div class="orb" id="orb"></div>
-          <div><div class="state" id="ai-state">「開始」を押すと AI が進行を始めます</div><div class="say" id="ai-say"></div></div>
-        </div>
       </div>
       <div class="people-row" id="pcards"></div>
     </div>
@@ -720,7 +702,7 @@ function renderReady() {
   $("c-limit").textContent = c.minutes; $("c-time").textContent = "00:00"; $("c-remain").textContent = "";
   $("c-bar").style.width = "0"; $("clock").classList.remove("low", "over");
   $("btn-start").disabled = false; $("btn-pause").disabled = true; $("btn-stop").disabled = true;
-  $("ai-state").textContent = "「開始」を押すと AI が進行を始めます"; $("ai-say").textContent = ""; $("orb").className = "orb";
+
   $("log").innerHTML = '<div class="empty">発言がここに表示されます</div>'; $("partial").textContent = ""; $("silence").textContent = "";
   $("decs").innerHTML = '<div class="empty">まだ判断はありません</div>';
   renderPhases("", "");
@@ -774,12 +756,10 @@ function renderPeople() {
   box.querySelectorAll(".pcard").forEach((card) => {
     const id = card.dataset.id, bot = botOf[id];
     const s = stats[id] || { total_speech_sec: 0, turns: 0, since_last_spoke_sec: null };
-    const quiet = !bot && snap?.started && (s.since_last_spoke_sec == null || s.since_last_spoke_sec > 90);
     const share = snap?.started && sum ? Math.round((s.total_speech_sec / sum) * 100) : 0;
     card.classList.toggle("active", snap?.active_speaker === id);
     card.querySelector(".badges").innerHTML = (bot ? '<span class="badge ai">AI</span>' : "")
-      + (enrolled.has(n[id]) ? '<span class="badge voice">声 ✓</span>' : "")
-      + (quiet ? `<span class="badge quiet">${s.since_last_spoke_sec == null ? "未発言" : "しばらく発言なし"}</span>` : "");
+      + (enrolled.has(n[id]) ? '<span class="badge voice">声 ✓</span>' : "");
     card.style.flexGrow = cardGrow(s.total_speech_sec, snap?.started ? sum : 0, ids.length).toFixed(3);
     card.querySelector(".meta").textContent = `${s.turns}回 · ${Math.round(s.total_speech_sec)}秒 · ${share}%`;
     card.querySelector(".share > div").style.width = `${(s.total_speech_sec / max) * 100}%`;
@@ -811,12 +791,6 @@ function render() {
   $("btn-pause").querySelector("span").textContent = s.paused ? "再開" : "一時停止";
   $("btn-stop").disabled = !running;
 
-  // AI の状態
-  const lastAi = [...s.utterances].reverse().find((u) => u.source === "ai");
-  $("orb").className = "orb" + (s.ai_speaking ? " speaking" : s.thinking ? " thinking" : "");
-  $("ai-state").textContent = s.paused ? "一時停止中" : s.status === "intro" ? "自己紹介を聞いています"
-    : s.ai_speaking ? "AI が話しています" : s.thinking ? "AI が状況を考えています…" : s.status === "finished" ? "ディスカッションは終了しました" : "AI は見守っています";
-  $("ai-say").textContent = lastAi ? `「${lastAi.text}」` : "";
   $("silence").textContent = s.mode === "voice" ? (s.speaking ? "● 発話中" : `沈黙 ${Math.floor(s.silence)}秒`) : "テキスト入力";
 
   renderPeople();
@@ -877,9 +851,8 @@ function renderDecisions(s) {
 $("btn-start").onclick = async () => {
   if (!ui.config) return show("s-setup");
   $("btn-start").disabled = true;
-  if (ui.config.ai_count) $("ai-state").textContent = "AI 参加者の立場を準備しています…";
   const r = await post("/api/start", ui.config);
-  if (!r.ok) { $("btn-start").disabled = false; $("ai-state").textContent = r.error; return; }
+  if (!r.ok) { $("btn-start").disabled = false; alert(r.error); return; }
   ui.started = true; doneShown = false;
 };
 $("btn-pause").onclick = () => post(snap?.paused ? "/api/resume" : "/api/pause");
