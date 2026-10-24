@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 UNKNOWN = "unknown"
+UNLIMITED_SEC = 10**6  # 制限時間なし(この値以上なら「制限時間なし」として扱う)
 AI_SPEAKER = "ai"
 
 

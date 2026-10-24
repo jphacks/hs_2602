@@ -133,7 +133,11 @@ def build_user_prompt(ctx: dict[str, Any]) -> str:
         f"# テーマ\n{ctx['theme']}",
         "# 状況",
         f"- 現在フェーズ: {ctx['phase']}",
-        f"- 経過 {_mmss(ctx['elapsed_sec'])} / 残り {_mmss(ctx['remaining_sec'])}(制限時間 {_mmss(ctx['duration_sec'])})",
+        (
+            f"- 経過 {_mmss(ctx['elapsed_sec'])} / 制限時間なし(結論がまとまるまで続ける)"
+            if ctx["duration_sec"] >= 10**6
+            else f"- 経過 {_mmss(ctx['elapsed_sec'])} / 残り {_mmss(ctx['remaining_sec'])}(制限時間 {_mmss(ctx['duration_sec'])})"
+        ),
         f"- 現在の沈黙時間: {ctx['silence_sec']:.0f}秒",
         f"- 判断のきっかけ: {ctx['trigger']}",
         f"- 直前のAI介入からの経過: "

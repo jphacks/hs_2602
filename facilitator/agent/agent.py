@@ -12,7 +12,7 @@ from config import Settings
 from facilitator.agent.prompts import OUTPUT_SCHEMA, build_system_prompt, build_user_prompt
 from facilitator.llm.base import LLMClient, LLMError
 from facilitator.logging import TickLogger
-from facilitator.models import AI_SPEAKER, UNKNOWN, Action, AgentOutput, Decision, TickRecord
+from facilitator.models import AI_SPEAKER, UNKNOWN, UNLIMITED_SEC, Action, AgentOutput, Decision, TickRecord
 from facilitator.state import DiscussionState
 
 # ルール層だけが発動させるアクション(LLM が自発的に選ぶことはできない)
@@ -181,9 +181,14 @@ class FacilitatorAgent:
         if action == Action.start_gd:
             mins = int(st.duration_sec // 60)
             bots = "、".join(f"{st.speaker_names[b]}さん" for b in sorted(st.bot_ids))
+            limit = (
+                "今回は制限時間を設けませんので、グループとしての結論がまとまるまで議論してください。"
+                if st.duration_sec >= UNLIMITED_SEC
+                else f"制限時間は{mins}分で、最後にグループとしての結論をまとめてください。"
+            )
             return (
                 f"それでは、グループディスカッションを始めます。テーマは「{st.theme}」です。"
-                f"制限時間は{mins}分で、最後にグループとしての結論をまとめてください。"
+                + limit
                 + (f"今回はAI参加者の{bots}も一緒に議論します。" if bots else "")
                 + "私は進行役として、ときどき論点の整理や質問をします。では、どなたからでもどうぞ。"
             )
