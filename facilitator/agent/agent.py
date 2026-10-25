@@ -152,7 +152,7 @@ class FacilitatorAgent:
         if not st.started:
             return "forced:start_gd", [Action.start_gd], None
         if st.is_speaking(now):
-            if self._drift_interrupt_ok(now):  # 就活GD・②積極的: 脱線修正だけは発話中でも判断する
+            if self._drift_interrupt_ok(now):  # ②積極的(GD・GW): 脱線修正だけは発話中でも判断する
                 return "llm:drift_interrupt", list(DRIFT_INTERRUPT_ACTIONS), DRIFT_INTERRUPT_NOTE
             return "blocked:speaking", [], None
 
@@ -172,12 +172,12 @@ class FacilitatorAgent:
 
         in_cooldown = since is not None and since < self._cooldown_sec()
         if in_cooldown and self.pending_request is None:
-            # 就活GD・②積極的: 脱線修正だけは共通のクールダウンを越える(脱線修正どうしの重複は _drift_interrupt_ok が防ぐ)
+            # ②積極的(GD・GW): 脱線修正だけは共通のクールダウンを越える(脱線修正どうしの重複は _drift_interrupt_ok が防ぐ)
             if self._drift_interrupt_ok(now) and self._new_human_since_llm(now):
                 return "llm:drift_interrupt", list(DRIFT_INTERRUPT_ACTIONS), DRIFT_INTERRUPT_NOTE
             return "blocked:cooldown", [], None
         if st.silence_sec(now) < s.min_silence_for_intervention_sec:
-            if self._drift_interrupt_ok(now):  # 就活GD・②積極的: 脱線修正だけは2秒の間を待たない
+            if self._drift_interrupt_ok(now):  # ②積極的(GD・GW): 脱線修正だけは2秒の間を待たない
                 return "llm:drift_interrupt", list(DRIFT_INTERRUPT_ACTIONS), DRIFT_INTERRUPT_NOTE
             return "blocked:short_pause", [], None
         if in_cooldown:
@@ -203,11 +203,11 @@ class FacilitatorAgent:
         allowed += content
         return "llm", allowed, None
 
-    # ================= 脱線修正の割り込み(就活GD・②脱線への対応が積極的) =================
+    # ================= 脱線修正の割り込み(GD・GW で②脱線への対応が積極的) =================
     def drift_interrupt(self) -> bool:
-        """脱線修正を発話中・短い間でも行うか(就活GDで②が積極的のときだけ。GW・雑談・②標準/控えめは従来どおり)。
-        engine も、この値で軌道修正の区切りの待機を省く。"""
-        return self.purpose == "job" and self.policy.drift == Level.high and self.dtype.key != "casual"
+        """脱線修正を発話中・短い間でも行うか(②が積極的のときだけ。就活GD・一般GW・カスタムで共通。雑談型と
+        ②標準/控えめは従来どおり)。engine も、この値で軌道修正の区切りの待機を省く。"""
+        return self.policy.drift == Level.high and self.dtype.key != "casual"
 
     def _drift_interrupt_ok(self, now: float) -> bool:
         """発話中・短い間・共通のクールダウン中でも、脱線修正だけを許可してよいか。強制イベントと依頼の待ちは従来どおり優先し、
@@ -707,7 +707,7 @@ class FacilitatorAgent:
         last = self.last_tick_time
         due = last is None or now - last >= s.analysis_interval_sec
         if st.is_speaking(now):
-            if self._drift_check_due(now):  # 就活GD・②積極的: 発話中でも脱線を確かめる
+            if self._drift_check_due(now):  # ②積極的(GD・GW): 発話中でも脱線を確かめる
                 return "drift"
             self.skipped_due = "speaking" if due else None
             return None
@@ -733,6 +733,6 @@ class FacilitatorAgent:
             return "silence"
         if last is None or now - last >= s.analysis_interval_sec:
             return "periodic"
-        if self._drift_check_due(now):  # 定期分析を待たずに脱線を確かめる(就活GD・②積極的)
+        if self._drift_check_due(now):  # 定期分析を待たずに脱線を確かめる(②積極的、GD・GW)
             return "drift"
         return None

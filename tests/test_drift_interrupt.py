@@ -1,4 +1,4 @@
-"""就活GDで②脱線への対応が「積極的」のときだけ、脱線修正を発話中・短い間でも割り込んで話すことのテスト(API は呼ばない)。
+"""②脱線への対応が「積極的」のとき(就活GD・一般GW・カスタム。雑談型は除く)だけ、脱線修正を発話中・短い間でも割り込んで話すことのテスト(API は呼ばない)。
 
 - 疑似時計(tests/sim.py)で実際のエンジンを回す。クールダウン45秒・分析間隔20秒・2秒の間は本番どおり
 - 発話中は VAD の speaking_now を立て、話し終えた時刻に発言を確定する(テキストモードで音声モードを模擬)
@@ -21,7 +21,7 @@ from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
 from facilitator.chat.host import ChatHostAgent  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
 from facilitator.models import Action, Analysis, Decision  # noqa: E402
-from facilitator.policy import InterventionPolicy, Level  # noqa: E402
+from facilitator.policy import InterventionPolicy, Level, preset_policy  # noqa: E402
 from facilitator.state import DiscussionState  # noqa: E402
 from tests.sim import THEME, SimClock, SimSession, chat_script  # noqa: E402
 
@@ -70,15 +70,33 @@ class JudgeLLM:
         return {"analysis": analysis, "decision": {"action": action, "reasoning": "r", "speech": speech, "urgency": 0.8, "target_speaker": None}}
 
 
-def session(monkeypatch, llm, drift="high", purpose="job", discussion_type="problem_solving", **overrides) -> SimSession:
-    """SimSession と同じ疑似時計のエンジンを、介入ポリシーの②を指定して始める。"""
+LEVELS = ["low", "standard", "high"]
+# カスタム = 就活以外の進め方で、画面の詳細設定(7項目、0〜2)を自由に決めたもの。redirect は session() が drift から入れる
+CUSTOM_KNOBS = {"progress": 1, "organize": 2, "turns": 0, "stall": 1, "content": 1, "content_when": 0}
+MODES = ["gd", "gw", "custom"]
+
+
+def session_config(mode: str, drift: str) -> SessionConfig:
+    """gd: 就活GD(課題解決型)/ gw: 一般GWのプリセット(汎用型)に②だけ変更 / custom: 就活以外 + 詳細設定(アイデア出し型)。"""
+    base = dict(theme=THEME, minutes=10.0, names=["A", "B", "C"], mode="text", intro=False, tts=False)
+    if mode == "gd":
+        return SessionConfig(**base, purpose="job", discussion_type="problem_solving", policy=InterventionPolicy(drift=Level(drift)))
+    if mode == "gw":
+        return SessionConfig(**base, purpose="general", policy_preset="general_gw",
+                             policy=preset_policy("general_gw").updated(drift=Level(drift)))
+    return SessionConfig(**base, purpose="general", discussion_type="idea_generation",
+                         knobs={**CUSTOM_KNOBS, "redirect": LEVELS.index(drift)})
+
+
+def session(monkeypatch, llm, drift="high", mode="gd", **overrides) -> SimSession:
+    """SimSession と同じ疑似時計のエンジンを、用途(mode)と介入ポリシーの②を指定して始める。"""
     s = SimSession.__new__(SimSession)
     s.clock = SimClock()
     llm.clock, llm.now = s.clock, lambda: s.eng.now()
     monkeypatch.setattr(engine_mod, "make_llm", lambda settings: llm)
     s.eng = Engine(load_settings(), clock=s.clock, **overrides)
-    s.eng.start(SessionConfig(THEME, 10.0, ["A", "B", "C"], mode="text", intro=False, tts=False, purpose=purpose,
-                              discussion_type=discussion_type, policy=InterventionPolicy(drift=Level(drift))), background=False)
+    s.eng.start(session_config(mode, drift), background=False)
+    assert s.eng.policy.drift == Level(drift)
     s.spans = []
     return s
 
@@ -98,9 +116,10 @@ def run(s: SimSession, until: float) -> None:
 
 
 # 1・2. 2秒の間がない雑談でも、発話中に脱線修正を話す(定期分析・2秒の間を待たない)
-def test_high_redirects_mid_speech_without_two_second_pause(monkeypatch):
+@pytest.mark.parametrize("mode", MODES)
+def test_high_redirects_mid_speech_without_two_second_pause(monkeypatch, mode):
     llm = JudgeLLM(latency=1.0)
-    s = session(monkeypatch, llm)
+    s = session(monkeypatch, llm, mode=mode)
     continuous_chat(s)
     run(s, T0 + 30)
     log = s.eng.redirect_log
@@ -118,10 +137,11 @@ def test_high_redirects_mid_speech_without_two_second_pause(monkeypatch):
 
 
 # 3. LLM の判断中に別の参加者が話し始めても、それだけでは取り消さない
-def test_high_does_not_cancel_when_someone_starts_talking_during_judgement(monkeypatch):
+@pytest.mark.parametrize("mode", MODES)
+def test_high_does_not_cancel_when_someone_starts_talking_during_judgement(monkeypatch, mode):
     holder = {}
     llm = JudgeLLM(latency=1.0, on_call=lambda t: holder["s"].say(t + 0.1, "speaker_3", CHAT[3], 3.0))
-    s = holder["s"] = session(monkeypatch, llm)
+    s = holder["s"] = session(monkeypatch, llm, mode=mode)
     s.say(T0, "speaker_1", CHAT[0])
     s.say(T0 + 1.5, "speaker_2", CHAT[1])  # その後は2秒以上の間 → 通常の判断で redirect_topic
     run(s, T0 + 40)
@@ -131,10 +151,11 @@ def test_high_does_not_cancel_when_someone_starts_talking_during_judgement(monke
 
 
 # 4. 本題に戻ったら見送る(確定した発言 / 発話途中の文字起こし)
-def test_high_cancels_when_group_returned_to_topic(monkeypatch):
+@pytest.mark.parametrize("mode", MODES)
+def test_high_cancels_when_group_returned_to_topic(monkeypatch, mode):
     holder = {}
     llm = JudgeLLM(latency=1.0, on_call=lambda t: holder["s"].say(t + 0.1, "speaker_3", "話を戻すと、レジの対策を考えましょう。", 0.5))
-    s = holder["s"] = session(monkeypatch, llm)
+    s = holder["s"] = session(monkeypatch, llm, mode=mode)
     s.say(T0, "speaker_1", CHAT[0])
     s.say(T0 + 1.5, "speaker_2", CHAT[1])
     run(s, T0 + 40)
@@ -160,10 +181,11 @@ def test_high_cancels_on_partial_transcript_returning_to_topic(monkeypatch):
 
 
 # 5. 標準・控えめは従来どおり(発話中は判断せず、話すのは区切りの後)
+@pytest.mark.parametrize("mode", MODES)
 @pytest.mark.parametrize("drift", ["standard", "low"])
-def test_standard_and_low_keep_old_constraints(monkeypatch, drift):
+def test_standard_and_low_keep_old_constraints(monkeypatch, drift, mode):
     llm = JudgeLLM(latency=1.0)
-    s = session(monkeypatch, llm, drift=drift)
+    s = session(monkeypatch, llm, drift=drift, mode=mode)
     continuous_chat(s)
     s.run(T0 + 30)
     assert not any(trig == "drift" for _t, trig, _a in llm.calls)
@@ -171,11 +193,12 @@ def test_standard_and_low_keep_old_constraints(monkeypatch, drift):
     assert all(not speaking_at(s, u.start_time) for u in s.eng.state.utterances if u.source == "ai")
 
 
+@pytest.mark.parametrize("mode", MODES)
 @pytest.mark.parametrize("drift", ["standard", "low"])
-def test_standard_and_low_still_wait_for_pause(monkeypatch, drift):
+def test_standard_and_low_still_wait_for_pause(monkeypatch, drift, mode):
     holder = {}
     llm = JudgeLLM(latency=0.5, on_call=lambda t: holder["s"].say(t + 0.1, "speaker_3", CHAT[3], 2.4))
-    s = holder["s"] = session(monkeypatch, llm, drift=drift)
+    s = holder["s"] = session(monkeypatch, llm, drift=drift, mode=mode)
     s.say(T0, "speaker_1", CHAT[0])
     s.say(T0 + 1.5, "speaker_2", CHAT[1])
     s.run(T0 + 90, stop=lambda: bool(s.eng.redirect_log))
@@ -188,9 +211,10 @@ def test_standard_and_low_still_wait_for_pause(monkeypatch, drift):
 
 
 # 6. ほかの介入は従来どおり(発話中の判断では脱線修正しか許可しない。2秒の間がなければ取りやめる)
-def test_high_mid_speech_gate_allows_only_redirect(monkeypatch):
+@pytest.mark.parametrize("mode", MODES)
+def test_high_mid_speech_gate_allows_only_redirect(monkeypatch, mode):
     llm = JudgeLLM(latency=1.0, action="ask_question")
-    s = session(monkeypatch, llm)
+    s = session(monkeypatch, llm, mode=mode)
     continuous_chat(s, n=3)
     s.run(T0 + 20)
     first = next(r for r in s.eng.agent.history if r.llm_called)
@@ -199,10 +223,11 @@ def test_high_mid_speech_gate_allows_only_redirect(monkeypatch):
     assert not s.ai("原因はどう整理")
 
 
-def test_high_other_interventions_still_need_two_seconds(monkeypatch):
+@pytest.mark.parametrize("mode", MODES)
+def test_high_other_interventions_still_need_two_seconds(monkeypatch, mode):
     holder = {}
     llm = JudgeLLM(latency=1.0, action="ask_question", on_call=lambda t: holder["s"].say(t + 0.5, "speaker_3", CHAT[1], 0.3))
-    s = holder["s"] = session(monkeypatch, llm)
+    s = holder["s"] = session(monkeypatch, llm, mode=mode)
     s.say(T0, "speaker_1", ON[0])
     s.say(T0 + 1.5, "speaker_2", ON[1])
     s.run(T0 + 40, stop=lambda: bool(llm.calls))
@@ -217,20 +242,22 @@ def redirects(s: SimSession) -> list[float]:
     return [iv.time for iv in s.eng.state.interventions if iv.action == Action.redirect_topic]
 
 
-def test_high_bypasses_cooldown_right_after_start(monkeypatch):
+@pytest.mark.parametrize("mode", MODES)
+def test_high_bypasses_cooldown_right_after_start(monkeypatch, mode):
     """開始の説明の直後(45秒以内)に雑談が始まっても、脱線修正はクールダウンを待たない。"""
     llm = JudgeLLM(latency=1.0)
-    s = session(monkeypatch, llm)
+    s = session(monkeypatch, llm, mode=mode)
     s.play(chat_script((CHAT * 4)[:18], start=5.0, gap=0.3, dur=2.0))
     s.run(45, stop=lambda: bool(s.eng.redirect_log))
     assert s.eng.redirect_log and s.eng.redirect_log[0]["outcome"] == "spoken"
     assert redirects(s)[0] < 20.0  # 雑談2発言目(9.6秒)の後、確認の間隔と応答時間のうちに話した
 
 
-def test_high_bypasses_cooldown_after_other_intervention(monkeypatch):
+@pytest.mark.parametrize("mode", MODES)
+def test_high_bypasses_cooldown_after_other_intervention(monkeypatch, mode):
     """ほかの介入(質問)の直後に脱線が始まっても、45秒を待たずに脱線修正する。ほかの介入はクールダウンのまま。"""
     llm = JudgeLLM(latency=1.0, action="ask_question")
-    s = session(monkeypatch, llm)
+    s = session(monkeypatch, llm, mode=mode)
     s.say(T0, "speaker_1", ON[0])
     s.say(T0 + 1.5, "speaker_2", ON[1])  # その後の沈黙で質問する
     s.run(T0 + 25, stop=lambda: bool(s.eng.state.interventions[1:]))
@@ -257,10 +284,11 @@ def test_high_cooldown_gate_allows_only_redirect():
     assert std._gate(62.0)[0] == "blocked:cooldown"
 
 
-def test_high_same_drift_is_not_redirected_twice(monkeypatch):
+@pytest.mark.parametrize("mode", MODES)
+def test_high_same_drift_is_not_redirected_twice(monkeypatch, mode):
     """脱線修正の後も同じ雑談が続くだけなら、45秒たつまで再び修正しない(その間は脱線の確認の LLM も呼ばない)。"""
     llm = JudgeLLM(latency=1.0, max_redirects=3)
-    s = session(monkeypatch, llm)
+    s = session(monkeypatch, llm, mode=mode)
     continuous_chat(s, n=30)  # 約70秒続く
     s.run(T0 + 75)
     rs = redirects(s)
@@ -269,10 +297,11 @@ def test_high_same_drift_is_not_redirected_twice(monkeypatch):
     assert not [t for t, trig, _a in llm.calls if rs[0] < t < rs[0] + 45.0]
 
 
-def test_high_new_drift_after_return_can_be_redirected_again(monkeypatch):
+@pytest.mark.parametrize("mode", MODES)
+def test_high_new_drift_after_return_can_be_redirected_again(monkeypatch, mode):
     """修正の後に本題へ戻り、そこから新しい脱線が始まれば、45秒を待たずにまた修正できる(前回から10秒以上あける)。"""
     llm = JudgeLLM(latency=1.0, max_redirects=2)
-    s = session(monkeypatch, llm)
+    s = session(monkeypatch, llm, mode=mode)
     continuous_chat(s, n=3)
     s.run(T0 + 30, stop=lambda: bool(redirects(s)))
     first = redirects(s)[0]
@@ -302,27 +331,44 @@ def test_redirect_repeat_reason_unit():
     assert agent.redirect_repeat_reason(75.0) is None  # 本題に戻った後なので新しい脱線を修正できる
 
 
-@pytest.mark.parametrize("purpose, dtype, cls", [("general", "general", FacilitatorAgent), ("general", "casual", ChatHostAgent)])
-def test_gw_and_casual_unaffected(monkeypatch, purpose, dtype, cls):
+@pytest.mark.parametrize("purpose, dtype, cls, enabled", [
+    ("job", "problem_solving", FacilitatorAgent, True),
+    ("general", "generic", FacilitatorAgent, True),  # 一般GW(汎用型)
+    ("general", "idea_generation", FacilitatorAgent, True),  # 一般GW・カスタム(議論タイプを選んだもの)
+    ("general", "casual", ChatHostAgent, False),  # 雑談は対象外
+])
+def test_scope_gd_gw_custom_but_not_casual(purpose, dtype, cls, enabled):
     s = load_settings()
     st = DiscussionState(settings=s, theme=THEME, duration_sec=600)
     st.started, st.start_time = True, 0.0
     agent = cls(st, JudgeLLM(), s, purpose=purpose, discussion_type=dtype, policy=InterventionPolicy(drift=Level.high))
-    assert not agent.drift_interrupt()
+    assert agent.drift_interrupt() is enabled
     for i, text in enumerate(CHAT):
         st.add_utterance(f"speaker_{i % 3 + 1}", text, 60 + i * 2.3, 62 + i * 2.3, 1.0)
     st.speaking_now = True
-    assert agent._gate(80.0)[0] != "llm:drift_interrupt"
-    assert agent.should_tick(80.0) != "drift"
+    assert (agent._gate(80.0)[0] == "llm:drift_interrupt") is enabled
+    assert (agent.should_tick(80.0) == "drift") is enabled
 
 
-def test_gd_gate_unit():
-    """ルール層の単体: 就活GD・②積極的だけ、発話中・短い間に脱線修正の判断を許可する。"""
+def test_casual_mode_session_is_excluded(monkeypatch):
+    """画面の「雑談」モード(就活以外・雑談型)で②に積極的が送られても、雑談の司会は割り込まない。"""
+    llm = JudgeLLM()
+    monkeypatch.setattr(engine_mod, "make_llm", lambda settings: llm)
+    eng = Engine(load_settings(), clock=SimClock())
+    eng.start(SessionConfig(THEME, 10.0, ["A", "B"], mode="text", intro=False, tts=False, purpose="general",
+                            discussion_type="casual", knobs={"redirect": 2}), background=False)
+    assert isinstance(eng.agent, ChatHostAgent) and eng.policy.drift == Level.high
+    assert not eng.agent.drift_interrupt()
+
+
+@pytest.mark.parametrize("purpose, dtype", [("job", "problem_solving"), ("general", "generic"), ("general", "idea_generation")])
+def test_gate_unit(purpose, dtype):
+    """ルール層の単体: ②積極的だけ、発話中・短い間に脱線修正の判断を許可する(GD・GW 共通)。"""
     s = load_settings()
     for drift, expect in (("high", "llm:drift_interrupt"), ("standard", "blocked:speaking"), ("low", "blocked:speaking")):
         st = DiscussionState(settings=s, theme=THEME, duration_sec=600)
         st.started, st.start_time = True, 0.0
-        agent = FacilitatorAgent(st, JudgeLLM(), s, purpose="job", policy=InterventionPolicy(drift=Level(drift)))
+        agent = FacilitatorAgent(st, JudgeLLM(), s, purpose=purpose, discussion_type=dtype, policy=InterventionPolicy(drift=Level(drift)))
         for i, text in enumerate(CHAT[:3]):
             st.add_utterance(f"speaker_{i + 1}", text, 60 + i * 2.3, 62 + i * 2.3, 1.0)
         st.speaking_now = True
