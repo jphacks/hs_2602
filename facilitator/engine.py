@@ -40,6 +40,7 @@ from facilitator.participants import (
     transcript_for_bot,
 )
 from facilitator.report import RecordingLLM, TestReport
+from facilitator.speaker.split import fill_labels, group_by_speaker, sentence_spans, split_sentences
 from facilitator.state import DiscussionState
 from facilitator.stt.base import TranscriptEvent, is_noise_text
 
@@ -400,15 +401,35 @@ class Engine:
         if self.status == "intro":
             self.intro.turns.append(e)
             return
-        sid, conf = UNKNOWN, 0.0
-        if self._vid and self._vid.enrolled:
+        for text, start, end, sid, conf in self._identify_by_sentence(e):
+            echo = self._echo_of_ai(text, start, end)
+            if echo:
+                self._note(f"AI の声の回り込みとみなして除外: {echo}")
+                continue
+            self.state.add_utterance(sid, text, start, end, conf)
+
+    def _identify_by_sentence(self, e: TranscriptEvent) -> list[tuple[str, float, float, str, float]]:
+        """誰が話したかを文ごとに判定する。複数人が間をあけずに話して1つのターンになった場合も、人ごとの発言に分ける。
+        短すぎて判定できない文・不確かな文は前後の文の話者を引き継ぎ、同じ人が続く文はまとめる。"""
+        assert e.start is not None and e.end is not None
+        if not (self._vid and self._vid.enrolled):
+            return [(e.text, e.start, e.end, UNKNOWN, 0.0)]
+        parts = split_sentences(e.text)
+        if len(parts) <= 1:
             r = self._vid.identify(self._buf.segment(e.start - 0.1, e.end + 0.1))
-            sid, conf = r.speaker_id, r.confidence
-        echo = self._echo_of_ai(e.text, e.start, e.end)
-        if echo:
-            self._note(f"AI の声の回り込みとみなして除外: {echo}")
-            return
-        self.state.add_utterance(sid, e.text, e.start, e.end, conf)
+            return [(e.text, e.start, e.end, r.speaker_id, r.confidence)]
+        spans = sentence_spans(parts, e.start, e.end, (e.raw or {}).get("words"))
+        labels: list[tuple[str, float] | None] = []
+        for s, t in spans:
+            if t - s >= self._vid.min_sec:
+                r = self._vid.identify(self._buf.segment(s - 0.05, t + 0.05))
+                labels.append((r.speaker_id, r.confidence))
+            else:
+                labels.append(None)
+        if all(lb is None or lb[0] == UNKNOWN for lb in labels):  # どの文も判定できなければ、ターン全体で判定する
+            r = self._vid.identify(self._buf.segment(e.start - 0.1, e.end + 0.1))
+            return [(e.text, e.start, e.end, r.speaker_id, r.confidence)]
+        return group_by_speaker(parts, spans, fill_labels(labels, UNKNOWN))
 
     def _echo_of_ai(self, text: str, start: float, end: float) -> str | None:
         """AI の発話と時間が重なる文字起こしが、AI の発言とよく似ていれば(スピーカーの声をマイクが拾った)理由を返す。"""
@@ -443,14 +464,24 @@ class Engine:
                 prompt = f"ありがとうございます。次は{name}さん、お願いします。"
             self._say(prompt, record=True, gen=gen)
             t_start = self.now()
+            self._voice_end = None
+
+            def mine() -> list[TranscriptEvent]:
+                # この人への呼びかけが終わった後に話し始めた声だけを使う(前の人の遅れて届いた文字起こしを除く)
+                return [t for t in self.intro.turns if t.start is not None and t.start >= t_start - 0.3]
+
             while self._alive(gen):
                 self.clock.sleep(0.2)
-                voiced = sum(t.end - t.start for t in self.intro.turns)
-                last_end = max((t.end for t in self.intro.turns), default=None)
-                quiet = not st.speaking_now and last_end is not None and self.now() - last_end >= INTRO_END_SILENCE_SEC
+                turns = mine()
+                voiced = sum(t.end - t.start for t in turns)
+                last_end = max((t.end for t in turns), default=None)
+                # 区切りは「マイクが実際に静かになってからの時間」で判断する(文字起こしの確定は遅れて届くため、
+                # その時刻だけで判断すると、話の途中の短い間で次の人へ進んでしまう)
+                heard_end = max(x for x in (last_end, self._voice_end) if x is not None) if last_end is not None else None
+                quiet = not st.speaking_now and heard_end is not None and self.now() - heard_end >= INTRO_END_SILENCE_SEC
                 if (voiced >= INTRO_MIN_VOICED_SEC and quiet) or self.now() - t_start > INTRO_TIMEOUT_SEC:
                     break
-            turns = list(self.intro.turns)
+            turns = [t for t in mine() if not self._is_enrolled_voice(t, sid)]
             if turns:
                 audio = np.concatenate([self._buf.segment(t.start, t.end) for t in turns])
                 self._vid.enroll(sid, audio)
@@ -467,6 +498,13 @@ class Engine:
                 return
             self.intro.index = -1
             self.status = "running"  # 次のエージェントのサイクルで start_gd が発動する
+
+    def _is_enrolled_voice(self, t: TranscriptEvent, sid: str) -> bool:
+        """自己紹介の声が、すでに登録した別の人の声とはっきり一致するか(前の人がまだ話していた場合など)。"""
+        if not (self._vid and self._vid.enrolled) or t.start is None or t.end is None:
+            return False
+        r = self._vid.identify(self._buf.segment(t.start, t.end))
+        return r.speaker_id not in (UNKNOWN, sid) and r.confidence >= 0.8
 
     # ================= エージェント =================
     def _agent_loop(self, gen: int) -> None:
