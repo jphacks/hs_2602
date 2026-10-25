@@ -27,7 +27,19 @@ body { margin: 0; color: var(--text); font-family: var(--font); font-size: 15px;
   background: var(--bg); -webkit-font-smoothing: antialiased; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.screen { display: none; min-height: 100vh; animation: fade .4s cubic-bezier(.2,.8,.2,1) both; }
+html, body { overflow: hidden; }
+/* アプリの表示領域。スマホでは画面いっぱい、PC などではスマホの画面比率の枠(縦 / 横は画面に合わせて自動で切り替え) */
+.device { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden;
+  background: var(--bg); transform: translateZ(0); }
+.device-scroll { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+body.framed { background: #f2f2f7; }
+body.framed .device { left: 50%; top: 50%; width: var(--dw); height: var(--dh); border-radius: 46px;
+  box-shadow: 0 0 0 11px #1d1d1f, 0 0 0 12px #3a3a3c, 0 40px 90px rgba(0, 0, 0, .28);
+  transform: translate(-50%, -50%) scale(var(--k)); }
+/* 縦 ⇄ 横の切り替えだけ動かす(読み込み直後の配置では動かさない) */
+body.framed.anim .device { transition: width .5s cubic-bezier(.2,.8,.2,1), height .5s cubic-bezier(.2,.8,.2,1), transform .5s cubic-bezier(.2,.8,.2,1); }
+body.framed .device-scroll::-webkit-scrollbar { width: 0; }
+.screen { display: none; min-height: 100%; animation: fade .4s cubic-bezier(.2,.8,.2,1) both; }
 .screen.active { display: block; }
 @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
@@ -100,8 +112,6 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .person-in { position: relative; }
 .person-in .dot { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; }
 .person-in .input { padding-left: 34px; }
-.advanced { overflow: hidden; max-height: 0; opacity: 0; transition: max-height .45s ease, opacity .3s, margin .3s; }
-.advanced.open { max-height: 1000px; opacity: 1; margin-top: 8px; }
 .adv-inner h3 { margin: 18px 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .toggles { display: flex; flex-direction: column; margin-top: 8px; border-radius: var(--radius-sm); background: var(--tile-2); overflow: hidden; }
 .toggle { display: flex; align-items: center; gap: 12px; padding: 12px 14px; font-size: 15px; cursor: pointer; }
@@ -124,15 +134,6 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .choice2 button, .choice3 button { padding: 10px 6px; border-radius: 9px; border: 0; background: transparent; font-weight: 500; font-size: 15px; transition: .2s; }
 .choice3 button small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
 .choice2 button.on, .choice3 button.on { background: var(--tile); font-weight: 600; box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04); }
-.detail-head { display: flex !important; align-items: center; justify-content: space-between; cursor: pointer; }
-/* iOS のスイッチ */
-.switch { position: relative; width: 51px; height: 31px; flex: none; }
-.switch input { opacity: 0; width: 0; height: 0; }
-.switch i { position: absolute; inset: 0; border-radius: 999px; background: var(--fill-2); transition: .25s; }
-.switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
-  box-shadow: 0 3px 8px rgba(0,0,0,.15), 0 3px 1px rgba(0,0,0,.06); transition: .25s cubic-bezier(.2,.8,.2,1); }
-.switch input:checked + i { background: var(--accent); }
-.switch input:checked + i::after { transform: translateX(20px); }
 /* 詳細: 設定アプリのリストのように区切り線で並べる */
 .knob { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; font-size: 15px; flex-wrap: wrap; }
 #knobs .knob + .knob { border-top: .5px solid var(--line); }
@@ -189,7 +190,8 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .logbox .head h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.01em; }
 .log { flex: 1; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
 .log::-webkit-scrollbar { width: 6px; } .log::-webkit-scrollbar-thumb { background: var(--fill-2); border-radius: 6px; }
-.msg { display: grid; grid-template-columns: 30px 1fr; gap: 8px; animation: fade .3s ease both; }
+.msg { display: grid; grid-template-columns: 30px 1fr; gap: 8px; }
+.msg.new { animation: fade .3s ease both; }  /* 書き足しのたびに既存の発言が点滅しないよう、新しい発言だけ動かす */
 .msg .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: #fff; background-color: var(--c, #8e8e93); }
 .msg .av svg { width: 18px; height: 18px; }
 .msg .who { font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; padding-left: 12px; }
@@ -224,27 +226,6 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .enrolled span { font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 999px; background: var(--fill); color: var(--muted); }
 .enrolled span.ok { color: var(--accent); background: var(--accent-soft); }
 .enrolled span.now { color: #fff; background: var(--accent); }
-.summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0 24px; }
-.summary-grid div { padding: 14px; border-radius: 16px; background: var(--tile-2); }
-.summary-grid b { display: block; font-family: var(--rounded); font-size: 26px; }
-.summary-grid span { color: var(--muted); font-size: 12.5px; }
-.drawer { position: fixed; top: 10px; right: 10px; bottom: 10px; width: min(420px, 92vw); z-index: 25; transform: translateX(110%); transition: transform .4s cubic-bezier(.2,.8,.2,1);
-  background: var(--material); backdrop-filter: saturate(180%) blur(30px); -webkit-backdrop-filter: saturate(180%) blur(30px);
-  border-radius: 26px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 0 0 .5px var(--line); }
-.drawer.open { transform: none; box-shadow: 0 0 0 .5px var(--line), 0 20px 60px rgba(0,0,0,.25); }
-.drawer header { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; }
-.drawer header h2 { margin: 0; font-size: 20px; font-weight: 700; }
-.decs { flex: 1; overflow-y: auto; padding: 0 16px 16px; display: flex; flex-direction: column; gap: 10px; }
-.dec { padding: 12px 14px; border-radius: 16px; background: var(--tile-2); }
-.dec.act { box-shadow: inset 3px 0 0 var(--accent); }
-.dec.cancel { box-shadow: inset 3px 0 0 var(--text); }
-.dec .h { display: flex; gap: 10px; align-items: center; font-size: 12.5px; color: var(--muted); }
-.dec .h b { color: var(--text); font-size: 14px; }
-.dec.act .h b { color: var(--accent); }
-.dec .h time { font-variant-numeric: tabular-nums; }
-.dec .why { font-size: 14px; margin-top: 6px; }
-.dec .sp { font-size: 14px; margin-top: 6px; font-weight: 600; }
-.dec .ov { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .hidden { display: none !important; }
 
@@ -291,16 +272,12 @@ body { font-size: 17px; }
 .clock { padding: 20px 20px 18px; }
 .clock .time { font-size: 72px; }
 .people-row { flex-wrap: wrap; } .pcard { flex-basis: 40%; }
-.logbox { min-height: 70vh; }
+.logbox { min-height: 70%; }
 .composer select { flex: none; max-width: 96px; }
 .composer .input { flex: 1; min-width: 0; }
-/* 判断ログは下から出るシート */
-.drawer { top: auto; right: auto; left: 50%; bottom: 0; width: min(var(--col), 100%); height: 78vh; border-radius: 26px 26px 0 0;
-  transform: translate(-50%, 105%); }
-.drawer.open { transform: translate(-50%, 0); }
 /* ---------- 進行画面だけはスマホの横持ち(画面の高さに収め、左に時計と参加者、右に会話ログ) ---------- */
 #s-session { max-width: 1180px; }
-#s-session.active { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+#s-session.active { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 #s-session .bar { position: static; flex-wrap: nowrap; gap: 10px; padding: 8px 14px; }
 #s-session .bar .theme { flex: 1 1 auto; font-size: 15px; }
 #s-session .bar .actions { flex: none; display: flex; gap: 6px; }
@@ -330,9 +307,9 @@ body { font-size: 17px; }
 #s-session .composer .input { padding: 8px 14px; }
 #s-session .composer .btn { padding: 8px 14px; }
 .rotate-hint { display: none; }
-/* 縦向きのスマホでは横向きにするよう案内する */
+/* 縦向きのスマホでは横向きにするよう案内する(PC などの枠表示では枠が自動で横になるので出さない) */
 @media (orientation: portrait) and (max-width: 700px) {
-  #s-session .rotate-hint { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; position: fixed; inset: 0; z-index: 20;
+  body:not(.framed) #s-session .rotate-hint { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; position: fixed; inset: 0; z-index: 20;
     background: var(--bg); color: var(--muted); font-size: 17px; }
   #s-session .rotate-hint svg { width: 56px; height: 56px; color: var(--text); }
   #s-session .rotate-hint b { color: var(--text); }
@@ -354,9 +331,32 @@ body { font-size: 17px; }
 /* 議論タイプ: 2列。数が奇数のときは先頭(指定なし)を横いっぱいに */
 .type-grid button:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
 .type-grid button { font-size: 15px !important; }
+/* ---------- 4. 結果 ---------- */
+.r-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.r-meta span { font-size: 13px; font-weight: 500; padding: 4px 11px; border-radius: 999px; background: var(--fill); color: var(--muted); }
+.r-meta b { color: var(--text); font-family: var(--rounded); }
+/* 全員の発言時間の割合(1本の帯) */
+.r-share { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: var(--fill); margin: 2px 0 16px; }
+.r-share i { display: block; height: 100%; background: var(--c); transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.r-share i + i { box-shadow: inset 2px 0 0 #fff; }
+.r-person { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 4px 12px; align-items: center; padding: 10px 0; }
+.r-person + .r-person { border-top: .5px solid var(--line); }
+.r-person .avatar { width: 40px; height: 40px; border-radius: 11px; font-size: 17px; margin: 0; grid-row: span 3; }
+.r-person .avatar svg { width: 22px; height: 22px; }
+.r-person .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-width: 0; }
+.r-person .top b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-person .top b small { font-size: 11px; font-weight: 600; color: var(--ai); margin-left: 6px; }
+.r-person .pct { font-family: var(--rounded); font-weight: 700; font-size: 18px; }
+.r-person .r-bar { height: 8px; border-radius: 999px; background: var(--fill); overflow: hidden; }
+.r-person .r-bar i { display: block; height: 100%; border-radius: 999px; background: var(--c); width: 0; transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.r-person .nums { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.r-person.fac .pct { color: var(--muted); font-size: 14px; font-weight: 600; }
+.r-log { display: flex; flex-direction: column; gap: 12px; }
 </style>
 </head>
 <body>
+<div class="device" id="device">
+<div class="device-scroll" id="scroller">
 
 <!-- ============ 1. モード選択 ============ -->
 <section class="screen" id="s-purpose">
@@ -401,6 +401,12 @@ body { font-size: 17px; }
       </div>
     </div>
 
+    <div class="tile span-4">
+      <span class="label">議論タイプ</span>
+      <div class="choice2 type-grid" id="seg-type"></div>
+      <div class="hint" id="type-hint"></div>
+    </div>
+
     <div class="tile span-2">
       <span class="label">制限時間</span>
       <div class="numrow" data-key="minutes" data-min="1" data-max="60" data-unit="分"></div>
@@ -432,24 +438,17 @@ body { font-size: 17px; }
 
     <div class="tile span-2 tile-style">
       <span class="label">スタイル</span>
-      <div class="choice2" id="purpose">
+      <div class="choice3" id="purpose">
         <button type="button" data-v="job">就活</button>
         <button type="button" data-v="general">就活以外</button>
+        <button type="button" data-v="custom">カスタム</button>
       </div>
     </div>
 
-    <div class="tile span-4">
-      <span class="label">議論タイプ<span id="type-req">(必須)</span></span>
-      <div class="choice2 type-grid" id="seg-type"></div>
-      <div class="hint" id="type-hint"></div>
-    </div>
 
-    <div class="tile span-2 detail" id="detail-tile">
-      <label class="detail-head">
-        <span class="label" style="margin:0">詳細</span>
-        <span class="switch"><input type="checkbox" id="f-detail"><i></i></span>
-      </label>
-      <div class="advanced" id="detail-body">
+    <div class="tile span-4 detail hidden" id="detail-tile">
+      <span class="label">カスタム</span>
+      <div id="detail-body">
           <div class="adv-inner">
             <div id="knobs"></div>
             <h3 style="margin-top:22px">その他</h3>
@@ -485,7 +484,6 @@ body { font-size: 17px; }
       <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>開始</button>
       <button class="btn" id="btn-pause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>一時停止</span></button>
       <button class="btn danger" id="btn-stop" disabled><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>終了</button>
-      <button class="btn" id="btn-decisions" title="AIの判断ログ"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.8V16h5v-.3c0-.7.4-1.4 1-1.8A6 6 0 0 0 12 3z"/></svg>判断</button>
       <button class="btn" id="btn-setup" title="設定に戻る"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg></button>
     </div>
   </div>
@@ -513,6 +511,35 @@ body { font-size: 17px; }
   </div>
 </section>
 
+<!-- ============ 4. 結果 ============ -->
+<section class="screen" id="s-result">
+  <div class="bento bento-result">
+    <div class="tile tile-hero span-4">
+      <span class="mode-pill">ディスカッション終了</span>
+      <h1 id="r-theme">—</h1>
+      <div class="r-meta" id="r-meta"></div>
+    </div>
+
+    <div class="tile span-4">
+      <span class="label">喋った量</span>
+      <div class="r-share" id="r-share"></div>
+      <div class="r-people" id="r-people"></div>
+    </div>
+
+    <div class="tile span-4">
+      <span class="label" id="r-log-label">会話ログ</span>
+      <div class="r-log" id="r-log"></div>
+    </div>
+
+    <div class="setup-actions span-4">
+      <button type="button" class="btn" id="r-again">同じ設定でもう一度</button>
+      <button type="button" class="btn primary" id="r-new">新しく始める</button>
+    </div>
+  </div>
+</section>
+
+</div><!-- /device-scroll -->
+
 <!-- 自己紹介 -->
 <div class="overlay" id="ov-intro">
   <div class="glass modal">
@@ -523,40 +550,13 @@ body { font-size: 17px; }
   </div>
 </div>
 
-<!-- 終了 -->
-<div class="overlay" id="ov-done">
-  <div class="glass modal">
-    <div class="eyebrow">SESSION COMPLETE</div>
-    <h2>お疲れさまでした</h2>
-    <p id="done-theme"></p>
-    <div class="summary-grid">
-      <div><b id="d-time">--:--</b><span>経過時間</span></div>
-      <div><b id="d-utts">0</b><span>発言数</span></div>
-      <div><b id="d-ai">0</b><span>AIの介入</span></div>
-    </div>
-    <div class="row" style="justify-content:center">
-      <button class="btn" id="d-close">ログを見る</button>
-      <button class="btn primary" id="d-new">新しく始める</button>
-    </div>
-  </div>
 </div>
-
-<!-- 判断ログ -->
-<aside class="drawer" id="drawer">
-  <header><h2>AI の判断(介入した / しなかった理由)</h2><button class="btn" id="drawer-close">✕</button></header>
-  <div class="decs" id="decs"><div class="empty">まだ判断はありません</div></div>
-</aside>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const COLORS = ["#007aff", "#ff2d55", "#ff9500", "#34c759"];
 const AI_COLORS = ["#af52de", "#5856d6", "#32ade6"];
 const ROBOT = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="4"/><path d="M12 3v4M9 12h.01M15 12h.01M9.5 16h5"/></svg>';
-const ACTION_JA = {
-  no_intervention: "見守り", start_gd: "開始の説明", ask_question: "問いかけ", redirect_topic: "軌道修正",
-  organize_issues: "論点整理", compare_criteria: "比較基準の提示", invite_all: "全体へ発言を促す",
-  invite_person: "個人へ発言を促す", return_to_speaker: "発言を戻す", time_warning: "時間の告知", close_gd: "終了・結論の確認",
-};
 let PHASES = [];  // 議論タイプのフェーズ [key, 名前]。サーバーの状態(s.phases)から受け取る
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const mmss = (s) => { s = Math.max(0, Math.floor(s)); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
@@ -566,12 +566,35 @@ const ui = {
   withAI: false, purpose: "job", dtype: null, minutes: 8, humans: 3, bots: 1, input: "voice", level: 2,
   knobs: { phase: 1, redirect: 1, organize: 1, turns: 1, suggest: 1 }, info: null, config: null, started: false,
 };
-let snap = null, logKey = "", decKey = "", doneShown = false;
+let snap = null, logKey = "", doneShown = false;
+const seenMsg = new Set();
 
 function show(id) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === id));
-  window.scrollTo(0, 0);
+  $("scroller").scrollTop = 0;
+  fitDevice();
+  // スマホでは、ディスカッション中だけ横向きに固定を試みる(対応していない端末では何もしない)
+  try {
+    if (id === "s-session") screen.orientation?.lock?.("landscape")?.catch?.(() => {});
+    else screen.orientation?.unlock?.();
+  } catch (e) { /* 未対応 */ }
 }
+
+// PC などの大きい画面では、スマホの画面比率(390×844)の枠に収めて表示する。ディスカッション中は横向き(844×390)にする
+const PHONE = { w: 390, h: 844 };
+function fitDevice() {
+  const framed = Math.min(innerWidth, innerHeight) >= 520;  // スマホ(短い辺が 520px 未満)では画面いっぱいに表示
+  document.body.classList.toggle("framed", framed);
+  if (!framed) return;
+  const landscape = $("s-session").classList.contains("active");
+  const w = landscape ? PHONE.h : PHONE.w, h = landscape ? PHONE.w : PHONE.h;
+  const k = Math.min((innerWidth - 64) / w, (innerHeight - 64) / h, 1.3);
+  const st = document.body.style;
+  st.setProperty("--dw", `${w}px`); st.setProperty("--dh", `${h}px`); st.setProperty("--k", k.toFixed(4));
+}
+addEventListener("resize", fitDevice);
+fitDevice();
+requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add("anim")));
 
 /* ---------- 1. モード選択 ---------- */
 document.querySelectorAll(".purpose").forEach((b) => b.onclick = () => {
@@ -603,16 +626,18 @@ function seg(id, key, after) {
     ui[key] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; syncSetup(); after && after();
   });
 }
+// スタイルのカスタムは、就活以外の進行に「カスタム」の設定(進行の調整・入力方法など)を加えたもの
+const purposeOf = () => (ui.purpose === "job" ? "job" : "general");
 seg("purpose", "purpose", () => {
   if (ui.purpose === "job" && !ui.dtype) ui.dtype = null;          // 就活GDは毎回選ぶ
-  if (ui.purpose === "general" && ui.dtype == null) ui.dtype = "";  // 就活以外は「指定なし(汎用)」が初期値
+  if (ui.purpose !== "job" && ui.dtype == null) ui.dtype = "";  // 就活以外は「指定なし(汎用)」が初期値
   renderTypes();
 });
 // 議論タイプ: 就活GDは4種類から必須。就活以外は「指定なし(汎用)」も選べる
 const GENERIC_TYPE = { key: "", label: "指定なし(汎用)", phases: ["案出し", "比較検討", "結論"] };
 function typeOptions() {
   const types = ui.info?.discussion_types || [];
-  return ui.purpose === "general" ? [GENERIC_TYPE, ...types] : types;
+  return purposeOf() === "general" ? [GENERIC_TYPE, ...types] : types;
 }
 function typeLabel(key) {
   const t = [GENERIC_TYPE, ...(ui.info?.discussion_types || [])].find((x) => x.key === (key || ""));
@@ -624,11 +649,9 @@ function renderTypes() {
   $("seg-type").querySelectorAll("button").forEach((b) => b.onclick = () => { ui.dtype = b.dataset.v; renderTypes(); });
   const cur = opts.find((t) => t.key === ui.dtype);
   $("type-hint").textContent = cur ? cur.phases.join(" → ") : "テーマに合う進め方を選んでください";
-  $("type-req").style.display = ui.purpose === "job" ? "" : "none";
 }
 seg("seg-input", "input");
 seg("seg-level", "level");
-$("f-detail").onchange = (e) => { $("detail-body").classList.toggle("open", e.target.checked); };
 
 function renderKnobs() {
   const labels = ui.info?.knobs || {};
@@ -651,6 +674,7 @@ function syncSetup() {
   document.querySelectorAll(".ai-only").forEach((el) => el.classList.toggle("hidden", !ui.withAI));
   const on = (id, v) => $(id).querySelectorAll("button").forEach((b) => b.classList.toggle("on", String(v) === b.dataset.v));
   on("purpose", ui.purpose); on("seg-input", ui.input); on("seg-level", ui.level);
+  $("detail-tile").classList.toggle("hidden", ui.purpose !== "custom");
   // 就活では選考の公平性のため、AI が参加者の出していない観点を持ち込まない(提案度合いは標準まで)
   const jobCap = ui.purpose === "job";
   if (jobCap && ui.knobs.suggest > 1) ui.knobs.suggest = 1;
@@ -666,7 +690,7 @@ $("btn-theme").onclick = async () => {
   const b = $("btn-theme"); b.disabled = true; b.textContent = "生成中…";
   try {
     const res = await fetch("/api/theme", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ purpose: ui.purpose, exclude: $("f-theme").value.trim() }) });
+      body: JSON.stringify({ purpose: purposeOf(), exclude: $("f-theme").value.trim() }) });
     if (!res.ok) throw new Error(res.status);
     const r = await res.json();
     if (r.theme) { $("f-theme").value = r.theme; $("f-err").textContent = ""; }
@@ -685,12 +709,17 @@ $("setup-form").onsubmit = (ev) => {
   const bots = ui.withAI ? ui.bots : 0;
   if (names.length + bots < 2) { $("f-err").textContent = "合計2人以上にしてください(AI参加者ありモードなら AI を加えられます)"; return; }
   $("f-err").textContent = "";
+  // カスタム以外は標準の設定で進行する(進行の調整はすべて標準、入力方法は既定、声の登録・AI の声・話者情報はオン)
+  const custom = ui.purpose === "custom";
   ui.config = {
-    theme: $("f-theme").value.trim(), minutes: ui.minutes, names, mode: ui.input,
-    intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
-    purpose: ui.purpose, preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level, knobs: { ...ui.knobs },
+    theme: $("f-theme").value.trim(), minutes: ui.minutes, names,
+    mode: custom ? ui.input : (ui.info?.default_mode || "voice"),
+    intro: custom ? $("f-intro").checked : true, tts: custom ? $("f-tts").checked : true,
+    use_speaker_info: custom ? $("f-spk").checked : true,
+    purpose: purposeOf(), preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level,
+    knobs: custom ? { ...ui.knobs } : {},
   };
-  snap = null; logKey = ""; decKey = ""; doneShown = false; ui.started = false;
+  snap = null; logKey = ""; doneShown = false; ui.started = false; seenMsg.clear();
   renderReady();
   show("s-session");
 };
@@ -733,7 +762,6 @@ function renderReady() {
   $("btn-start").disabled = false; $("btn-pause").disabled = true; $("btn-stop").disabled = true;
 
   $("log").innerHTML = '<div class="empty">発言がここに表示されます</div>'; $("partial").textContent = ""; $("silence").textContent = "";
-  $("decs").innerHTML = '<div class="empty">まだ判断はありません</div>';
   renderPhases("", "");
   $("pcards").dataset.key = "";
   renderPeople();
@@ -835,7 +863,6 @@ function render() {
 
   renderPeople();
   renderLog(s);
-  renderDecisions(s);
   $("partial").textContent = s.partial ? `… ${s.partial}` : "";
 
   // 自己紹介
@@ -847,11 +874,7 @@ function render() {
   // 終了
   if (s.status === "finished" && s.started && !doneShown) {
     doneShown = true;
-    $("done-theme").textContent = s.theme;
-    $("d-time").textContent = mmss(s.elapsed);
-    $("d-utts").textContent = s.utterances.filter((u) => u.source === "human").length;
-    $("d-ai").textContent = s.interventions;
-    $("ov-done").classList.add("show");
+    showResult();
   }
 }
 
@@ -864,28 +887,18 @@ function renderLog(s) {
   const humans = new Set(s.humans || Object.keys(s.names));
   const opts = (sel) => Object.entries(s.names).filter(([id]) => humans.has(id)).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${esc(n)}</option>`).join("")
     + `<option value="unknown" ${sel === "unknown" ? "selected" : ""}>不明</option>`;
+  const cls = (u) => (seenMsg.has(u.id) ? "" : " new");
   box.innerHTML = s.utterances.map((u) => u.source === "ai"
-    ? `<div class="msg ai"><div class="av">AI</div><div><div class="who"><b>AI ファシリテーター</b><time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`
+    ? `<div class="msg ai${cls(u)}"><div class="av">AI</div><div><div class="who"><b>AI ファシリテーター</b><time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`
     : u.source === "bot"
-    ? `<div class="msg bot" style="--c:${color(u.speaker_id)}"><div class="av">${ROBOT}</div>
+    ? `<div class="msg bot${cls(u)}" style="--c:${color(u.speaker_id)}"><div class="av">${ROBOT}</div>
        <div><div class="who"><b>${esc(s.names[u.speaker_id] || "AI")}</b><span class="aitag">AI参加者</span><time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`
-    : `<div class="msg" style="--c:${u.speaker_id === "unknown" ? "#c7c7cc" : color(u.speaker_id)}"><div class="av">${esc((s.names[u.speaker_id] || "?").slice(0, 1))}</div>
+    : `<div class="msg${cls(u)}" style="--c:${u.speaker_id === "unknown" ? "#c7c7cc" : color(u.speaker_id)}"><div class="av">${esc((s.names[u.speaker_id] || "?").slice(0, 1))}</div>
        <div><div class="who"><select class="relabel" data-id="${u.id}" title="話者を修正">${opts(u.speaker_id)}</select><time>${mmss(u.t)}</time>
        ${u.conf < 0.7 && u.speaker_id !== "unknown" ? '<span class="low">低確信</span>' : ""}</div><div class="bubble">${esc(u.text)}</div></div></div>`).join("");
+  s.utterances.forEach((u) => seenMsg.add(u.id));
   box.querySelectorAll(".relabel").forEach((el) => el.onchange = () => { post("/api/relabel", { id: +el.dataset.id, speaker_id: el.value }); el.blur(); });
   if (atBottom) box.scrollTop = box.scrollHeight;
-}
-
-function renderDecisions(s) {
-  const key = JSON.stringify(s.ticks.map((d) => [d.t, d.action, d.overridden]));
-  if (key === decKey) return; decKey = key;
-  const items = s.ticks.slice().reverse().filter((d) => !d.gate.startsWith("blocked"));
-  $("decs").innerHTML = items.length ? items.map((d) => {
-    const cancelled = (d.overridden || "").startsWith("発話取りやめ");
-    const acted = d.action !== "no_intervention" && !cancelled;
-    return `<div class="dec ${acted ? "act" : cancelled ? "cancel" : ""}"><div class="h"><time>${mmss(d.t)}</time><b>${ACTION_JA[d.action] || d.action}</b><span>${d.latency ? d.latency.toFixed(1) + "s" : ""}</span></div>
-      <div class="why">${esc(d.reasoning)}</div>${d.speech ? `<div class="sp">「${esc(d.speech)}」</div>` : ""}${d.overridden ? `<div class="ov">${esc(d.overridden)}</div>` : ""}</div>`;
-  }).join("") : '<div class="empty">まだ判断はありません</div>';
 }
 
 $("btn-start").onclick = async () => {
@@ -903,10 +916,51 @@ $("btn-setup").onclick = () => {
   if (live) post("/api/stop");
   ui.started = false; show("s-setup");
 };
-$("btn-decisions").onclick = () => $("drawer").classList.toggle("open");
-$("drawer-close").onclick = () => $("drawer").classList.remove("open");
-$("d-close").onclick = () => $("ov-done").classList.remove("show");
-$("d-new").onclick = () => { $("ov-done").classList.remove("show"); ui.started = false; show("s-purpose"); };
+/* ---------- 4. 結果 ---------- */
+async function showResult() {
+  const r = await fetch("/api/result").then((x) => x.json()).catch(() => null);
+  if (!r?.ok) return;
+  $("logbox").classList.remove("expanded");
+  $("r-theme").textContent = r.theme;
+  const limit = r.duration >= 24 * 3600 ? "制限なし" : `${Math.round(r.duration / 60)}分`;
+  const said = r.people.reduce((a, p) => a + p.turns, 0);
+  $("r-meta").innerHTML = [`時間 <b>${mmss(r.elapsed)}</b> / ${limit}`, esc(r.discussion_type), `発言 <b>${said}</b>回`, `AIの介入 <b>${r.interventions}</b>回`]
+    .map((x) => `<span>${x}</span>`).join("");
+  // 喋った量: 参加者どうしの発言時間の割合(進行役は別に表示し、割合には含めない)
+  const total = r.people.reduce((a, p) => a + p.sec, 0);
+  const max = Math.max(1, r.facilitator.sec, ...r.people.map((p) => p.sec));
+  // 色は結果のデータから決める(再読み込み後でも進行中と同じ色: 人間は順に COLORS、AI 参加者は順に AI_COLORS)
+  const colors = {}; let h = 0, b = 0;
+  r.people.forEach((p) => { colors[p.id] = p.kind === "unknown" ? "#c7c7cc" : p.kind === "bot" ? AI_COLORS[b++ % AI_COLORS.length] : COLORS[h++ % COLORS.length]; });
+  const col = (p) => colors[p.id];
+  const pct = (p) => (total ? Math.round((p.sec / total) * 100) : 0);
+  const icon = (p) => (p.kind === "bot" ? ROBOT : esc((p.name || "?").slice(0, 1)));
+  const ranked = r.people.slice().sort((a, b) => b.sec - a.sec);
+  $("r-share").innerHTML = ranked.filter((p) => p.sec > 0)
+    .map((p) => `<i style="--c:${col(p)};width:0" data-w="${(p.sec / total) * 100}%" title="${esc(p.name)} ${pct(p)}%"></i>`).join("");
+  const row = (p, c, cls, right, tag) => `<div class="r-person ${cls}" style="--c:${c}">
+      <div class="avatar">${p.icon}</div>
+      <div class="top"><b>${esc(p.name)}${tag}</b><span class="pct">${right}</span></div>
+      <div class="r-bar"><i data-w="${(p.sec / max) * 100}%"></i></div>
+      <div class="nums">${p.turns}回 · ${Math.round(p.sec)}秒 · ${p.chars}文字</div>
+    </div>`;
+  $("r-people").innerHTML = ranked.map((p) => row({ ...p, icon: icon(p) }, col(p), "", `${pct(p)}%`, p.kind === "bot" ? "<small>AI参加者</small>" : "")).join("")
+    + row({ ...r.facilitator, name: "AI ファシリテーター", icon: "AI" }, "#8e8e93", "fac", "進行役", "");
+  // 会話ログ(全部)
+  $("r-log-label").textContent = `会話ログ(全${r.log.length}件)`;
+  $("r-log").innerHTML = r.log.length ? r.log.map((u) => {
+    const c = u.source === "ai" ? "#8e8e93" : colors[u.speaker_id] || "#c7c7cc";
+    const av = u.source === "ai" ? "AI" : u.source === "bot" ? ROBOT : esc((u.who || "?").slice(0, 1));
+    const tag = u.source === "bot" ? '<span class="aitag">AI参加者</span>' : "";
+    return `<div class="msg ${u.source === "ai" ? "ai" : u.source === "bot" ? "bot" : ""}" style="--c:${c}"><div class="av">${av}</div>
+      <div><div class="who"><b>${esc(u.who)}</b>${tag}<time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`;
+  }).join("") : '<div class="empty">発言はありませんでした</div>';
+  show("s-result");
+  requestAnimationFrame(() => requestAnimationFrame(() =>  // 帯と棒を 0 から伸ばす
+    document.querySelectorAll("#s-result [data-w]").forEach((el) => { el.style.width = el.dataset.w; })));
+}
+$("r-new").onclick = () => { ui.started = false; show("s-purpose"); };
+$("r-again").onclick = () => { ui.started = false; show("s-setup"); };
 const send = () => {
   const text = $("in-text").value.trim(); if (!text) return;
   post("/api/text", { speaker_id: $("in-speaker").value, text }); $("in-text").value = "";

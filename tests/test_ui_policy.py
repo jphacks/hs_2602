@@ -55,9 +55,10 @@ def test_content_help_matches_actual_behavior():
 
 # ---------- 画面(第4段階の前の UI に戻した)と API の互換 ----------
 def test_ui_sends_legacy_knobs_that_api_accepts():
-    """現在の画面は「詳細」の5項目(knobs)と preset "A" を送る。名前は /api/info の knobs から表示する。"""
+    """現在の画面(owaki さんの UI)は preset "A" と knobs を送る(スタイルが「カスタム」のときだけ「詳細」の5項目、
+    それ以外は空)。項目の名前は /api/info の knobs から表示する。"""
     html = HTML.read_text(encoding="utf-8")
-    assert "knobs: { ...ui.knobs }" in html and 'preset: "A"' in html and "ui.info?.knobs" in html
+    assert "knobs:" in html and 'preset: "A"' in html and "ui.info?.knobs" in html
     assert "policy-items" not in html and "policyPayload" not in html  # 第4段階の「介入の設定」は撤去
     assert set(server.info()["knobs"]) == set(STYLE_KNOBS)
 
@@ -162,6 +163,8 @@ def test_api_info_serves_knob_labels_and_policy_spec():
         ("general", {"phase": 1, "redirect": 1, "organize": 2, "turns": 1, "suggest": 0},
          lambda p: p.organize == Level.high and p.content_scope.value == "none"),
         ("job", {"phase": 1, "redirect": 1, "organize": 1, "turns": 1, "suggest": 2}, lambda p: p == InterventionPolicy()),
+        ("job", {}, lambda p: p == InterventionPolicy()),  # 「就活」は詳細を送らない → GD用プリセットのまま
+        ("general", {}, lambda p: p == preset_policy("general_gw")),  # 「就活以外」は詳細を送らない → GW用プリセットのまま
     ],
 )
 def test_api_start_with_current_ui_payload(engine, purpose, knobs, check):

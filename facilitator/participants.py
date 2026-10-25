@@ -10,9 +10,10 @@ from __future__ import annotations
 import random
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
-from facilitator.llm.base import LLMClient, LLMError
+from facilitator.llm.base import LLMClient, LLMError, generate
+from facilitator.llm.stream import simulate_stream
 from facilitator.models import Action
 
 MOCK_PERSONAS = [
@@ -171,17 +172,21 @@ def _utter_system(p: Persona, purpose: str, level: int | None = None) -> str:
 
 
 def generate_utterance(
-    llm: LLMClient, p: Persona, purpose: str, theme: str, transcript: list[str], reason: str, level: int | None = None
+    llm: LLMClient, p: Persona, purpose: str, theme: str, transcript: list[str], reason: str, level: int | None = None,
+    on_partial: Callable[[str], None] | None = None,
 ) -> str:
+    """on_partial を渡すと、生成途中の JSON テキストを受け取れる(一文ずつ話し始めるため)。"""
     if llm.name == "mock":
         line = MOCK_LINES[p.spoken % len(MOCK_LINES)].format(stance=p.stance, opinion=p.opinion)
+        if on_partial:
+            simulate_stream({"text": line}, on_partial, delay=getattr(llm, "stream_delay", 0.0), slow_key="text")
         return line
     user = (
         f"テーマ: {theme}\n\n# 直近の発言(古い順)\n"
         + ("\n".join(transcript[-20:]) or "(まだ発言なし)")
         + f"\n\n# 今あなたが話す理由\n{reason}\n\nあなた({p.name})の次の発言を作ってください。"
     )
-    raw = llm.generate_json(_utter_system(p, purpose, level), user, UTTER_SCHEMA, {"kind": f"AI参加者({p.name})の発言"})
+    raw = generate(llm, _utter_system(p, purpose, level), user, UTTER_SCHEMA, {"kind": f"AI参加者({p.name})の発言"}, on_partial)
     return str(raw.get("text", "")).strip()
 
 
@@ -221,11 +226,14 @@ def choose_and_generate(
     level: int | None,
     counts: dict[str, int],
     fallback: Persona,
+    on_partial: Callable[[str], None] | None = None,
 ) -> tuple[Persona, str, str]:
-    """話す AI参加者を文脈で選び、その人の発言を作る。(選んだ人, 発言, 選んだ理由) を返す。"""
+    """話す AI参加者を文脈で選び、その人の発言を作る。(選んだ人, 発言, 選んだ理由) を返す。
+    on_partial には生成途中の JSON テキスト(speaker → why → text の順)を渡す。"""
     if llm.name == "mock" or len(personas) == 1:
         p = fallback if llm.name == "mock" else personas[0]
-        return p, generate_utterance(llm, p, purpose, theme, transcript, reason, level), "最近話していない人"
+        wrap = (lambda acc: on_partial(f'{{"speaker": "{p.name}", ' + acc[1:])) if on_partial else None
+        return p, generate_utterance(llm, p, purpose, theme, transcript, reason, level, wrap), "最近話していない人"
     by_name = {p.name: p for p in personas}
     schema = {
         "type": "object",
@@ -244,7 +252,7 @@ def choose_and_generate(
         + f"\n\n# これまでの発言回数\n{stats}\n\n# 今 AI参加者が話す理由\n{reason}\n\n"
         "誰が話すかを選び、その人の次の発言を作ってください。"
     )
-    raw = llm.generate_json(_choose_system(personas, purpose, level), user, schema, {"kind": "AI参加者の発言(誰が話すかの選択つき)"})
+    raw = generate(llm, _choose_system(personas, purpose, level), user, schema, {"kind": "AI参加者の発言(誰が話すかの選択つき)"}, on_partial)
     p = by_name.get(str(raw.get("speaker", "")), fallback)
     return p, str(raw.get("text", "")).strip(), str(raw.get("why", "")).strip()
 

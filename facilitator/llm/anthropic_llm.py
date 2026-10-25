@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Callable
 
 import anthropic
 
@@ -15,27 +15,43 @@ class AnthropicLLM:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.name = f"anthropic:{settings.llm_model}"
+        self.streams = True  # on_partial で生成途中の JSON を受け取れる
         # キーは環境変数 ANTHROPIC_API_KEY(.env)から SDK が読む。コード・ログには出さない。
         self.client = anthropic.Anthropic(timeout=settings.llm_timeout_sec, max_retries=1)
         self.last_usage: dict[str, int] | None = None  # 直前の呼び出しの使用トークン数(費用の計測用)
 
     def generate_json(
-        self, system: str, user: str, schema: dict[str, Any], context: dict[str, Any]
+        self,
+        system: str,
+        user: str,
+        schema: dict[str, Any],
+        context: dict[str, Any],
+        on_partial: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
+        """on_partial を渡すとストリーミングで受け取り、生成途中の JSON テキスト(先頭からの累積)を渡す。"""
         self.last_usage = None
+        params: dict[str, Any] = dict(
+            model=self.settings.llm_model,
+            max_tokens=self.settings.llm_max_tokens,
+            betas=["server-side-fallback-2026-07-01"],
+            fallbacks="default",
+            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user}],
+            output_config={
+                "effort": self.settings.llm_effort,
+                "format": {"type": "json_schema", "schema": schema},
+            },
+        )
         try:
-            response = self.client.beta.messages.create(
-                model=self.settings.llm_model,
-                max_tokens=self.settings.llm_max_tokens,
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
-                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-                messages=[{"role": "user", "content": user}],
-                output_config={
-                    "effort": self.settings.llm_effort,
-                    "format": {"type": "json_schema", "schema": schema},
-                },
-            )
+            if on_partial is None:
+                response = self.client.beta.messages.create(**params)
+            else:
+                with self.client.beta.messages.stream(**params) as stream:
+                    acc = ""
+                    for delta in stream.text_stream:
+                        acc += delta
+                        on_partial(acc)
+                    response = stream.get_final_message()
         except anthropic.APIError as e:
             raise LLMError(f"API error: {type(e).__name__}") from e
 
