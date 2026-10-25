@@ -52,7 +52,7 @@ Claude Code のチャットで「チャット GD を始めて。テーマは〇�
 ```bash
 .venv/bin/python -m pytest -q tests                                 # ルール層のテスト
 .venv/bin/python scripts/evaluate.py --llm mock                     # API なしで配線確認
-.venv/bin/python scripts/evaluate.py -v                             # 10シナリオを Claude で評価
+.venv/bin/python scripts/evaluate.py -v                             # 全シナリオを Claude で評価
 .venv/bin/python scripts/evaluate.py -s 06 -s 10 --repeat 3         # 特定シナリオを繰り返して判断のブレを見る
 .venv/bin/python scripts/run_scenario.py scenarios/02_stalled.yaml  # 実運用と同じトリガーで時系列再生
 ```
