@@ -848,7 +848,7 @@ function renderPhases(phase, target) {
   }).join("");
 }
 
-const CARD_BASE_SEC = 10;  // 全員が最初から10秒ずつ話している状態として計算する(開始時は全員同じ幅)
+const CARD_BASE_SEC = 5;  // 全員が最初から5秒ずつ話している状態として計算する(開始時は全員同じ幅)
 function cardGrow(sec, sum, n) {
   // カードの幅の比率。発言時間の割合が平均(1/n)なら1、多いほど広く(最大4倍)、少ないほど狭く(0.5倍)
   if (!n) return 1;
