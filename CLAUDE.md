@@ -1,4 +1,4 @@
-# SHIKAI — AI Facilitator Agent(JPHACKS 2026 MVP)
+# SHIKAI — AI Facilitator Agent(JPHACKS 2026)
 
 就活グループディスカッション(GD)で、AI が進行役を自律的に務めるプロトタイプ。開発期間は実質2日間。**動くデモが最優先**で、過剰な設計や汎用化はしない。
 
