@@ -44,7 +44,6 @@ def test_only_human_utterances_are_classified():
     taro, hanako = fb["people"]
     assert taro["types"]["proposal"] == 1 and taro["types"]["reason"] == 1 and taro["turns"] == 2
     assert hanako["types"]["question"] == 1
-    assert {e["type"] for e in taro["examples"]} == {"proposal", "reason"}
     logic = next(a for a in taro["aspects"] if a["aspect"] == "logic")
     assert logic["level"] == "great" and logic["label"] == "論理性"
     assert all(a["level"] == "next" and not a["quote"] for a in hanako["aspects"])  # 根拠がない観点は「これから」

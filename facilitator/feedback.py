@@ -146,7 +146,7 @@ def build_feedback(
     humans: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """log: 全発言 {id, speaker_id, who, text, source}。humans: 人間の参加者 {id, name}。
-    返り値: {ok, people: [{id, name, types: {種類: 回数}, examples: [{type, text}], aspects, good, next}], types, aspects, levels}"""
+    返り値: {ok, people: [{id, name, turns, types: {種類: 回数}, aspects, good, next}], types, levels}"""
     human_ids = {h["id"] for h in humans}
     targets = [u for u in log if u["source"] == "human" and u["speaker_id"] in human_ids and u["text"].strip()]
     if llm.name == "mock":
@@ -176,12 +176,8 @@ def build_feedback(
     for h in humans:
         mine = [u for u in targets if u["speaker_id"] == h["id"]]
         counts = {t: 0 for t in UTTERANCE_TYPES}
-        examples = []
         for u in mine:
-            t = kind.get(u["id"], "other")
-            counts[t] += 1
-            if t != "other" and sum(1 for e in examples if e["type"] == t) < 1:
-                examples.append({"type": t, "text": u["text"]})
+            counts[kind.get(u["id"], "other")] += 1
         fb = by_person.get(h["id"], {})
         aspects = {a["aspect"]: a for a in fb.get("aspects", []) if a.get("aspect") in ASPECTS}
         people.append({
@@ -189,7 +185,6 @@ def build_feedback(
             "name": h["name"],
             "turns": len(mine),
             "types": counts,
-            "examples": examples,
             "aspects": [
                 {"aspect": key, "label": label, "level": aspects.get(key, {}).get("level", "next"),
                  "quote": aspects.get(key, {}).get("quote", "")}
