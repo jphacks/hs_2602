@@ -93,3 +93,19 @@ def test_begin_starts_discussion_only_when_not_recording(monkeypatch, tmp_path):
         assert eng.enroll(0)["ok"] is False  # 始まった後は登録しない
     finally:
         eng.stop()
+
+
+def test_finish_button_ends_enrollment_with_what_was_said(monkeypatch, tmp_path):
+    eng = make(monkeypatch, tmp_path)
+    try:
+        with eng._session_lock:
+            eng.intro.index = 0
+            eng.intro.turns = []
+        now = eng.now()
+        eng.intro.turns.append(TranscriptEvent("final", text="たろうです", start=now + 0.2, end=now + 1.2))  # 2秒に満たない
+        eng._enroll_stop.set()  # 「登録を終了」(自動で終わる長さに達していなくても終える)
+        eng._enroll_one(eng._gen, 0)
+        assert eng.intro.enrolled == ["たろう"] and "speaker_1" in eng._vid.enrolled
+        assert eng.finish_enroll()["ok"] is False  # 登録中でなければ何もしない
+    finally:
+        eng.stop()

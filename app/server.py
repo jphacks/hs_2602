@@ -220,6 +220,12 @@ def enroll(req: EnrollReq) -> dict:
     return engine.enroll(req.index)
 
 
+@app.post("/api/enroll/finish")
+def enroll_finish() -> dict:
+    """「登録を終了」。ここまでに話した声で、今の人の声を登録する。"""
+    return engine.finish_enroll()
+
+
 @app.post("/api/begin")
 def begin() -> dict:
     """声の登録を終えて議論を始める。"""

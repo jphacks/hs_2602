@@ -66,6 +66,11 @@ def fill_labels(labels: list[tuple[str, float] | None], unknown: str = "unknown"
     return [lb if lb is not None else (unknown, 0.0) for lb in out]
 
 
+def per_sentence(parts: list[str], spans: list[tuple[float, float]], labels: list[tuple[str, float]]) -> list[tuple[str, float, float, str, float]]:
+    """文ごとに1つの発言にする(同じ人が続いてもまとめない。画面の吹き出しも「。」ごとに分かれる)。"""
+    return [(t, s, e, sid, conf) for t, (s, e), (sid, conf) in zip(parts, spans, labels)]
+
+
 def group_by_speaker(parts: list[str], spans: list[tuple[float, float]], labels: list[tuple[str, float]]) -> list[tuple[str, float, float, str, float]]:
     """同じ話者が続く文をまとめる。(文, 開始, 終了, 話者, 確信度) のリスト。"""
     groups: list[list[Any]] = []
