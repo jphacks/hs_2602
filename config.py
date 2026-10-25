@@ -54,6 +54,17 @@ class Settings:
     # 沈黙がこの秒数に満たなければ見送る(0=条件なし)。①の遅れの判定が立っているときと、依頼に答えるときは除く
     stall_min_silence_sec: float = 0.0
 
+    # --- 雑談モードの AI 司会(facilitator/chat/host.py)。GD・GW のクールダウン・定期分析とは独立。値はすべて仮の値で、
+    # 実際の音声テストで調整する ---
+    chat_min_gap_sec: float = 6.0  # AI の発言どうしの最低間隔(GD・GW の cooldown_sec の代わり。依頼・強制イベントは従来どおり)
+    chat_reaction_wait_sec: float = 6.0  # 人が話し終えてから、ほかの人が反応するのを待つ静けさの長さ(5〜8秒が目安)
+    chat_no_answer_sec: float = 10.0  # AI の問いかけに誰も答えないとき、次の判断までに待つ沈黙
+    chat_no_answer_backoff_max: int = 3  # 答えのない AI の発言が続くほど待ちを伸ばす(chat_no_answer_sec × (1 + 続いた回数)、この回数まで)
+    chat_link_gap_sec: float = 4.0  # 別の人の発言がこの秒数以内に続けば、つながった発言とみなす
+    chat_free_min_links: int = 2  # AI の発言の後、つながった発言がこの回数あれば自走期に移る(1回でも LLM が進んでいると判断すれば移る)
+    chat_lull_silence_sec: float = 15.0  # 自走期にこの沈黙が続いたら、会話が途切れたとみなす
+    chat_free_min_sec: float = 20.0  # 自走期に移ってからこの秒数は、途切れても AI 主導期に戻さない(一時的な沈黙で切り替えないため)
+
     # --- 内容支援(介入ポリシー⑥)。値はすべて仮の値 ---
     content_cooldown_sec: float = 120.0  # 自発的な内容支援どうしの最低間隔(参加者からの依頼への応答は除く)
     content_max_spontaneous: int = 3  # 1回の GD で自発的に行う内容支援の上限(依頼への応答は数えない)

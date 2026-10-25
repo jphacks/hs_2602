@@ -94,11 +94,22 @@ class FacilitatorAgent:
         self.last_tick_time: float | None = None
         self.skipped_due: str | None = None  # 直近の should_tick で、定期分析の時刻なのに見送った理由
         self.off_topic_streak = 0  # 直近の LLM 判断で、続けて脱線(off_topic)と判断した回数
+        self._tick_context_id: int | None = None  # 直近の tick が LLM に渡した発話ログの最後の発言 id
         self.content_log: list[tuple[float, Action, str | None]] = []  # 内容支援を行った (時刻, アクション, 許可の理由)
         self.content_reason: str | None = None  # 直近の _gate で内容支援を許可した理由
         self.support_step = 0  # 停滞が続く間の支援の段階(0: なし / 1: 進行支援をした / 2: ヒントを出した / 3: 具体案を出した)
         self.pending_request: Utterance | None = None  # まだ応じていない、進行役への依頼の候補
         self._scanned_id = -1  # 依頼を探し終えた発言 id
+
+    def _cooldown_sec(self) -> float:
+        """介入どうしの最低間隔。雑談の司会(facilitator/chat/host.py)が雑談専用の値で上書きする。"""
+        return self.settings.cooldown_sec
+
+    def stale_reason(self, now: float, context_utt_id: int | None = None) -> str | None:
+        """判断を始めた後に状況が変わり、その判断の発話をやめるべきなら理由を返す(engine が話す直前に確かめる)。
+        GD・GW の進行役は従来どおり(話す直前の「発話中・沈黙が短い」の確認だけ)なので常に None。
+        context_utt_id を省略すると、直近の tick が LLM に渡した発話ログの最後の発言 id を使う。"""
+        return None
 
     def _param(self, key: str) -> Any:
         """介入ポリシーの段階で変わる判断条件。段階が上書きしていなければ settings の値。"""
@@ -129,7 +140,7 @@ class FacilitatorAgent:
                     f"残り約{int(remaining // 60)}分{int(remaining % 60)}秒です。time_warning を選んでください。",
                 )
 
-        in_cooldown = since is not None and since < s.cooldown_sec
+        in_cooldown = since is not None and since < self._cooldown_sec()
         if in_cooldown and self.pending_request is None:
             return "blocked:cooldown", [], None
         if st.silence_sec(now) < s.min_silence_for_intervention_sec:
@@ -461,6 +472,7 @@ class FacilitatorAgent:
         _, gap, behind = self.phase_status(now)  # 判断前(前回判断のフェーズ)の値を記録する
         llm_called, usage = False, None
         last_utt = max((u.id for u in st.utterances if u.end_time <= now), default=None)
+        self._tick_context_id = last_utt  # 判断に使った発話ログの最後(判断中の会話の再開を見分けるため)
         t0 = self.clock.monotonic()
 
         if not allowed:

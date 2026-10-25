@@ -58,15 +58,12 @@ def _pair(theme: str = "休日の過ごし方"):
     return out
 
 
-def test_stage1_prompt_schema_and_rules_are_same_as_before():
+def test_prompt_and_schema_are_same_as_before():
+    """プロンプトと出力の選択肢は、雑談専用のものを作る第3段階までは従来と同じ
+    (判断のタイミングは第2段階で雑談専用にした。tests/test_chat_timing.py)。"""
     chat, old = _pair()
     assert chat.system_prompt == old.system_prompt
     assert chat.output_schema == old.output_schema
-    for now in (103.0, 106.0, 125.0):  # 発話の直後 / 2秒の間の後 / 沈黙21秒
-        assert chat._gate(now) == old._gate(now)
-        assert chat.should_tick(now) == old.should_tick(now)
-    r1, r2 = chat.tick(125.0), old.tick(125.0)
-    assert (r1.gate, r1.allowed_actions, r1.decision) == (r2.gate, r2.allowed_actions, r2.decision)
 
 
 @pytest.mark.parametrize("theme", ["休日の過ごし方", CASUAL_FREE_THEME])
