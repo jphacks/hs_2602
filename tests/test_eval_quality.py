@@ -13,7 +13,7 @@ from config import ROOT, load_settings  # noqa: E402
 from facilitator.agent.prompts import build_user_prompt  # noqa: E402
 from facilitator.llm.mock_llm import MockLLM  # noqa: E402
 from facilitator.models import Decision, TickRecord  # noqa: E402
-from facilitator.scenario import judge, judged_by, load_scenario, run_scenario  # noqa: E402
+from facilitator.scenario import applies, judge, judged_by, load_scenario, run_scenario, scenario_policy  # noqa: E402
 from tests.sim import SimSession  # noqa: E402
 
 SCENARIOS = sorted((ROOT / "scenarios").glob("*.yaml"))
@@ -54,7 +54,8 @@ def test_require_llm_checkpoints_actually_reach_llm(path):
     """require_llm の時点は、本番の条件(2秒の沈黙・クールダウン・発話中)のままルール層を通り、LLM が判断する。"""
     sc = load_scenario(path)
     res = run_scenario(sc, MockLLM(), load_settings(llm_provider="mock"))
-    for cp, c in zip(sorted(sc["checkpoints"], key=lambda c: c["at"]), res.checks):
+    policy = scenario_policy(sc)  # when が合わないチェックポイントは判断されない(結果に含まれない)
+    for cp, c in zip(sorted((c for c in sc["checkpoints"] if applies(c, policy)), key=lambda c: c["at"]), res.checks):
         if cp.get("require_llm"):
             assert c.record.llm_called and c.judged_by == "llm", (path.stem, cp["at"], c.record.gate)
 
@@ -105,7 +106,8 @@ def _llm_check(res):
 
 def test_07_monologue_allows_naming_others_but_not_the_monologuer():
     sc = load_scenario(ROOT / "scenarios" / "07_monologue.yaml")
-    assert [cp["at"] for cp in sc["checkpoints"]] == [270, 286]  # 270は発話中(ルール層)、286で LLM が判断
+    policy = scenario_policy(sc)  # 270 の②積極的用の時点(when: drift: high)は既定のポリシーでは判断しない
+    assert [cp["at"] for cp in sc["checkpoints"] if applies(cp, policy)] == [270, 286]  # 270は発話中(ルール層)、286で LLM が判断
     ok = _llm_check(run("07_monologue", FixedLLM("invite_person", "はなこさんはどう考えますか?", "speaker_2")))
     assert ok.passed and "invite_person" in ok.record.allowed_actions
     ng = _llm_check(run("07_monologue", FixedLLM("invite_person", "たろうさん、続けてください。", "speaker_1")))

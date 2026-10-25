@@ -783,11 +783,15 @@ class Engine:
 
     def _await_redirect(self, rec: TickRecord, gen: int | None = None) -> None:
         """脱線の軌道修正: 判断後、短い発話の区切り(redirect_pause_sec)を待って話す。
-        発話中には話さず、区切りがないまま redirect_wait_max_sec たつか、本題に戻ったら取り消す。"""
+        発話中には話さず、区切りがないまま redirect_wait_max_sec たつか、本題に戻ったら取り消す。
+        GD・GW で②脱線への対応が積極的なら(agent.drift_interrupt)、区切りを待たずにすぐ話す(参加者の声と重なってよい)。
+        判断中に新しい発言があったこと自体では取り消さず、本題に戻った(発話途中の文字起こしも見る)・一時停止・
+        終了・強制イベントのときだけ取り消す。"""
         st, s = self.state, self.settings
         gen = self._gen if gen is None else gen
         decided = self.now()
         cut = rec.context_last_utt_id
+        interrupt = self.agent.drift_interrupt()
 
         def human(after: bool) -> list[str]:
             return [u.text for u in st.utterances if u.source == "human" and (cut is None or (u.id > cut) == after)]
@@ -796,6 +800,8 @@ class Engine:
         while True:
             now = self.now()
             new = human(after=True)
+            if interrupt and self.partial:  # 話している途中の言葉で本題に戻っていれば割り込まない
+                new.append(self.partial)
             reason = None
             if not self._alive(gen) or self.status != "running":
                 reason = "セッション終了"
@@ -805,7 +811,7 @@ class Engine:
                 reason = "強制イベントを優先"
             elif back := detect_topic_return(st.theme, rec.analysis, drift, new):
                 reason = f"本題に戻った({back})"
-            elif self._quiet_sec(now) >= s.redirect_pause_sec:
+            elif interrupt or self._quiet_sec(now) >= s.redirect_pause_sec:
                 self._log_redirect(rec, "spoken", None, now - decided, len(new))
                 self._speak_decision(rec, gen)
                 return
