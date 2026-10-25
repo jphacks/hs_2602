@@ -136,17 +136,26 @@ def purpose_preset(purpose: str) -> InterventionPolicy:
     return preset_policy(PURPOSE_PRESET.get(purpose, PURPOSE_PRESET["job"]))
 
 
+# 画面の詳細設定(owaki さんの UI の7項目)のキー → InterventionPolicy の項目。値 0〜2 は OPTION_LABELS の選択肢の順
+UI_KNOBS = {
+    "progress": "progress", "redirect": "drift", "organize": "organize", "turns": "turns", "stall": "stall",
+    "content": "content_scope", "content_when": "content_initiative",
+}
+# API が受け付ける knobs のキー(画面の7項目 + 旧画面の phase / suggest)
+KNOB_KEYS = set(UI_KNOBS) | {"phase", "suggest"}
+
+
 def from_knobs(knobs: dict[str, Any] | None, base: InterventionPolicy, purpose: str = "job") -> InterventionPolicy:
-    """画面の「詳細」の値(0=控えめ / 1=標準 / 2=積極的)を base に重ねる。不明な項目・値は無視する(従来どおり)。
-    「AIからの提案度合い」(suggest)は⑥に変換する: 0 → 内容支援なし / 1 → base のまま / 2 → ヒントまで・積極的
-    (旧来の意味「足りない観点を示してよい。解決策・結論・意見は言わない」に合わせる)。
-    就活では現在の画面と同じく 2 を受け付けない(JOB_MAX_LEVEL。中立でない旨の表示は第4段階の画面で行う)。"""
+    """画面の詳細設定の値(0〜2)を base に重ねる。不明な項目・値は無視する(従来どおり)。最後に依存関係を補正する
+    (⑥-A が「なし」なら ⑥-B も「なし」)。
+    旧画面のキーも受け付ける: phase → ①(progress があればそちらを優先)、suggest(「AIからの提案度合い」)→ ⑥
+    (0 → 内容支援なし / 1 → base のまま / 2 → ヒントまで・積極的。就活では旧画面と同じく 2 を受け付けない)。
+    content / content_when があれば suggest より優先する。"""
     knobs = knobs or {}
     changes: dict[str, Any] = {}
-    for item, key in KNOB_FOR_ITEM.items():
-        v = knobs.get(key)
-        if v in INDEX_LEVEL:
-            changes[item] = INDEX_LEVEL[v]
+    v = knobs.get("phase")
+    if v in INDEX_LEVEL:
+        changes["progress"] = INDEX_LEVEL[v]
     v = knobs.get("suggest")
     if v in (0, 1, 2) and purpose == "job":
         v = min(v, JOB_MAX_LEVEL["suggest"])
@@ -154,7 +163,31 @@ def from_knobs(knobs: dict[str, Any] | None, base: InterventionPolicy, purpose: 
         changes["content_scope"] = ContentScope.none
     elif v == 2:
         changes.update(content_scope=ContentScope.hint, content_initiative=ContentInitiative.proactive)
+    for key, item in UI_KNOBS.items():
+        v = knobs.get(key)
+        if v in (0, 1, 2) and not isinstance(v, bool):
+            changes[item] = OPTION_LABELS[item][v][0]
     return base.updated(**changes) if changes else base
+
+
+def to_knobs(policy: InterventionPolicy) -> dict[str, int]:
+    """ポリシーを画面の詳細設定の値(7項目、0〜2)にする(from_knobs の逆)。"""
+    out = {}
+    for key, item in UI_KNOBS.items():
+        values = [v for v, _label in OPTION_LABELS[item]]
+        out[key] = values.index(getattr(policy, item).value)
+    return out
+
+
+def ui_knobs() -> list[dict[str, Any]]:
+    """画面の詳細設定の項目(/api/info の knobs)。名前と選択肢はポリシーの定義から作る。"""
+    return [{"key": key, "label": ITEM_LABELS[item], "options": [label for _v, label in OPTION_LABELS[item]]}
+            for key, item in UI_KNOBS.items()]
+
+
+def knob_defaults() -> dict[str, dict[str, int]]:
+    """スタイルごとの詳細設定の初期値(/api/info の knob_defaults)。用途の既定のプリセット(POLICY_PRESETS)が唯一の定義元。"""
+    return {purpose: to_knobs(preset_policy(name)) for purpose, name in PURPOSE_PRESET.items()}
 
 
 def resolve_policy(

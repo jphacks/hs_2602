@@ -19,12 +19,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import random  # noqa: E402
 
-from config import PURPOSE_PRESET, STYLE_KNOBS, load_settings  # noqa: E402
+from config import PURPOSE_PRESET, load_settings  # noqa: E402
 from facilitator.llm.base import LLMError  # noqa: E402
 from facilitator.llm.factory import make_llm  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
 from facilitator.discussion_types import DISCUSSION_TYPES, SELECTABLE_TYPES, resolve_session_type  # noqa: E402
-from facilitator.policy import request_policy, ui_spec  # noqa: E402
+from facilitator.policy import KNOB_KEYS, knob_defaults, request_policy, ui_knobs, ui_spec  # noqa: E402
 
 STATIC = Path(__file__).parent / "static"
 app = FastAPI()
@@ -48,7 +48,7 @@ class StartReq(BaseModel):
     discussion_type: str | None = None  # 就活GDは必須(problem_solving / idea_generation / decision_making / planning)
     ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
     ai_level: int = 2  # AI 参加者のレベル(1〜3)
-    knobs: dict[str, int] = {}  # 旧画面の「詳細」の5項目(互換。0=控えめ / 1=標準 / 2=積極的。policy より優先)
+    knobs: dict[str, int] = {}  # 画面の詳細設定(7項目、0〜2。旧画面の phase / suggest も可)。policy より優先
 
 
 class TextReq(BaseModel):
@@ -94,7 +94,7 @@ def start(req: StartReq) -> dict:
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     legacy_style = req.preset if req.preset in ("A", "B", "custom") else "A"
-    knobs = {k: v for k, v in req.knobs.items() if k in STYLE_KNOBS and v in (0, 1, 2)}
+    knobs = {k: v for k, v in req.knobs.items() if k in KNOB_KEYS and v in (0, 1, 2)}
     try:  # 介入ポリシーも開始前に検証する(不正な値は黙って無視しない)
         policy, notices = request_policy(purpose, req.policy_preset, req.policy, legacy_style, knobs)
     except ValueError as e:
@@ -139,8 +139,9 @@ def info() -> dict:
     return {
         "llm": "mock" if mock else base.llm_model,
         "default_mode": "text" if mock else "voice",
-        "knobs": {k: v["label"] for k, v in STYLE_KNOBS.items()},  # 画面の「詳細」の5項目の名前(送られた値は介入ポリシーに変換)
-        "policy": ui_spec(),  # 介入ポリシーの項目・選択肢・説明・プリセット(API の利用元向け。現在の画面は使わない)
+        "knobs": ui_knobs(),  # 画面の詳細設定の7項目(名前と選択肢)。送られた値は介入ポリシーに変換する
+        "knob_defaults": knob_defaults(),  # スタイルごとの初期値(job = GD用、general = GW用。プリセットが定義元)
+        "policy": ui_spec(),  # 介入ポリシーの項目・選択肢・説明・プリセット(API の利用元向け。画面は使わない)
         "discussion_types": [  # 画面で選べる議論タイプ
             {"key": k, "label": DISCUSSION_TYPES[k].label, "phases": [p.label for p in DISCUSSION_TYPES[k].phases]}
             for k in SELECTABLE_TYPES

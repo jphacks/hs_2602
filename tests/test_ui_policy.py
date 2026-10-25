@@ -11,7 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app.server as server  # noqa: E402
-from config import POLICY_PRESETS, ROOT, STYLE_KNOBS, load_settings  # noqa: E402
+from config import POLICY_PRESETS, ROOT, load_settings  # noqa: E402
 from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
 from facilitator.agent.prompts import build_system_prompt  # noqa: E402
 from facilitator.engine import Engine  # noqa: E402
@@ -24,6 +24,9 @@ from facilitator.policy import (  # noqa: E402
     Level,
     preset_policy,
     request_policy,
+    UI_KNOBS,
+    knob_defaults,
+    ui_knobs,
     ui_spec,
 )
 from facilitator.state import DiscussionState  # noqa: E402
@@ -55,12 +58,11 @@ def test_content_help_matches_actual_behavior():
 
 # ---------- 画面(第4段階の前の UI に戻した)と API の互換 ----------
 def test_ui_sends_legacy_knobs_that_api_accepts():
-    """現在の画面(owaki さんの UI)は preset "A" と knobs を送る(スタイルが「カスタム」のときだけ「詳細」の5項目、
-    それ以外は空)。項目の名前は /api/info の knobs から表示する。"""
+    """現在の画面(owaki さんの UI)は preset "A" と knobs(詳細設定の7項目)を送る。項目は /api/info の knobs から表示する。"""
     html = HTML.read_text(encoding="utf-8")
     assert "knobs:" in html and 'preset: "A"' in html and "ui.info?.knobs" in html
-    assert "policy-items" not in html and "policyPayload" not in html  # 第4段階の「介入の設定」は撤去
-    assert set(server.info()["knobs"]) == set(STYLE_KNOBS)
+    assert "policy-items" not in html and "policyPayload" not in html  # 第4段階の「介入の設定」は使っていない
+    assert {k["key"] for k in server.info()["knobs"]} == set(UI_KNOBS)  # 画面の詳細設定の7項目
 
 
 # ---------- API: 入力からポリシーを決める ----------
@@ -150,7 +152,7 @@ def test_api_legacy_style_b_no_longer_changes_numbers(engine):
 
 def test_api_info_serves_knob_labels_and_policy_spec():
     info = server.info()
-    assert info["knobs"] == {k: v["label"] for k, v in STYLE_KNOBS.items()}  # 画面の「詳細」
+    assert info["knobs"] == ui_knobs() and info["knob_defaults"] == knob_defaults()  # 画面の詳細設定(7項目)と初期値
     assert info["policy"] == ui_spec() and "presets" not in info  # API の利用元向け(旧進行スタイルの数値は廃止)
 
 
