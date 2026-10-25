@@ -91,11 +91,16 @@ class Eager:
     def __init__(self):
         self.calls = []
 
+    QS = ["休みの日の朝はどう過ごしていますか?", "最近よく行くお店はありますか?", "最近見て面白かったものはありますか?",
+          "行ってみたい場所はどこですか?", "子どものころ好きだった遊びは何ですか?", "最近買ってよかったものは何ですか?",
+          "好きな季節はいつですか?", "朝ごはんは何派ですか?", "最近覚えたことはありますか?", "得意な料理は何ですか?"]
+
     def generate_json(self, system, user, schema, ctx):
         self.calls.append(ctx)
+        q = self.QS[len(self.calls) % len(self.QS)]  # 毎回違う問い(同じ問いは検証で止まる)
         for a, sp in self.ORDER:
             if a in ctx["allowed_actions"]:
-                return output(a, sp)
+                return output(a, sp if a in ("change_topic", "offer_topic") else q)
         return output("no_intervention")
 
 

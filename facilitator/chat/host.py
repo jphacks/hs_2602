@@ -53,16 +53,20 @@ GD・GW のように議論を進めたり結論を出したりはしない。
   (chat_passive_wait_sec / chat_passive_backoff_max。中身のある答えが1つでもあれば通常の待ちに戻る)。
   中身のない返事は、つながった発言(自走期への切り替え)にも数えない
 - 話題ごとに答えた人を数え、まだ答えていなかった人が加わった反応は薄い反応に数えない(橋渡しが効いた)
+- 発言の確認(facilitator/chat/speech_check.py。プロンプトだけでは防ぎにくい明確な問題だけ): 問いかけは1つ /
+  最近の AI の問いかけと同じ問いは、深掘り・橋渡しでも繰り返さない(話題の行動なら候補に差し替え)/
+  いまの話題で全員が話した後の「ほかの皆さん」は「皆さん」に / 最近使った定型の相づちは外す。
+  生成しながら話す場合も一文ごとに同じ確認をする
 """
 
 from __future__ import annotations
 
 import random
-import re
 from dataclasses import dataclass
 from typing import Any
 
 from facilitator.agent.agent import FacilitatorAgent
+from facilitator.chat import speech_check as sc
 from facilitator.chat.prompts import CHAT_REQUEST_NOTE, CHAT_SYSTEM_PROMPT, build_chat_output_schema, build_chat_user_prompt
 from facilitator.chat.topic_tracker import TopicStatus, TopicTracker, passive_reply
 from facilitator.chat.topics import is_free, opening_speech, opening_topic
@@ -79,8 +83,9 @@ TOPIC_ACTIONS = {Action.start_gd, Action.offer_topic, Action.change_topic}  # �
 CHAT_MAX_SENTENCES = 2  # 雑談の発話は短く(開始・時間告知・終了の定型文は除く)
 CHAT_INVITE_ALL = "ほかの皆さんはどうですか?よければ聞かせてください。"
 TOPIC_LEAD = {Action.offer_topic: "では、", Action.change_topic: "話は変わりますが、"}  # 話題を候補に差し替えるときの前置き
-TOPIC_LEADS = ("話は変わりますが、", "ところで、", "では、", "まずは、")  # 話題の文から外す前置き
-_SENTENCE = re.compile(r"[^。!?]+[。!?]*")
+NUDGES = {Action.ask_question, Action.invite_all, Action.invite_person}  # 深掘り・橋渡し(同じ問いを繰り返さない)
+CHECKED = NUDGES | {Action.offer_topic, Action.change_topic}  # 発言を確認する行動(開始・時間告知・終了の定型文は除く)
+RECENT_AI = 5  # 同じ問いかけ・定型の相づちを比べる、最近の AI の発言の数
 NOT_TURNS = {Action.time_warning, Action.close_gd}  # 話題への働きかけに数えない AI の発言
 SCHEMA_ACTIONS = CHAT_ACTIONS + [Action.invite_person, Action.time_warning, Action.close_gd]
 
@@ -112,6 +117,7 @@ class ChatHostAgent(FacilitatorAgent):
         self.topics = TopicTracker(self.settings, self.state.theme)  # 話題の記録(AI が出したもの・参加者が始めたもの)
         self._topic_health: tuple[float, str] | None = None  # 直近の LLM の判断 (時刻, health)。話題が一段落したかに使う
         self._participant_topic_at: float | None = None  # LLM の判断で参加者の新しい話題を記録した時刻
+        self._live_question = False  # 生成しながら話している発言で、問いかけをもう話したか
         self.chat_phase = LEAD
         self.chat_phase_since: float | None = None  # いまの時期に入った時刻
         self.chat_log: list[tuple[float, str, str]] = []  # 時期の切り替え (時刻, 新しい時期, 理由)
@@ -148,13 +154,13 @@ class ChatHostAgent(FacilitatorAgent):
         (「ちょっとしたことでも大丈夫です。」)で話題を取り違えないようにする。「?」の文がなければ「〜か。」の文、
         それもなければ最後の文。"""
         text = speech.replace("？", "?").replace("！", "!").strip()
-        sents = [x.strip() for x in _SENTENCE.findall(text) if x.strip(" 　。!?")]
+        sents = sc.sentences(text)
         if not sents:
             return text
         pick = next((x for x in reversed(sents) if "?" in x), None) or next(
             (x for x in reversed(sents) if x.rstrip("。").endswith("か")), sents[-1])
         question = "?" in pick or pick.rstrip("。").endswith("か")
-        for lead in TOPIC_LEADS:
+        for lead in sc.LEADS:
             pick = pick.split(lead)[-1]
         return pick.strip().rstrip("。!?").strip() + ("?" if question else "")
 
@@ -194,8 +200,33 @@ class ChatHostAgent(FacilitatorAgent):
             "topics_used": self.topics.recent(),
             "topic_candidates": self.topics.candidates()[:3],
             "topic": self._topic_context(now),
+            "recent_ai": self._recent_ai()[-3:],
         }
         return ctx
+
+    def _recent_ai(self) -> list[str]:
+        """最近の AI の発言(古い順)。同じ問いかけ・定型の相づちを繰り返さないために使う。"""
+        return [u.text for u in self.state.utterances if u.source == "ai" and u.text][-RECENT_AI:]
+
+    def _humans(self) -> list[str]:
+        return [sid for sid in self.state.speaker_ids if sid not in self.state.bot_ids]
+
+    def topic_speakers(self, now: float) -> set[str]:
+        """いまの話題で話した人間。参加者が始めた話題は、LLM が気づく前から話していることがあるので、
+        その前の AI の働きかけから数える。"""
+        cur = self.topics.current
+        if cur is None:
+            since = float("-inf")
+        elif cur.source == "ai":
+            since = cur.since
+        else:
+            since = max((t for t, _a in self.topics.turns if t <= cur.since), default=float("-inf"))
+        return {u.speaker_id for u in self.state.utterances
+                if u.source == "human" and u.start_time >= since and u.end_time <= now}
+
+    def everyone_spoke(self, now: float) -> bool:
+        humans = self._humans()
+        return bool(humans) and set(humans) <= self.topic_speakers(now)
 
     def _topic_context(self, now: float) -> dict | None:
         ts = self.topic_status(now)
@@ -208,6 +239,8 @@ class ChatHostAgent(FacilitatorAgent):
             "reactions": ts.reactions,
             "weak_streak": ts.weak_streak,
             "answerers": ts.answerers,
+            "spoken": len(self.topic_speakers(now)),
+            "humans": len(self._humans()),
             "one_on_one": ts.one_on_one,
             "one_on_one_max": self.settings.chat_one_on_one_max,
             "engaged": ts.engaged,
@@ -374,7 +407,13 @@ class ChatHostAgent(FacilitatorAgent):
             ts = self.topic_status(now)
             if not (ts.can_change if d.action == Action.change_topic else ts.can_offer):
                 return Decision(reasoning=d.reasoning), f"参加者が始めた話題を尊重し {d.action.value} を見送り"
-        if d.action in TOPIC_LEAD and self.topics.is_recent(self._topic_text(d.speech)):
+        if d.action in CHECKED and d.speech:
+            d, why = self._check_speech(d, now)
+            note = "; ".join(x for x in (note, why) if x) or None
+            if d.action == Action.no_intervention:
+                return d, note
+        if d.action in TOPIC_LEAD and (self.topics.is_recent(self._topic_text(d.speech))
+                                       or sc.repeated_question(d.speech, self._recent_ai())):
             fresh = self.topics.candidates()
             why = "最近の話題と重なる"
             if not fresh:
@@ -386,6 +425,44 @@ class ChatHostAgent(FacilitatorAgent):
             if ts.one_on_one >= self.settings.chat_one_on_one_max and d.target_speaker == ts.partner:
                 return self._invite_all_instead(d, "同じ人との一問一答が続いている", now)
         return d, note
+
+    def _check_speech(self, d: Decision, now: float) -> tuple[Decision, str | None]:
+        """発言の確認(speech_check)。同じ問いの深掘り・橋渡しは見送る(話題の行動の重複は呼び出し側で差し替える)。"""
+        recent, notes = self._recent_ai(), []
+        speech = sc.one_question(d.speech)
+        if speech != d.speech:
+            notes.append("問いかけを1つに")
+        if d.action in NUDGES and sc.repeated_question(speech, recent):
+            return Decision(reasoning=d.reasoning), "最近の問いかけと同じ問いのため no_intervention"
+        fixed = sc.without_repeated_formula(speech, recent)
+        if not fixed:
+            return Decision(reasoning=d.reasoning), "最近と同じ定型の相づちだけのため no_intervention"
+        if fixed != speech:
+            speech = fixed
+            notes.append("最近と同じ定型の相づちを外す")
+        if self.everyone_spoke(now) and sc.without_others(speech) != speech:
+            speech = sc.without_others(speech)
+            notes.append("全員が話したので「ほかの皆さん」を「皆さん」に")
+        if not notes:
+            return d, None
+        return d.model_copy(update={"speech": speech}), "; ".join(notes)
+
+    def live_sentence(self, action: Action, sentence: str, index: int) -> str | None:
+        """生成しながら話す一文にも、全文の場合と同じ発言の確認をする。通らなければその文から先は話さない
+        (まだ話していなければ全文を待ち、全文の確認に任せる)。"""
+        out = super().live_sentence(action, sentence, index)
+        if index == 0:
+            self._live_question = False
+        if out is None or action not in CHECKED:
+            return out
+        recent = self._recent_ai()
+        if sc.is_question(out):
+            if self._live_question or action in NUDGES and sc.repeated_question(out, recent):
+                return None
+            self._live_question = True
+        elif not sc.without_repeated_formula(out, recent):
+            return None
+        return sc.without_others(out) if self.everyone_spoke(float("inf")) else out  # 記録済みの発言で判定する
 
     def live_ok(self, action: Action, now: float) -> bool:
         """話題の提供・転換は、生成しながら話さず全文を待つ(重複の差し替えと、同じ判断で分かる参加者の話題の確認を

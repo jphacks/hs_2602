@@ -203,6 +203,11 @@ def test_lively_conversation_is_left_alone():
 
 
 # ---------- 一人との一問一答が続きすぎない ----------
+VARIED = ["休みの日の朝はどう過ごしていますか?", "最近よく行くお店はありますか?", "最近見て面白かったものはありますか?",
+          "行ってみたい場所はどこですか?", "子どものころ好きだった遊びは何ですか?", "最近買ってよかったものは何ですか?",
+          "好きな季節はいつですか?", "朝ごはんは何派ですか?", "最近覚えたことはありますか?", "得意な料理は何ですか?"]
+
+
 class QuestionLover:
     """許可されていれば深掘りの質問を選び、なければ全体へ広げる(最悪の場合)。"""
 
@@ -210,10 +215,11 @@ class QuestionLover:
 
     def generate_json(self, system, user, schema, ctx):
         allowed = ctx["allowed_actions"]
+        self.n = getattr(self, "n", 0) + 1  # 毎回違う問いにする(同じ問いは検証で止まる)
         if "ask_question" in allowed:
-            a, sp = "ask_question", "それはどんなきっかけですか?"
+            a, sp = "ask_question", VARIED[self.n % len(VARIED)]
         else:
-            a, sp = "invite_all", "ほかの皆さんはどうですか?"
+            a, sp = "invite_all", "ほかの皆さんは、" + VARIED[self.n % len(VARIED)]
         return {"analysis": {"phase": "warm_up", "phase_reason": "", "health": "stalled", "recent_summary": "",
                              "topic": "", "topic_by": "ai"},
                 "decision": {"action": a, "reasoning": "", "speech": sp, "urgency": 0.5, "target_speaker": None}}

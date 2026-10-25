@@ -319,7 +319,7 @@ def main() -> None:
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--max-calls", type=int, default=80)
     args = ap.parse_args()
-    settings = load_settings(llm_provider=args.llm)
+    settings = load_settings(llm_provider=args.llm, num_participants=len(NAMES))  # 台本の人間は3人
     llm = Recorder(make_llm(settings), args.max_calls)
     runs = []
     for sc in [s for s in SCENARIOS if not args.keys or s.key in args.keys]:

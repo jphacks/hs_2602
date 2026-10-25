@@ -27,6 +27,11 @@ S = load_settings(tts_chars_per_sec=1000.0)  # AI の発話はほぼ一瞬(開�
 NAMES = {"speaker_1": "たろう", "speaker_2": "はなこ", "speaker_3": "けんた"}
 
 
+VARIED = ["休みの日の朝はどう過ごしていますか?", "最近よく行くお店はありますか?", "最近見て面白かったものはありますか?",
+          "行ってみたい場所はどこですか?", "子どものころ好きだった遊びは何ですか?", "最近買ってよかったものは何ですか?",
+          "好きな季節はいつですか?", "朝ごはんは何派ですか?", "最近覚えたことはありますか?", "得意な料理は何ですか?"]
+
+
 class EagerLLM:
     """許可されていれば必ず介入する(依頼があれば内容支援、なければ質問)。health は flowing で切り替えられる。"""
 
@@ -44,7 +49,7 @@ class EagerLLM:
         elif self.health in ("progressing", "converging"):  # 会話が進んでいると判断したら見守る
             a, sp = "no_intervention", ""
         elif "ask_question" in allowed:
-            a, sp = "ask_question", "皆さんはどうですか?"
+            a, sp = "ask_question", VARIED[len(self.calls) % len(VARIED)]  # 同じ問いは繰り返さない(検証で止まる)
         else:
             a, sp = "no_intervention", ""
         self.calls.append((ctx["elapsed_sec"], ctx["trigger"], a))
