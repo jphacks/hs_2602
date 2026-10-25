@@ -112,8 +112,6 @@ body.framed .device-scroll::-webkit-scrollbar { width: 0; }
 .person-in { position: relative; }
 .person-in .dot { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; }
 .person-in .input { padding-left: 34px; }
-.advanced { overflow: hidden; max-height: 0; opacity: 0; transition: max-height .45s ease, opacity .3s, margin .3s; }
-.advanced.open { max-height: 1000px; opacity: 1; margin-top: 8px; }
 .adv-inner h3 { margin: 18px 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .toggles { display: flex; flex-direction: column; margin-top: 8px; border-radius: var(--radius-sm); background: var(--tile-2); overflow: hidden; }
 .toggle { display: flex; align-items: center; gap: 12px; padding: 12px 14px; font-size: 15px; cursor: pointer; }
@@ -136,15 +134,6 @@ body.framed .device-scroll::-webkit-scrollbar { width: 0; }
 .choice2 button, .choice3 button { padding: 10px 6px; border-radius: 9px; border: 0; background: transparent; font-weight: 500; font-size: 15px; transition: .2s; }
 .choice3 button small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
 .choice2 button.on, .choice3 button.on { background: var(--tile); font-weight: 600; box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04); }
-.detail-head { display: flex !important; align-items: center; justify-content: space-between; cursor: pointer; }
-/* iOS のスイッチ */
-.switch { position: relative; width: 51px; height: 31px; flex: none; }
-.switch input { opacity: 0; width: 0; height: 0; }
-.switch i { position: absolute; inset: 0; border-radius: 999px; background: var(--fill-2); transition: .25s; }
-.switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
-  box-shadow: 0 3px 8px rgba(0,0,0,.15), 0 3px 1px rgba(0,0,0,.06); transition: .25s cubic-bezier(.2,.8,.2,1); }
-.switch input:checked + i { background: var(--accent); }
-.switch input:checked + i::after { transform: translateX(20px); }
 /* 詳細: 設定アプリのリストのように区切り線で並べる */
 .knob { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; font-size: 15px; flex-wrap: wrap; }
 #knobs .knob + .knob { border-top: .5px solid var(--line); }
@@ -412,6 +401,12 @@ body { font-size: 17px; }
       </div>
     </div>
 
+    <div class="tile span-4">
+      <span class="label">議論タイプ</span>
+      <div class="choice2 type-grid" id="seg-type"></div>
+      <div class="hint" id="type-hint"></div>
+    </div>
+
     <div class="tile span-2">
       <span class="label">制限時間</span>
       <div class="numrow" data-key="minutes" data-min="1" data-max="60" data-unit="分"></div>
@@ -443,24 +438,17 @@ body { font-size: 17px; }
 
     <div class="tile span-2 tile-style">
       <span class="label">スタイル</span>
-      <div class="choice2" id="purpose">
+      <div class="choice3" id="purpose">
         <button type="button" data-v="job">就活</button>
         <button type="button" data-v="general">就活以外</button>
+        <button type="button" data-v="custom">カスタム</button>
       </div>
     </div>
 
-    <div class="tile span-4">
-      <span class="label">議論タイプ<span id="type-req">(必須)</span></span>
-      <div class="choice2 type-grid" id="seg-type"></div>
-      <div class="hint" id="type-hint"></div>
-    </div>
 
-    <div class="tile span-2 detail" id="detail-tile">
-      <label class="detail-head">
-        <span class="label" style="margin:0">詳細</span>
-        <span class="switch"><input type="checkbox" id="f-detail"><i></i></span>
-      </label>
-      <div class="advanced" id="detail-body">
+    <div class="tile span-4 detail hidden" id="detail-tile">
+      <span class="label">カスタム</span>
+      <div id="detail-body">
           <div class="adv-inner">
             <div id="knobs"></div>
             <h3 style="margin-top:22px">その他</h3>
@@ -638,16 +626,18 @@ function seg(id, key, after) {
     ui[key] = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v; syncSetup(); after && after();
   });
 }
+// スタイルのカスタムは、就活以外の進行に「カスタム」の設定(進行の調整・入力方法など)を加えたもの
+const purposeOf = () => (ui.purpose === "job" ? "job" : "general");
 seg("purpose", "purpose", () => {
   if (ui.purpose === "job" && !ui.dtype) ui.dtype = null;          // 就活GDは毎回選ぶ
-  if (ui.purpose === "general" && ui.dtype == null) ui.dtype = "";  // 就活以外は「指定なし(汎用)」が初期値
+  if (ui.purpose !== "job" && ui.dtype == null) ui.dtype = "";  // 就活以外は「指定なし(汎用)」が初期値
   renderTypes();
 });
 // 議論タイプ: 就活GDは4種類から必須。就活以外は「指定なし(汎用)」も選べる
 const GENERIC_TYPE = { key: "", label: "指定なし(汎用)", phases: ["案出し", "比較検討", "結論"] };
 function typeOptions() {
   const types = ui.info?.discussion_types || [];
-  return ui.purpose === "general" ? [GENERIC_TYPE, ...types] : types;
+  return purposeOf() === "general" ? [GENERIC_TYPE, ...types] : types;
 }
 function typeLabel(key) {
   const t = [GENERIC_TYPE, ...(ui.info?.discussion_types || [])].find((x) => x.key === (key || ""));
@@ -659,11 +649,9 @@ function renderTypes() {
   $("seg-type").querySelectorAll("button").forEach((b) => b.onclick = () => { ui.dtype = b.dataset.v; renderTypes(); });
   const cur = opts.find((t) => t.key === ui.dtype);
   $("type-hint").textContent = cur ? cur.phases.join(" → ") : "テーマに合う進め方を選んでください";
-  $("type-req").style.display = ui.purpose === "job" ? "" : "none";
 }
 seg("seg-input", "input");
 seg("seg-level", "level");
-$("f-detail").onchange = (e) => { $("detail-body").classList.toggle("open", e.target.checked); };
 
 function renderKnobs() {
   const labels = ui.info?.knobs || {};
@@ -686,6 +674,7 @@ function syncSetup() {
   document.querySelectorAll(".ai-only").forEach((el) => el.classList.toggle("hidden", !ui.withAI));
   const on = (id, v) => $(id).querySelectorAll("button").forEach((b) => b.classList.toggle("on", String(v) === b.dataset.v));
   on("purpose", ui.purpose); on("seg-input", ui.input); on("seg-level", ui.level);
+  $("detail-tile").classList.toggle("hidden", ui.purpose !== "custom");
   // 就活では選考の公平性のため、AI が参加者の出していない観点を持ち込まない(提案度合いは標準まで)
   const jobCap = ui.purpose === "job";
   if (jobCap && ui.knobs.suggest > 1) ui.knobs.suggest = 1;
@@ -701,7 +690,7 @@ $("btn-theme").onclick = async () => {
   const b = $("btn-theme"); b.disabled = true; b.textContent = "生成中…";
   try {
     const res = await fetch("/api/theme", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ purpose: ui.purpose, exclude: $("f-theme").value.trim() }) });
+      body: JSON.stringify({ purpose: purposeOf(), exclude: $("f-theme").value.trim() }) });
     if (!res.ok) throw new Error(res.status);
     const r = await res.json();
     if (r.theme) { $("f-theme").value = r.theme; $("f-err").textContent = ""; }
@@ -720,10 +709,15 @@ $("setup-form").onsubmit = (ev) => {
   const bots = ui.withAI ? ui.bots : 0;
   if (names.length + bots < 2) { $("f-err").textContent = "合計2人以上にしてください(AI参加者ありモードなら AI を加えられます)"; return; }
   $("f-err").textContent = "";
+  // カスタム以外は標準の設定で進行する(進行の調整はすべて標準、入力方法は既定、声の登録・AI の声・話者情報はオン)
+  const custom = ui.purpose === "custom";
   ui.config = {
-    theme: $("f-theme").value.trim(), minutes: ui.minutes, names, mode: ui.input,
-    intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
-    purpose: ui.purpose, preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level, knobs: { ...ui.knobs },
+    theme: $("f-theme").value.trim(), minutes: ui.minutes, names,
+    mode: custom ? ui.input : (ui.info?.default_mode || "voice"),
+    intro: custom ? $("f-intro").checked : true, tts: custom ? $("f-tts").checked : true,
+    use_speaker_info: custom ? $("f-spk").checked : true,
+    purpose: purposeOf(), preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level,
+    knobs: custom ? { ...ui.knobs } : {},
   };
   snap = null; logKey = ""; doneShown = false; ui.started = false; seenMsg.clear();
   renderReady();
