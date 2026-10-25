@@ -27,7 +27,18 @@ body { margin: 0; color: var(--text); font-family: var(--font); font-size: 15px;
   background: var(--bg); -webkit-font-smoothing: antialiased; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.screen { display: none; min-height: 100vh; animation: fade .4s cubic-bezier(.2,.8,.2,1) both; }
+html, body { overflow: hidden; }
+/* アプリの表示領域。スマホでは画面いっぱい、PC などではスマホの画面比率の枠(縦 / 横は画面に合わせて自動で切り替え) */
+.device { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100dvh; overflow-x: hidden; overflow-y: auto;
+  background: var(--bg); transform: translateZ(0); -webkit-overflow-scrolling: touch; }
+body.framed { background: #f2f2f7; }
+body.framed .device { left: 50%; top: 50%; width: var(--dw); height: var(--dh); border-radius: 46px;
+  box-shadow: 0 0 0 11px #1d1d1f, 0 0 0 12px #3a3a3c, 0 40px 90px rgba(0, 0, 0, .28);
+  transform: translate(-50%, -50%) scale(var(--k)); }
+/* 縦 ⇄ 横の切り替えだけ動かす(読み込み直後の配置では動かさない) */
+body.framed.anim .device { transition: width .5s cubic-bezier(.2,.8,.2,1), height .5s cubic-bezier(.2,.8,.2,1), transform .5s cubic-bezier(.2,.8,.2,1); }
+body.framed .device::-webkit-scrollbar { width: 0; }
+.screen { display: none; min-height: 100%; animation: fade .4s cubic-bezier(.2,.8,.2,1) both; }
 .screen.active { display: block; }
 @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
@@ -288,16 +299,16 @@ body { font-size: 17px; }
 .clock { padding: 20px 20px 18px; }
 .clock .time { font-size: 72px; }
 .people-row { flex-wrap: wrap; } .pcard { flex-basis: 40%; }
-.logbox { min-height: 70vh; }
+.logbox { min-height: 70%; }
 .composer select { flex: none; max-width: 96px; }
 .composer .input { flex: 1; min-width: 0; }
 /* 判断ログは下から出るシート */
-.drawer { top: auto; right: auto; left: 50%; bottom: 0; width: min(var(--col), 100%); height: 78vh; border-radius: 26px 26px 0 0;
+.drawer { top: auto; right: auto; left: 50%; bottom: 0; width: min(var(--col), 100%); height: 78%; border-radius: 26px 26px 0 0;
   transform: translate(-50%, 105%); }
 .drawer.open { transform: translate(-50%, 0); }
 /* ---------- 進行画面だけはスマホの横持ち(画面の高さに収め、左に時計と参加者、右に会話ログ) ---------- */
 #s-session { max-width: 1180px; }
-#s-session.active { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+#s-session.active { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 #s-session .bar { position: static; flex-wrap: nowrap; gap: 10px; padding: 8px 14px; }
 #s-session .bar .theme { flex: 1 1 auto; font-size: 15px; }
 #s-session .bar .actions { flex: none; display: flex; gap: 6px; }
@@ -327,9 +338,9 @@ body { font-size: 17px; }
 #s-session .composer .input { padding: 8px 14px; }
 #s-session .composer .btn { padding: 8px 14px; }
 .rotate-hint { display: none; }
-/* 縦向きのスマホでは横向きにするよう案内する */
+/* 縦向きのスマホでは横向きにするよう案内する(PC などの枠表示では枠が自動で横になるので出さない) */
 @media (orientation: portrait) and (max-width: 700px) {
-  #s-session .rotate-hint { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; position: fixed; inset: 0; z-index: 20;
+  body:not(.framed) #s-session .rotate-hint { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; position: fixed; inset: 0; z-index: 20;
     background: var(--bg); color: var(--muted); font-size: 17px; }
   #s-session .rotate-hint svg { width: 56px; height: 56px; color: var(--text); }
   #s-session .rotate-hint b { color: var(--text); }
@@ -375,6 +386,7 @@ body { font-size: 17px; }
 </style>
 </head>
 <body>
+<div class="device" id="device">
 
 <!-- ============ 1. モード選択 ============ -->
 <section class="screen" id="s-purpose">
@@ -573,6 +585,7 @@ body { font-size: 17px; }
   <header><h2>AI の判断(介入した / しなかった理由)</h2><button class="btn" id="drawer-close">✕</button></header>
   <div class="decs" id="decs"><div class="empty">まだ判断はありません</div></div>
 </aside>
+</div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -598,8 +611,30 @@ const seenMsg = new Set();
 
 function show(id) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === id));
-  window.scrollTo(0, 0);
+  $("device").scrollTop = 0;
+  fitDevice();
+  // スマホでは、ディスカッション中だけ横向きに固定を試みる(対応していない端末では何もしない)
+  try {
+    if (id === "s-session") screen.orientation?.lock?.("landscape")?.catch?.(() => {});
+    else screen.orientation?.unlock?.();
+  } catch (e) { /* 未対応 */ }
 }
+
+// PC などの大きい画面では、スマホの画面比率(390×844)の枠に収めて表示する。ディスカッション中は横向き(844×390)にする
+const PHONE = { w: 390, h: 844 };
+function fitDevice() {
+  const framed = Math.min(innerWidth, innerHeight) >= 520;  // スマホ(短い辺が 520px 未満)では画面いっぱいに表示
+  document.body.classList.toggle("framed", framed);
+  if (!framed) return;
+  const landscape = $("s-session").classList.contains("active");
+  const w = landscape ? PHONE.h : PHONE.w, h = landscape ? PHONE.w : PHONE.h;
+  const k = Math.min((innerWidth - 64) / w, (innerHeight - 64) / h, 1.3);
+  const st = document.body.style;
+  st.setProperty("--dw", `${w}px`); st.setProperty("--dh", `${h}px`); st.setProperty("--k", k.toFixed(4));
+}
+addEventListener("resize", fitDevice);
+fitDevice();
+requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add("anim")));
 
 /* ---------- 1. モード選択 ---------- */
 document.querySelectorAll(".purpose").forEach((b) => b.onclick = () => {
