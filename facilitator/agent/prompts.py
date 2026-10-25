@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from facilitator.discussion_types import DiscussionType, get_discussion_type
-from facilitator.models import HEALTH_VALUES, Action
+from facilitator.models import CHAT_ONLY_ACTIONS, HEALTH_VALUES, Action
 
 # 用途ごとの冒頭(役割の前提)。その後に共通の方針(COMMON_PROMPT)、議論タイプのフェーズ定義、用途別の追加ルール(PURPOSE_RULES)が続く
 PURPOSE_INTRO = {
@@ -289,9 +289,12 @@ CONTENT_ACTION_VALUES = {"none": [], "hint": ["offer_hint"], "concrete": ["offer
 
 def build_output_schema(dtype: DiscussionType, content_scope: str = "none") -> dict[str, Any]:
     """analysis.phase の選択肢は議論タイプのフェーズ。action の選択肢には、範囲の外の内容支援のアクションを入れない
-    (範囲が none なら従来と同じ選択肢)。"""
+    (範囲が none なら従来と同じ選択肢)。雑談の司会だけの行動(offer_topic / change_topic)は入れない。"""
     allowed = CONTENT_ACTION_VALUES[content_scope]
-    actions = [a.value for a in Action if a.value not in CONTENT_ACTION_VALUES["concrete"] or a.value in allowed]
+    actions = [
+        a.value for a in Action
+        if a not in CHAT_ONLY_ACTIONS and (a.value not in CONTENT_ACTION_VALUES["concrete"] or a.value in allowed)
+    ]
     return {
         "type": "object",
         "properties": {
