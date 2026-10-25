@@ -30,6 +30,9 @@ ON = ["学食の混雑って、やっぱりレジが原因ですよね。", "席
 CHAT = ["駅前のラーメン屋、替え玉無料なんですよ。", "え、知らなかった。今度行こうかな。", "あそこの近くでバイトしてるんです。",
         "バイト何してるんですか？", "居酒屋です。まかないが出ます。", "いいなあ、唐揚げとか？"]
 REDIRECT = "盛り上がっているところすみません。学食の混雑の話に戻りましょう。"
+# 発言中に割り込む判断(注意書きで1文を求められる)。2文目は検証で落ちることを確かめるために付ける
+SHORT_REDIRECT = "すみません、いったん学食の混雑の話に戻りましょう。"
+SHORT_EXTRA = "レジの話はどうでしたか?"
 ANALYSIS = {"phase": "cause_analysis", "phase_reason": "r", "health": "off_topic", "issues": ["混雑の原因"],
             "opinions": ["キャッシュレスレジ"], "conflicts": [], "agreements": [], "missing_perspectives": [], "recent_summary": ""}
 T0 = 50.0  # 開始の説明のクールダウン(45秒)明け
@@ -65,7 +68,8 @@ class JudgeLLM:
             action, speech = self.action, "原因はどう整理できそうですか?"
         elif run >= 2 and self.redirected < self.max_redirects and "redirect_topic" in allowed:
             self.redirected += 1
-            action, speech = "redirect_topic", REDIRECT
+            speaking = "発言に重ねて話す" in (context.get("note") or "")
+            action, speech = "redirect_topic", (SHORT_REDIRECT + SHORT_EXTRA) if speaking else REDIRECT
         analysis = {**ANALYSIS, "health": "off_topic" if run >= 2 else "progressing"}
         return {"analysis": analysis, "decision": {"action": action, "reasoning": "r", "speech": speech, "urgency": 0.8, "target_speaker": None}}
 
@@ -456,3 +460,58 @@ def test_high_checkpoints_fail_when_llm_redirects_on_topic(name, at):
         res = run_scenario(sc, AlwaysRedirect(), load_settings(llm_provider="mock"), policy=InterventionPolicy(drift=Level(drift)))
         c = next(c for c in res.checks if c.at == at)
         assert c.passed is passed, (drift, c.record.gate, c.fail_reason)
+
+
+# ---------- 発言中に割り込む脱線修正は短く(1文)。それ以外の脱線修正・介入は従来どおり ----------
+def _agent(drift="high"):
+    s = load_settings()
+    st = DiscussionState(settings=s, theme=THEME, duration_sec=600)
+    st.started, st.start_time = True, 0.0
+    agent = FacilitatorAgent(st, JudgeLLM(latency=0.0), s, purpose="job", policy=InterventionPolicy(drift=Level(drift)))
+    for i, text in enumerate(CHAT[:3]):
+        st.add_utterance(f"speaker_{i + 1}", text, 60 + i * 2.3, 62 + i * 2.3, 1.0)
+    return st, agent
+
+
+def test_speaking_redirect_is_one_sentence_with_note():
+    st, agent = _agent()
+    st.speaking_now = True
+    rec = agent.tick(67.0, "drift", act=False)
+    assert rec.gate == "llm:drift_interrupt" and rec.decision.action == Action.redirect_topic
+    assert rec.decision.speech == SHORT_REDIRECT  # 文の区切りで1文に(文の途中では切らない)
+    assert "1文" in (rec.overridden or "")
+    _gate, _allowed, note = agent._gate(67.0)
+    assert "1文・30〜40文字" in note
+
+
+@pytest.mark.parametrize("when, speaking", [("short_pause", False), ("long_silence", False)])
+def test_not_speaking_redirect_keeps_two_sentences(when, speaking):
+    """短い間(発言中ではない)・通常の間の脱線修正は、注意書きも文数の上限(2文)も従来どおり。"""
+    st, agent = _agent()
+    st.speaking_now = speaking
+    now = 68.0 if when == "short_pause" else 75.0
+    gate, _allowed, note = agent._gate(now)
+    assert "発言に重ねて" not in (note or "")
+    rec = agent.tick(now, "drift" if when == "short_pause" else "periodic", act=False)
+    assert rec.decision.action == Action.redirect_topic and rec.decision.speech == REDIRECT
+
+
+def test_flag_does_not_leak_into_next_tick():
+    st, agent = _agent()
+    st.speaking_now = True
+    agent.tick(67.0, "drift", act=False)
+    st.speaking_now = False
+    agent._trigger, agent._interrupt_speaking = "periodic", False
+    agent.tick(75.0, "periodic", act=False)
+    assert agent._max_sentences(Action.redirect_topic) == 2
+    assert agent._max_sentences(Action.ask_question) == 3 and agent._max_sentences(Action.offer_hint) == 2
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_engine_speaks_short_redirect_over_participant(monkeypatch, mode):
+    llm = JudgeLLM(latency=1.0)
+    s = session(monkeypatch, llm, mode=mode)
+    continuous_chat(s)
+    run(s, T0 + 30)
+    ai = s.ai("戻りましょう")
+    assert len(ai) == 1 and ai[0].text == SHORT_REDIRECT and speaking_at(s, ai[0].start_time)

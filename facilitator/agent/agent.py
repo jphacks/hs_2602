@@ -48,7 +48,15 @@ DRIFT_INTERRUPT_NOTE = (
     "本題に戻る様子がなければ redirect_topic。一言の雑談やテーマに関わる経験談、すでに本題に戻っているなら no_intervention)。"
     "ほかの介入はこの時点ではできません。"
 )
+# 参加者の発言中に割り込むときだけ加える発話の注意(発言に重ねて長く話さないように)。検証でも1文に制限する
+DRIFT_INTERRUPT_SPEAKING_NOTE = (
+    "いまは参加者が話している最中なので、redirect_topic を選ぶ場合は発言に重ねて話すことになります。"
+    "speech は1文・30〜40文字程度にし、本題に戻ることだけを短く伝えてください。脱線した話題へのコメント、長い相づち、"
+    "これまでの議論の詳しい振り返りは入れません。必要なら「すみません」「いったん」などの柔らかい言葉を添えてよいですが、"
+    "発話ログにあるあなたの以前の言い回しと同じにはしないでください。2文以上書いた場合は最初の1文だけを話します。"
+)
 DRIFT_INTERRUPT_ACTIONS = [Action.no_intervention, Action.redirect_topic]
+SPEAKING_REDIRECT_MAX_SENTENCES = 1  # 発言中に割り込む脱線修正(文の途中では切らない)
 INVITE_ALL_FALLBACK ="まだお話しされていない方も、ここまでの議論についてどう考えているか聞かせてもらえますか?"
 REDIRECT_MAX_SENTENCES = 2  # 軌道修正は短い区切りで話すので短くする
 # 発話の文数の上限(既定は3文)。ヒントは問いの形の短いものにする
@@ -113,13 +121,16 @@ class FacilitatorAgent:
         self._scanned_id = -1  # 依頼を探し終えた発言 id
         self._llm_seen_id: int | None = None  # 直近の LLM 判断に渡した発話ログの最後の発言 id(脱線の確認に使う)
         self._trigger = "periodic"  # いまの tick のトリガー(_gate が見る)
+        self._interrupt_speaking = False  # いまの tick が、参加者の発言中に脱線修正を判断しているか(_gate が立てる)
 
     def _cooldown_sec(self) -> float:
         """介入どうしの最低間隔。雑談の司会(facilitator/chat/host.py)が雑談専用の値で上書きする。"""
         return self.settings.cooldown_sec
 
     def _max_sentences(self, action: Action) -> int:
-        """発話の文数の上限(雑談の司会が上書きする)。"""
+        """発話の文数の上限(雑談の司会が上書きする)。発言中に割り込む脱線修正は1文。"""
+        if action == Action.redirect_topic and self._interrupt_speaking:
+            return SPEAKING_REDIRECT_MAX_SENTENCES
         return MAX_SENTENCES.get(action, 3)
 
     def _user_prompt(self, ctx: dict) -> str:
@@ -153,7 +164,8 @@ class FacilitatorAgent:
             return "forced:start_gd", [Action.start_gd], None
         if st.is_speaking(now):
             if self._drift_interrupt_ok(now):  # ②積極的(GD・GW): 脱線修正だけは発話中でも判断する
-                return "llm:drift_interrupt", list(DRIFT_INTERRUPT_ACTIONS), DRIFT_INTERRUPT_NOTE
+                self._interrupt_speaking = True  # 発言に重ねて話すので短くする(注意書き + 検証で1文)
+                return "llm:drift_interrupt", list(DRIFT_INTERRUPT_ACTIONS), DRIFT_INTERRUPT_NOTE + DRIFT_INTERRUPT_SPEAKING_NOTE
             return "blocked:speaking", [], None
 
         remaining = st.remaining(now)
@@ -569,6 +581,7 @@ class FacilitatorAgent:
         self._scan_requests(now)
         request = self.pending_request
         self._trigger = trigger
+        self._interrupt_speaking = False
         gate, allowed, note = self._gate(now)
         raw_action, overridden = None, None
         _, gap, behind = self.phase_status(now)  # 判断前(前回判断のフェーズ)の値を記録する
