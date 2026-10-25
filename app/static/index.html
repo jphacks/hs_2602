@@ -352,6 +352,31 @@ body { font-size: 17px; }
 .r-person .nums { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .r-person.fac .pct { color: var(--muted); font-size: 14px; font-weight: 600; }
 .r-log { display: flex; flex-direction: column; gap: 12px; }
+/* 振り返り */
+.fb-note { margin: 10px 0 4px; }
+.fb-person { padding: 14px 0; }
+.fb-person + .fb-person { border-top: .5px solid var(--line); }
+.fb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.fb-head .avatar { width: 32px; height: 32px; border-radius: 9px; font-size: 14px; margin: 0; }
+.fb-head b { font-size: 16px; }
+.fb-head span { margin-left: auto; font-size: 13px; color: var(--muted); }
+.fb-aspect { display: grid; grid-template-columns: 96px auto; gap: 2px 10px; align-items: center; padding: 6px 0; }
+.fb-aspect b { font-size: 14px; font-weight: 600; }
+.fb-aspect q { grid-column: 1 / -1; font-size: 13px; color: var(--muted); quotes: "「" "」"; }
+.lv { justify-self: start; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; }
+.lv.great { background: var(--accent); color: #fff; }
+.lv.good { background: var(--accent-soft); color: var(--accent); }
+.lv.next { background: var(--fill); color: var(--muted); }
+.fb-list { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--tile-2); font-size: 14px; }
+.fb-list b { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.fb-list ul { margin: 0; padding-left: 18px; }
+.fb-types { display: flex; flex-wrap: wrap; gap: 6px; }
+.fb-types span { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--fill); color: var(--faint); }
+.fb-types span.has { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.fb-ex { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.fb-ex div { padding: 3px 0; }
+.fb-ex i { font-style: normal; font-weight: 600; color: var(--text); margin-right: 6px; }
+.fb-loading { color: var(--muted); font-size: 14px; padding: 18px 0; text-align: center; }
 .tile .sub-label { display: block; font-size: 15px; font-weight: 600; color: var(--muted); margin: 18px 0 10px; }
 /* スタイルのカードの中の詳細設定 */
 .subcard { margin-top: 16px; padding: 16px 16px 8px; border-radius: 16px; background: var(--tile-2); }
@@ -524,6 +549,16 @@ body { font-size: 17px; }
       <span class="label">喋った量</span>
       <div class="r-share" id="r-share"></div>
       <div class="r-people" id="r-people"></div>
+    </div>
+
+    <div class="tile span-4">
+      <span class="label">振り返り</span>
+      <div class="choice2" id="fb-tabs">
+        <button type="button" data-v="review" class="on">振り返り</button>
+        <button type="button" data-v="types">発言の種類</button>
+      </div>
+      <div class="hint fb-note" id="fb-note"></div>
+      <div id="fb-body"></div>
     </div>
 
     <div class="tile span-4">
@@ -950,9 +985,45 @@ async function showResult() {
     return `<div class="msg ${u.source === "ai" ? "ai" : u.source === "bot" ? "bot" : ""}" style="--c:${c}"><div class="av">${av}</div>
       <div><div class="who"><b>${esc(u.who)}</b>${tag}<time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`;
   }).join("") : '<div class="empty">発言はありませんでした</div>';
+  ui.resultColors = colors;
+  loadFeedback();
   show("s-result");
   requestAnimationFrame(() => requestAnimationFrame(() =>  // 帯と棒を 0 から伸ばす
     document.querySelectorAll("#s-result [data-w]").forEach((el) => { el.style.width = el.dataset.w; })));
+}
+// 振り返り(練習の補助)と発言の種類。結果画面を出してから取りに行く(初回は AI が作るので時間がかかる)
+ui.fbTab = "review";
+async function loadFeedback() {
+  ui.fb = null; renderFeedback();
+  const fb = await fetch("/api/feedback").then((x) => x.json()).catch(() => null);
+  ui.fb = fb?.ok ? fb : { ok: false, error: fb?.error || "振り返りを作れませんでした" };
+  renderFeedback();
+}
+$("fb-tabs").querySelectorAll("button").forEach((b) => b.onclick = () => {
+  ui.fbTab = b.dataset.v;
+  $("fb-tabs").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+  renderFeedback();
+});
+function renderFeedback() {
+  const review = ui.fbTab === "review";
+  $("fb-note").textContent = review
+    ? "AI による練習用の参考です。選考の評価には使わないでください。"
+    : "AI が発言を種類に分けたものです(良し悪しの評価ではありません)。";
+  const fb = ui.fb;
+  if (!fb) { $("fb-body").innerHTML = '<div class="fb-loading">AI が振り返りを作成しています…</div>'; return; }
+  if (!fb.ok) { $("fb-body").innerHTML = `<div class="fb-loading">${esc(fb.error)}</div>`; return; }
+  if (!fb.people.length) { $("fb-body").innerHTML = '<div class="fb-loading">対象の参加者がいません</div>'; return; }
+  const head = (p) => `<div class="fb-head"><div class="avatar" style="--c:${ui.resultColors?.[p.id] || "#8e8e93"}">${esc(p.name.slice(0, 1))}</div>
+    <b>${esc(p.name)}</b><span>${p.turns}回の発言</span></div>`;
+  const list = (title, xs) => (xs.length ? `<div class="fb-list"><b>${title}</b><ul>${xs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "");
+  $("fb-body").innerHTML = fb.people.map((p) => review
+    ? `<div class="fb-person">${head(p)}
+        ${p.aspects.map((a) => `<div class="fb-aspect"><b>${esc(a.label)}</b><span class="lv ${a.level}">${esc(fb.levels[a.level] || a.level)}</span>
+          ${a.quote ? `<q>${esc(a.quote)}</q>` : ""}</div>`).join("")}
+        ${list("良かった点", p.good)}${list("次に意識すること", p.next)}</div>`
+    : `<div class="fb-person">${head(p)}
+        <div class="fb-types">${Object.entries(fb.types).map(([k, label]) => `<span class="${p.types[k] ? "has" : ""}">${esc(label)} ${p.types[k] || 0}</span>`).join("")}</div>
+        ${p.examples.length ? `<div class="fb-ex">${p.examples.map((e) => `<div><i>${esc(fb.types[e.type])}</i>「${esc(e.text)}」</div>`).join("")}</div>` : ""}</div>`).join("");
 }
 $("r-new").onclick = () => { ui.started = false; show("s-purpose"); };
 $("r-again").onclick = () => { ui.started = false; show("s-setup"); };
