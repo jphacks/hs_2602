@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.env
+logs/
+results/
+recordings/
+*.wav
+.pytest_cache/
+.DS_Store
+models/
+exchange/
