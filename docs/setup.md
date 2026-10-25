@@ -48,7 +48,7 @@ Claude Code のチャットで「チャット GD を始めて。テーマは〇�
 - AI に渡した入力と返事(折りたたみ)、評価のチェックポイント結果、発言量のまとめ
 - アプリでは、AI の発言の終了時刻は実際に読み上げが終わった時刻です。
 
-## Step 1: エージェント単体の検証(音声なし)
+## エージェント単体の検証(音声なし)
 ```bash
 .venv/bin/python -m pytest -q tests                                 # ルール層のテスト
 .venv/bin/python scripts/evaluate.py --llm mock                     # API なしで配線確認
@@ -82,9 +82,6 @@ Claude Code のチャットで「チャット GD を始めて。テーマは〇�
 | 不採用 | Azure ConversationTranscriber | ja-JP の対応は未確認。リアルタイムで不安定という利用者報告あり |
 | 不採用 | diart + pyannote | 自前運用になり、2日でのセットアップには重い |
 | TTS | macOS `say -v Kyoko` | キー不要。品質が不足する場合は後で検討 |
-
-## 推奨マイクセッティング
-Step 2 の実測後に記入します。
 
 ## プライバシー
 - 録音は保存しません(検証用の保存オプションはデフォルト OFF で、git 管理外)。
