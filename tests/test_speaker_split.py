@@ -81,3 +81,33 @@ def test_one_turn_with_two_speakers_becomes_two_utterances(monkeypatch, tmp_path
         assert got == [("speaker_1", "ずらすのがいいです。"), ("speaker_2", "でも負担が心配です。")]
     finally:
         eng.stop()
+
+
+def test_same_speaker_sentences_stay_separate_bubbles(monkeypatch, tmp_path):
+    """「。」ごとに1つの発言(同じ人の文が続いてもまとめない)。"""
+    monkeypatch.setattr(engine_mod, "make_llm", lambda settings: MockLLM())
+    eng = Engine(load_settings(), clock=SimClock(), log_dir=tmp_path, tts_chars_per_sec=1000.0)
+    try:
+        eng.start(SessionConfig("テーマ", 5, ["たろう", "はなこ"], mode="text", intro=False, tts=False,
+                                discussion_type="problem_solving"), background=False)
+        eng._vid, eng._buf = FakeVid(), FakeBuf()
+        eng._on_stt(TranscriptEvent("final", text="一文目です。二文目です。", start=0.0, end=1.8))  # どちらもたろう
+        got = [(u.speaker_id, u.text) for u in eng.state.utterances if u.source == "human"]
+        assert got == [("speaker_1", "一文目です。"), ("speaker_1", "二文目です。")]
+    finally:
+        eng.stop()
+
+
+def test_partial_is_split_by_sentence_with_speakers(monkeypatch, tmp_path):
+    """認識中も「。」ごとに分け、文ごとに話者を推定する(新しい文はその文の声で判定し直す)。"""
+    monkeypatch.setattr(engine_mod, "make_llm", lambda settings: MockLLM())
+    eng = Engine(load_settings(), clock=SimClock(), log_dir=tmp_path, tts_chars_per_sec=1000.0)
+    try:
+        eng.start(SessionConfig("テーマ", 5, ["たろう", "はなこ"], mode="text", intro=False, tts=False,
+                                discussion_type="problem_solving"), background=False)
+        eng._vid, eng._buf = FakeVid(), FakeBuf()
+        eng._on_stt(TranscriptEvent("partial", text="ずらすのがいいです。でも負担が", start=0.0, end=4.0, turn_order=1))
+        assert [(p["text"], p["speaker"]) for p in eng.partial_parts] == [
+            ("ずらすのがいいです。", "speaker_1"), ("でも負担が", "speaker_2")]
+    finally:
+        eng.stop()

@@ -882,7 +882,8 @@ function renderPeople() {
     }).join("");
     box.dataset.key = key;
     box.querySelectorAll(".enroll-btn").forEach((b) => b.onclick = async () => {
-      const r = await post("/api/enroll", { index: +b.dataset.idx });
+      // 登録中のボタンは「登録を終了」(ここまでの声で登録する)
+      const r = b.classList.contains("rec") ? await post("/api/enroll/finish") : await post("/api/enroll", { index: +b.dataset.idx });
       if (!r.ok) alert(r.error);
     });
   }
@@ -893,7 +894,7 @@ function renderPeople() {
     b.classList.toggle("hidden", !intro);
     if (!intro) return;
     const name = n[card.dataset.id], rec = intro.recording === card.dataset.id, done = intro.enrolled.includes(name);
-    b.textContent = rec ? "話してください…" : done ? "✓ 登録済み" : intro.failed.includes(name) ? "もう一度登録" : "声を登録";
+    b.textContent = rec ? "■ 登録を終了" : done ? "✓ 登録済み" : intro.failed.includes(name) ? "もう一度登録" : "声を登録";
     b.className = `enroll-btn ${rec ? "rec" : done ? "done" : ""}`;
     b.disabled = !!intro.recording && !rec;
   });
@@ -954,14 +955,16 @@ function render() {
 }
 
 function renderLog(s) {
-  const live = s.status === "running" && s.partial ? { who: s.partial_speaker, text: s.partial } : null;  // 認識中の発言
-  const key = JSON.stringify([s.utterances.map((u) => [u.id, u.speaker_id, u.text]), live, s.status === "intro"]);
+  // 認識中の発言(「。」ごとの吹き出し。文ごとに推定した話者)
+  const live = s.status === "running" && s.partial
+    ? (s.partial_parts?.length ? s.partial_parts : [{ text: s.partial, speaker: s.partial_speaker }]) : null;
+  const key = JSON.stringify([s.utterances.map((u) => [u.id, u.speaker_id, u.text]), live, s.status === "intro"]);  // 認識中の文が変わるたびに描き直す
   if (key === logKey || document.activeElement?.classList?.contains("relabel")) return;
   logKey = key;
   const box = $("log"); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
   if (!s.utterances.length && !live) {
     box.innerHTML = s.status === "intro"
-      ? '<div class="empty">参加者のカードの「声を登録」を押して、<br>一言ずつ自己紹介してください。<br>終わったら「議論を始める」を押します。</div>'
+      ? '<div class="empty">参加者のカードの「声を登録」を押して、一言ずつ自己紹介してください。<br>話し終えたら「登録を終了」を押します(少し黙ると自動でも終わります)。<br>全員終わったら「議論を始める」を押します。</div>'
       : '<div class="empty">発言がここに表示されます</div>';
     return;
   }
@@ -977,11 +980,13 @@ function renderLog(s) {
     : `<div class="msg${cls(u)}" style="--c:${u.speaker_id === "unknown" ? "#c7c7cc" : color(u.speaker_id)}"><div class="av">${esc((s.names[u.speaker_id] || "?").slice(0, 1))}</div>
        <div><div class="who"><select class="relabel" data-id="${u.id}" title="話者を修正">${opts(u.speaker_id)}</select><time>${mmss(u.t)}</time>
        ${u.conf < 0.7 && u.speaker_id !== "unknown" ? '<span class="low">低確信</span>' : ""}</div><div class="bubble">${esc(u.text)}</div></div></div>`).join("");
-  if (live) {  // 認識中: 話している人(推定)の吹き出しを伸ばしていく。確定すると文ごとの発言に置き換わる
-    const c = live.who ? color(live.who) : "#c7c7cc";
-    const nm = live.who ? (s.names[live.who] || "?") : "認識中";
-    box.insertAdjacentHTML("beforeend", `<div class="msg live" style="--c:${c}"><div class="av">${live.who ? esc(nm.slice(0, 1)) : "…"}</div>
-      <div><div class="who"><b>${esc(nm)}</b><span class="aitag live-tag">認識中</span></div><div class="bubble">${esc(live.text)}</div></div></div>`);
+  if (live) {  // 認識中: 文ごとに話している人(推定)の吹き出しを出す。確定すると文ごとの発言に置き換わる
+    box.insertAdjacentHTML("beforeend", live.map((p) => {
+      const c = p.speaker ? color(p.speaker) : "#c7c7cc";
+      const nm = p.speaker ? (s.names[p.speaker] || "?") : "認識中";
+      return `<div class="msg live" style="--c:${c}"><div class="av">${p.speaker ? esc(nm.slice(0, 1)) : "…"}</div>
+        <div><div class="who"><b>${esc(nm)}</b><span class="aitag live-tag">認識中</span></div><div class="bubble">${esc(p.text)}</div></div></div>`;
+    }).join(""));
   }
   s.utterances.forEach((u) => seenMsg.add(u.id));
   box.querySelectorAll(".relabel").forEach((el) => el.onchange = () => { post("/api/relabel", { id: +el.dataset.id, speaker_id: el.value }); el.blur(); });

@@ -40,7 +40,7 @@ from facilitator.participants import (
     transcript_for_bot,
 )
 from facilitator.report import RecordingLLM, TestReport
-from facilitator.speaker.split import fill_labels, group_by_speaker, sentence_spans, split_sentences
+from facilitator.speaker.split import fill_labels, per_sentence, sentence_spans, split_sentences
 from facilitator.state import DiscussionState
 from facilitator.stt.base import TranscriptEvent, is_noise_text
 
@@ -158,6 +158,9 @@ class Engine:
         self.ai_speaking = False
         self._ai_mute_until = 0.0
         self.partial_speaker: str | None = None  # 認識中の発言の話者の推定
+        self.partial_parts: list[dict[str, Any]] = []  # 認識中の発言を「。」で分けたもの [{text, speaker}]
+        self._partial_labels: list[tuple[str | None, bool]] = []  # 文ごとの (話者, 書き終わった文の判定か)
+        self._partial_turn: int | None = None
         self._partial_id_at = 0.0
         self._voice_end: float | None = None  # VAD で声が止まった時刻(音声モードの区切り判定に使う)
         self._agent_busy = False
@@ -182,6 +185,7 @@ class Engine:
         self._speaking_as: str | None = None  # 今声を出している話者(AI_SPEAKER / AI 参加者の ID)
         self._feedback: tuple[int, dict[str, Any]] | None = None  # (セッションの世代, 振り返り)
         self._feedback_lock = threading.Lock()
+        self._enroll_stop = threading.Event()  # 声の登録を画面のボタンで終える合図
         self._speak_lock = threading.RLock()  # 発話を1つずつにする(_speak_decision → _say の入れ子で取り直す)
         self.ai_level: int | None = None
         self._interval: tuple[float, float] | None = None
@@ -269,7 +273,7 @@ class Engine:
             policy=policy,
         )
         self.intro = IntroState()
-        self.partial, self.partial_speaker = "", None
+        self.partial, self.partial_speaker, self.partial_parts, self._partial_labels = "", None, [], []
         self.events = []
         self._t0 = self.clock.monotonic()
         self._ai_mute_until = 0.0  # 時計を0に戻すので、前のセッションの時計でのミュート時刻を持ち越さない
@@ -404,7 +408,7 @@ class Engine:
         if e.kind != "final" or e.start is None or is_noise_text(e.text) or self.paused:
             return
         self.partial = ""
-        self.partial_speaker = None
+        self.partial_speaker, self.partial_parts, self._partial_labels = None, [], []
         if self.status == "intro":
             self.intro.turns.append(e)
             return
@@ -416,15 +420,34 @@ class Engine:
             self.state.add_utterance(sid, text, start, end, conf)
 
     def _guess_partial_speaker(self, e: TranscriptEvent) -> None:
-        """認識中の発言の話者を約1秒ごとに推定する(画面の「認識中」の吹き出しに出す。確定時は文ごとに判定し直す)。"""
-        if not (self._vid and self._vid.enrolled and self._buf) or e.start is None or e.end is None:
-            return
-        now = self.now()
-        if now - self._partial_id_at < 1.0 or e.end - e.start < self._vid.min_sec:
-            return
-        self._partial_id_at = now
-        r = self._vid.identify(self._buf.segment(max(e.start, e.end - 4.0), e.end))  # 直近の数秒で判定する
-        self.partial_speaker = r.speaker_id if r.speaker_id != UNKNOWN else None
+        """認識中の発言を「。」ごとに分け、文ごとに話者を推定する(画面の「認識中」の吹き出し)。
+        書き終わった文はその文の声で1回判定し、書きかけの文は新しい文が始まった時と約1秒ごとに判定し直す。
+        確定したときは文ごとの判定(_identify_by_sentence)で置き換わる。"""
+        parts = split_sentences(e.text) or [e.text]
+        if e.turn_order != self._partial_turn:  # 新しいターン
+            self._partial_turn, self._partial_labels = e.turn_order, []
+        labels = self._partial_labels
+        vid, buf = self._vid, self._buf
+        if vid and vid.enrolled and buf and e.start is not None and e.end is not None:
+            spans = sentence_spans(parts, e.start, e.end, (e.raw or {}).get("words"))
+            now = self.now()
+            for i, (s, t) in enumerate(spans):
+                done = i < len(parts) - 1
+                if i < len(labels) and (done and labels[i][1] or not done and now - self._partial_id_at < 1.0):
+                    continue  # 書き終わった文は判定済み / 書きかけの文は1秒以内に判定済み
+                if t - s >= vid.min_sec:
+                    r = vid.identify(buf.segment(max(s, t - 4.0), t))
+                    lab = (r.speaker_id if r.speaker_id != UNKNOWN else None, done)
+                else:  # 短すぎる文は前の文の話者を引き継ぐ(書き終わっていれば確定扱い)
+                    lab = (labels[i - 1][0] if 0 < i <= len(labels) else None, done)
+                if i < len(labels):
+                    labels[i] = lab
+                else:
+                    labels.append(lab)
+                if not done:
+                    self._partial_id_at = now
+        self.partial_parts = [{"text": p, "speaker": labels[i][0] if i < len(labels) else None} for i, p in enumerate(parts)]
+        self.partial_speaker = self.partial_parts[-1]["speaker"]
 
     def _identify_by_sentence(self, e: TranscriptEvent) -> list[tuple[str, float, float, str, float]]:
         """誰が話したかを文ごとに判定する。複数人が間をあけずに話して1つのターンになった場合も、人ごとの発言に分ける。
@@ -437,6 +460,7 @@ class Engine:
             r = self._vid.identify(self._buf.segment(e.start - 0.1, e.end + 0.1))
             return [(e.text, e.start, e.end, r.speaker_id, r.confidence)]
         spans = sentence_spans(parts, e.start, e.end, (e.raw or {}).get("words"))
+        # 文(「。」)ごとに声を照合し直し、文ごとに1つの発言にする
         labels: list[tuple[str, float] | None] = []
         for s, t in spans:
             if t - s >= self._vid.min_sec:
@@ -444,10 +468,10 @@ class Engine:
                 labels.append((r.speaker_id, r.confidence))
             else:
                 labels.append(None)
-        if all(lb is None or lb[0] == UNKNOWN for lb in labels):  # どの文も判定できなければ、ターン全体で判定する
+        if all(lb is None or lb[0] == UNKNOWN for lb in labels):  # どの文も判定できなければ、ターン全体の判定を各文に使う
             r = self._vid.identify(self._buf.segment(e.start - 0.1, e.end + 0.1))
-            return [(e.text, e.start, e.end, r.speaker_id, r.confidence)]
-        return group_by_speaker(parts, spans, fill_labels(labels, UNKNOWN))
+            labels = [(r.speaker_id, r.confidence)] * len(parts)
+        return per_sentence(parts, spans, fill_labels(labels, UNKNOWN))
 
     def _echo_of_ai(self, text: str, start: float, end: float) -> str | None:
         """AI の発話と時間が重なる文字起こしが、AI の発言とよく似ていれば(スピーカーの声をマイクが拾った)理由を返す。"""
@@ -473,8 +497,16 @@ class Engine:
                 return {"ok": False, "error": f"{cfg.names[self.intro.index]}さんの登録中です"}
             self.intro.index = index
             self.intro.turns = []
+            self._enroll_stop.clear()
             gen = self._gen
         threading.Thread(target=self._enroll_one, args=(gen, index), daemon=True).start()
+        return {"ok": True}
+
+    def finish_enroll(self) -> dict[str, Any]:
+        """画面の「登録を終了」: 今の人の声の登録を、ここまでに話した声で終える。"""
+        if self.status != "intro" or self.intro.index < 0:
+            return {"ok": False, "error": "登録中の人はいません"}
+        self._enroll_stop.set()
         return {"ok": True}
 
     def begin(self) -> dict[str, Any]:
@@ -501,6 +533,11 @@ class Engine:
         try:
             while self._alive(gen):
                 self.clock.sleep(0.2)
+                if self._enroll_stop.is_set():  # 「登録を終了」が押された: 話し終わりの文字起こしが届くのを少し待つ
+                    deadline = self.now() + 2.0
+                    while self._alive(gen) and self.now() < deadline and (st.speaking_now or self.partial):
+                        self.clock.sleep(0.1)
+                    break
                 turns = mine()
                 voiced = sum(t.end - t.start for t in turns)
                 last_end = max((t.end for t in turns), default=None)
@@ -1163,6 +1200,7 @@ class Engine:
             "level_db": round(self.level_db, 1),
             "partial": self.partial,
             "partial_speaker": self.partial_speaker,
+            "partial_parts": self.partial_parts,
             "use_speaker_info": self.settings.use_speaker_info,
             "reliability": round(st.speaker_reliability(), 2),
             "stats": [x.model_dump() for x in st.speaker_stats(now)],
