@@ -17,7 +17,7 @@ utterances:
   - {t: 207, d: 4, s: speaker_2, c: 0.88, text: 会計なら、キャッシュレスにすれば早くなりそう。}
   - {t: 212, d: 3, s: speaker_3, c: 0.9, text: 券売機を増やすのもありですね。}
 checkpoints:
-  - {at: 137.5, expect: [no_intervention], why: まだ議論が動いている。短い間で介入しない}
+  - {at: 137.5, expect: [no_intervention], expect_gate: blocked:short_pause, why: まだ議論が動いている。短い間で介入しない}
   - {at: 175, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention], expect_phase: [cause_analysis, solution_ideation], why: 16秒の沈黙で停滞。具体的な切り口を示す質問か論点整理が必要}
-  - {at: 205, expect: [no_intervention], why: 直前の介入から30秒でクールダウン中}
-  - {at: 216.5, expect: [no_intervention], why: 議論が再開した。見守る}
+  - {at: 205, expect: [no_intervention], expect_gate: blocked:cooldown, why: 直前の介入から30秒でクールダウン中}
+  - {at: 216.5, expect: [no_intervention], expect_gate: blocked:cooldown, why: 議論が再開した。見守る(175 の介入から41.5秒でクールダウン中のためルール層が見送る。LLM 自身の見守りはこの時点では評価しない)}

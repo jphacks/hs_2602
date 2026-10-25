@@ -11,8 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import load_settings  # noqa: E402
 from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
+from facilitator.policy import levels, purpose_preset  # noqa: E402
 from facilitator.agent.prompts import (  # noqa: E402
     COMMON_PROMPT,
+    CONTENT_NONE_RULES,
     PURPOSE_INTRO,
     PURPOSE_RULES,
     SYSTEM_PROMPT,
@@ -33,7 +35,8 @@ def _line(prefix: str) -> str:
 @pytest.mark.parametrize("purpose", list(PURPOSE_INTRO))
 def test_prompt_is_intro_common_phases_and_rules(purpose):
     block = build_phase_block(get_discussion_type(purpose=purpose))
-    assert build_system_prompt(purpose) == PURPOSE_INTRO[purpose] + COMMON_PROMPT + block + PURPOSE_RULES[purpose]
+    none_rules = CONTENT_NONE_RULES if purpose == "general" else ""  # 一般GW の内容支援なしの節(就活GDは用途別ルールで同じ趣旨)
+    assert build_system_prompt(purpose) == PURPOSE_INTRO[purpose] + COMMON_PROMPT + block + PURPOSE_RULES[purpose] + none_rules
 
 
 def test_default_and_unknown_purpose_fall_back_to_job():
@@ -115,6 +118,9 @@ def test_time_warning_prompt_carries_unresolved_conflict(purpose):
     rec = FacilitatorAgent(st, llm, s, purpose=purpose).tick(482)
     assert rec.gate == "forced:time_warning" and rec.decision.action.value == "time_warning"
     assert llm.context["allowed_actions"] == ["time_warning"]
-    assert llm.system == build_system_prompt(purpose)
+    # 用途の既定のプリセット(就活GDはすべて標準・内容支援なし。一般GWは③④⑤が積極的、内容支援はヒントまで・停滞時のみ)
+    pol = purpose_preset(purpose)
+    content = (pol.content_scope.value, pol.content_initiative.value)
+    assert llm.system == build_system_prompt(purpose, levels=levels(pol), content=content)
     assert "どちらかの意見を前提にせず" in llm.system
     assert "全部実施するか、優先順位をつけるか" in llm.user

@@ -1,4 +1,9 @@
-"""模擬GDシナリオ(YAML)を仮想時計で再生し、チェックポイントでエージェントに判断させる。"""
+"""模擬GDシナリオ(YAML)を仮想時計で再生し、チェックポイントでエージェントに判断させる。
+
+介入ポリシー: シナリオの `policy:`(`preset:` と各項目。例 {preset: general_gw, stall: low})で指定する。省略時は用途の既定
+(`purpose:`、省略時は就活GD=すべて標準)。チェックポイントの `when:`(例 {stall: high} / {drift: [low, standard]})は、
+ポリシーがその段階のときだけ評価する(段階ごとに期待する判断が違う時点を1つのシナリオに書くため)。
+"""
 
 from __future__ import annotations
 
@@ -13,6 +18,7 @@ from facilitator.agent.agent import FacilitatorAgent
 from facilitator.llm.base import LLMClient
 from facilitator.logging import TickLogger
 from facilitator.models import TickRecord
+from facilitator.policy import InterventionPolicy, resolve_policy
 from facilitator.state import DiscussionState
 
 
@@ -35,11 +41,42 @@ class CheckResult:
 class ScenarioResult:
     id: str
     title: str
+    policy: str = ""  # 介入ポリシー(まとめの1行表示)
     checks: list[CheckResult] = field(default_factory=list)
 
 
 def load_scenario(path: Path) -> dict[str, Any]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def scenario_policy(
+    sc: dict[str, Any], preset: str | None = None, overrides: dict[str, Any] | None = None
+) -> InterventionPolicy:
+    """シナリオの介入ポリシー。preset を渡すとシナリオの policy の代わりにそのプリセットを使い、overrides はその上に重ねる。"""
+    spec = {"preset": preset} if preset else dict(sc.get("policy") or {})
+    spec.update(overrides or {})
+    name = spec.pop("preset", None)
+    return resolve_policy(sc.get("purpose", "job"), preset=name, overrides=spec)
+
+
+def parse_sets(values: list[str] | None) -> dict[str, str]:
+    """コマンドの --set item=level を {item: level} にする。"""
+    out = {}
+    for v in values or []:
+        k, _, level = v.partition("=")
+        if not level:
+            raise SystemExit(f"--set は 項目=段階 の形で指定してください: {v}")
+        out[k.strip()] = level.strip()
+    return out
+
+
+def applies(cp: dict[str, Any], policy: InterventionPolicy) -> bool:
+    """チェックポイントの when(項目 → 段階 または段階のリスト)に、ポリシーが合うか。"""
+    for item, want in (cp.get("when") or {}).items():
+        wants = want if isinstance(want, list) else [want]
+        if getattr(policy, item).value not in wants:
+            return False
+    return True
 
 
 def judged_by(rec: TickRecord) -> str:
@@ -54,6 +91,9 @@ def judged_by(rec: TickRecord) -> str:
 def judge(cp: dict[str, Any], rec: TickRecord) -> tuple[bool, str]:
     if cp.get("require_llm") and not rec.llm_called:  # LLM 自身の判断を評価したい時点で、ルール層が先に処理した
         return False, f"評価条件不成立: LLM 未実行({rec.gate})"
+    gate = cp.get("expect_gate")  # ルール層の判定を確かめる時点(LLM の見守りを評価する時点ではない)
+    if gate and not rec.gate.startswith(gate):
+        return False, f"ルール層の判定が期待外 {rec.gate}(期待 {gate})"
     action = rec.decision.action.value
     if action in cp.get("forbid", []):
         return False, f"禁止アクション {action}"
@@ -73,14 +113,24 @@ def judge_phase(cp: dict[str, Any], rec: TickRecord) -> bool | None:
 
 
 def run_scenario(
-    sc: dict[str, Any], llm: LLMClient, settings: Settings, logger: TickLogger | None = None, section: Any = None
+    sc: dict[str, Any],
+    llm: LLMClient,
+    settings: Settings,
+    logger: TickLogger | None = None,
+    section: Any = None,
+    policy: InterventionPolicy | None = None,  # 省略時は scenario_policy(sc)
 ) -> ScenarioResult:
-    """section(report.Section)を渡すと、判断・発言・評価結果をまとめログ用に記録する。"""
+    """section(report.Section)を渡すと、判断・発言・評価結果をまとめログ用に記録する。
+    when が合わないチェックポイントでは判断させない(結果に含めない)。"""
+    policy = policy or scenario_policy(sc)
     state = DiscussionState(settings=settings, theme=sc["theme"], duration_sec=sc["duration_sec"])
     for sid, name in (sc.get("participants") or {}).items():
         state.set_speaker_name(sid, name, confirmed=sc.get("names_confirmed", True))
     # 議論タイプはシナリオで指定する(省略時は就活GDの既定=課題解決型。既存シナリオとの互換)
-    agent = FacilitatorAgent(state, llm, settings, logger=logger, discussion_type=sc.get("discussion_type"))
+    agent = FacilitatorAgent(
+        state, llm, settings, logger=logger, purpose=sc.get("purpose", "job"),
+        discussion_type=sc.get("discussion_type"), policy=policy,
+    )
     if sc.get("start_elapsed", 0) > 0:
         state.started = True
         state.start_time = 0.0
@@ -88,11 +138,11 @@ def run_scenario(
         state.observed_phase = sc.get("initial_phase", "")
         state.phase_observed_at = 0.0 if state.observed_phase else None
     if section is not None:
-        section.state, section.info = state, {"テーマ": sc["theme"]}
+        section.state, section.info = state, {"テーマ": sc["theme"], "介入ポリシー": policy.summary()}
     pending = sorted(sc["utterances"], key=lambda u: u["t"] + u["d"])
-    result = ScenarioResult(sc["id"], sc["title"])
+    result = ScenarioResult(sc["id"], sc["title"], policy.summary())
 
-    for cp in sorted(sc["checkpoints"], key=lambda c: c["at"]):
+    for cp in sorted((c for c in sc["checkpoints"] if applies(c, policy)), key=lambda c: c["at"]):
         now = float(cp["at"])
         # STT の確定結果は発話終了時に届く
         while pending and pending[0]["t"] + pending[0]["d"] <= now:

@@ -19,11 +19,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import random  # noqa: E402
 
-from config import CUSTOM_KEYS, PRESETS, STYLE_DEFAULTS, STYLE_KNOBS, load_settings  # noqa: E402
+from config import PURPOSE_PRESET, load_settings  # noqa: E402
 from facilitator.llm.base import LLMError  # noqa: E402
 from facilitator.llm.factory import make_llm  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
 from facilitator.discussion_types import DISCUSSION_TYPES, SELECTABLE_TYPES, resolve_session_type  # noqa: E402
+from facilitator.policy import KNOB_KEYS, knob_defaults, request_policy, ui_knobs, ui_spec  # noqa: E402
 
 STATIC = Path(__file__).parent / "static"
 app = FastAPI()
@@ -39,12 +40,15 @@ class StartReq(BaseModel):
     tts: bool = True
     use_speaker_info: bool = True
     purpose: str = "job"
-    preset: str = "A"
-    custom: dict[str, float] = {}
+    # 介入ポリシー: プリセット(job_gd / general_gw。省略時は用途の既定)と、そこから変更した項目だけ(①〜⑥)
+    policy_preset: str | None = None
+    policy: dict[str, str] = {}
+    preset: str = "A"  # 旧進行スタイル(互換。B は「⑤停滞への介入: 積極的」、数値の変更は廃止)
+    custom: dict[str, float] = {}  # 旧カスタムの数値(互換のため受け付けるが使わない)
     discussion_type: str | None = None  # 就活GDは必須(problem_solving / idea_generation / decision_making / planning)
     ai_count: int = 0  # AI 参加者の人数(names は人間の参加者のみ)
     ai_level: int = 2  # AI 参加者のレベル(1〜3)
-    knobs: dict[str, int] = {}  # 詳細の5項目(0=控えめ / 1=標準 / 2=積極的)
+    knobs: dict[str, int] = {}  # 画面の詳細設定(7項目、0〜2。旧画面の phase / suggest も可)。policy より優先
 
 
 class TextReq(BaseModel):
@@ -89,6 +93,12 @@ def start(req: StartReq) -> dict:
         resolve_session_type(req.discussion_type, purpose)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
+    legacy_style = req.preset if req.preset in ("A", "B", "custom") else "A"
+    knobs = {k: v for k, v in req.knobs.items() if k in KNOB_KEYS and v in (0, 1, 2)}
+    try:  # 介入ポリシーも開始前に検証する(不正な値は黙って無視しない)
+        policy, notices = request_policy(purpose, req.policy_preset, req.policy, legacy_style, knobs)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
     try:
         engine.start(
             SessionConfig(
@@ -100,18 +110,19 @@ def start(req: StartReq) -> dict:
                 req.tts,
                 req.use_speaker_info,
                 purpose=purpose,
-                preset=req.preset if req.preset in ("A", "B", "custom") else "A",
+                preset=legacy_style,
                 custom=req.custom,
+                policy=policy,
+                policy_preset=req.policy_preset or PURPOSE_PRESET[purpose],
                 discussion_type=req.discussion_type or None,
                 ai_count=ai_count,
                 ai_level=req.ai_level if req.ai_level in (1, 2, 3) else 2,
-                knobs={k: v for k, v in req.knobs.items() if k in STYLE_KNOBS and v in (0, 1, 2)},
             )
         )
     except Exception as e:  # マイク・STT の起動失敗を UI に伝える(キー等の秘匿情報は含まれない)
         engine.stop()
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    return {"ok": True}
+    return {"ok": True, "notices": notices, "policy": policy.model_dump(mode="json")}
 
 
 @app.get("/api/result")
@@ -131,13 +142,12 @@ def info() -> dict:
     """画面の初期値。モック版(mock-test ブランチ)ではテキスト入力を既定にする。"""
     base = load_settings()
     mock = base.llm_provider == "mock"
-    defaults = {k: getattr(base, k) for k in sorted(CUSTOM_KEYS)}
     return {
         "llm": "mock" if mock else base.llm_model,
         "default_mode": "text" if mock else "voice",
-        "presets": {name: {**defaults, **vals} for name, vals in PRESETS.items()},
-        "knobs": [{"key": k, "label": v["label"], "options": v["options"]} for k, v in STYLE_KNOBS.items()],
-        "knob_defaults": STYLE_DEFAULTS,  # スタイルごとの詳細設定の初期値(job = GD用、general = GW用)
+        "knobs": ui_knobs(),  # 画面の詳細設定の7項目(名前と選択肢)。送られた値は介入ポリシーに変換する
+        "knob_defaults": knob_defaults(),  # スタイルごとの初期値(job = GD用、general = GW用。プリセットが定義元)
+        "policy": ui_spec(),  # 介入ポリシーの項目・選択肢・説明・プリセット(API の利用元向け。画面は使わない)
         "discussion_types": [  # 画面で選べる議論タイプ
             {"key": k, "label": DISCUSSION_TYPES[k].label, "phases": [p.label for p in DISCUSSION_TYPES[k].phases]}
             for k in SELECTABLE_TYPES
