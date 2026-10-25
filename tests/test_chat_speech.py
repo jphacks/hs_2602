@@ -71,6 +71,29 @@ def test_one_question_keeps_first_question_and_other_sentences():
     assert sc.one_question("旅行は好きですか?気軽にどうぞ。行ってみたい場所はありますか?") == "旅行は好きですか?気軽にどうぞ。"
 
 
+def test_proposal_is_not_a_question():
+    """実 Claude の評価(最終)で見つかった: 「別の話題にしましょうか。」を問いと数えて、本当の問いを落としていた。"""
+    speech = "では、別の話題にしましょうか。最近食べたもので、おいしかったものはありますか?"
+    assert not sc.is_question("では、別の話題にしましょうか。")
+    assert sc.one_question(speech) == speech
+    assert ChatHostAgent._topic_text(speech) == "最近食べたもので、おいしかったものはありますか?"
+    assert sc.is_question("どうでしょうか。") and sc.is_question("朝ごはんは何派ですか。")
+
+
+def test_request_answer_keeps_real_question():
+    """シナリオ8: 依頼に応じた話題の転換で、誘いかけの文だけが残らない。"""
+    llm = SeqLLM([output("change_topic", "では、別の話題にしましょうか。最近食べたもので、おいしかったものはありますか?")])
+    st, ag = make(llm)
+    st.add_utterance("speaker_1", "うーん、特にないかもです。", 1, 3, 0.9)
+    st.add_utterance("speaker_2", "AIさん、何か話題ある？", 5, 7, 0.9)
+    rec = ag.tick(9.5, "request")
+    assert rec.decision.action == Action.change_topic, rec.overridden
+    assert rec.decision.speech.endswith("おいしかったものはありますか?") and not rec.overridden
+    assert ag.topics.current.text == "最近食べたもので、おいしかったものはありますか?"
+    assert ag.live_sentence(Action.ask_question, "では、少し聞いてみましょうか。", 0)
+    assert ag.live_sentence(Action.ask_question, "最近よく行くお店はありますか?", 1)
+
+
 @pytest.mark.parametrize("a, b, same", [
     (OPENING, "ほかの皆さんは、最近ちょっとハマっていることはありますか?", True),  # 呼びかけを足しただけ(シナリオ7)
     (OPENING, "最近ちょっとハマっていることはありますか?", True),
@@ -99,10 +122,30 @@ def test_invite_all_does_not_repeat_opening_question():
     """シナリオ7: 開始の話題で盛り上がった後、橋渡しで開始の問いを繰り返さない(見送る)。"""
     llm = SeqLLM([output("invite_all", "ほかの皆さんは、最近ちょっとハマっていることはありますか?", health="converging")])
     st, ag = make(llm)
-    end = talk(st, [("speaker_1", "ラーメンの食べ歩きです。"), ("speaker_2", "どこがおすすめですか?")])
-    rec = ag.tick(end + 16, "chat_lead")
+    end = talk(st, [("speaker_1", "ラーメンの食べ歩きです。"), ("speaker_2", "どこがおすすめですか?"),
+                    ("speaker_3", "あそこ並びますよね。")])  # 全員が話した → 自走期
+    ag.should_tick(end)
+    rec = ag.tick(end + S.chat_free_min_sec + 1, "chat_lead")  # 途切れて主導期に戻った
     assert rec.llm_raw_action == "invite_all" and rec.decision.action == Action.no_intervention
     assert "同じ問い" in rec.overridden
+
+
+def test_bridge_with_same_question_to_others_is_allowed():
+    """1人が答えた後に、まだ話していない人へ同じ問いを向ける橋渡しは自然なので止めない。
+    誰も答えていない問いの繰り返しと、全員が話した後の繰り返しは止める。"""
+    bridge = "ほかの皆さんは、最近ちょっとハマっていることはありますか?"
+    st, ag = make()
+    d, note = ag._validate(Decision(action=Action.invite_all, speech=bridge), [Action.invite_all], 11.0)
+    assert d.action == Action.no_intervention and "同じ問い" in note  # 誰も答えていない
+    st.add_utterance("speaker_1", "パンを焼くことです。", 12, 14, 0.9)
+    d, note = ag._validate(Decision(action=Action.invite_all, speech=bridge), [Action.invite_all], 21.0)
+    assert d.action == Action.invite_all and d.speech == bridge
+    d, note = ag._validate(Decision(action=Action.ask_question, speech="最近ちょっとハマっていることはありますか?"),
+                           [Action.ask_question], 21.0)
+    assert d.action == Action.no_intervention  # 呼びかけのない、同じ問いの繰り返し
+    talk(st, [("speaker_2", "私は映画です。"), ("speaker_3", "僕はゲームです。")], start=22)
+    d, note = ag._validate(Decision(action=Action.invite_all, speech=bridge), [Action.invite_all], 40.0)
+    assert d.action == Action.no_intervention  # 全員が話した後
 
 
 def test_topic_action_repeating_recent_question_is_replaced():
@@ -142,6 +185,18 @@ def test_two_questions_become_one():
     d, note = ag._validate(Decision(action=Action.ask_question, speech="どちらに行ったんですか?楽しかったですか?"),
                            [Action.ask_question], 12.0)
     assert d.speech == "どちらに行ったんですか?" and "問いかけを1つ" in note
+
+
+def test_long_speech_keeps_question():
+    """実 Claude の評価(最終)で見つかった: 3文の発言を2文に切ると、問いかけが落ちて相づちだけになっていた(シナリオ9)。"""
+    speech = ("もちろん大丈夫です。休みの日の過ごし方、人によっていろいろですよね。"
+              "ほかにも、こんなふうに過ごしているという方がいれば、ぜひ聞かせてもらえますか?")
+    st, ag = make()
+    st.add_utterance("speaker_1", "休みの日は実家に帰ることが多いです。", 1, 4, 0.9)
+    d, note = ag._validate(Decision(action=Action.invite_all, speech=speech), [Action.invite_all], 12.0)
+    assert d.speech == "もちろん大丈夫です。ほかにも、こんなふうに過ごしているという方がいれば、ぜひ聞かせてもらえますか?"
+    assert "問いかけを残して" in note
+    assert sc.keep_question("いいですね。どんなパンですか?気軽にどうぞ。", 2) == "いいですね。どんなパンですか?気軽にどうぞ。"
 
 
 def test_repeated_formula_is_dropped():

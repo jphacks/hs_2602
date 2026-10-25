@@ -30,8 +30,14 @@ def sentences(text: str) -> list[str]:
     return [x.strip() for x in SENTENCE.findall(normalize(text)) if x.strip(" 　。!?")]
 
 
+_PROPOSAL = re.compile(r"ましょうか[。!?]*$")  # 「別の話題にしましょうか」などの誘いかけ(答えを求める問いではない)
+
+
 def is_question(sentence: str) -> bool:
+    """答えを求める問いかけの文か(「?」か「〜か。」で終わる。「〜しましょうか」の誘いかけは除く)。"""
     s = normalize(sentence)
+    if _PROPOSAL.search(s):
+        return False
     return "?" in s or s.rstrip("。").endswith("か")
 
 
@@ -73,6 +79,21 @@ def one_question(speech: str) -> str:
     if len(qs) <= 1:
         return speech
     return "".join(s for i, s in enumerate(sents) if not is_question(s) or i == qs[0])
+
+
+def to_others(speech: str) -> bool:
+    """「ほかの皆さん」「ほかの方」など、まだ話していない人に向けた呼びかけを含むか。"""
+    return bool(_OTHERS.search(normalize(speech)))
+
+
+def keep_question(speech: str, n: int) -> str:
+    """n 文を超え、最初の問いかけが n 文目より後にあるなら、最初の n-1 文と問いかけの文にする(文数の上限で切ると
+    問いかけが落ちて、相づちだけになるため)。それ以外は変えない(切り詰めは進行役の文数の検証に任せる)。"""
+    sents = sentences(speech)
+    q = next((i for i, x in enumerate(sents) if is_question(x)), None)
+    if len(sents) <= n or q is None or q < n:
+        return speech
+    return "".join(sents[:n - 1] + [sents[q]])
 
 
 def without_others(speech: str) -> str:

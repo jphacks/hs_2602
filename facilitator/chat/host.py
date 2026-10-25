@@ -151,15 +151,15 @@ class ChatHostAgent(FacilitatorAgent):
     @staticmethod
     def _topic_text(speech: str) -> str:
         """話題の発言から、話題そのもの(最後の問いかけの文)を取り出す。前置きの相づちや、問いの後の補足の文
-        (「ちょっとしたことでも大丈夫です。」)で話題を取り違えないようにする。「?」の文がなければ「〜か。」の文、
-        それもなければ最後の文。"""
+        (「ちょっとしたことでも大丈夫です。」)、誘いかけ(「別の話題にしましょうか。」)で話題を取り違えないようにする。
+        「?」の問いかけの文がなければ「〜か。」の文、それもなければ最後の文。"""
         text = speech.replace("？", "?").replace("！", "!").strip()
         sents = sc.sentences(text)
         if not sents:
             return text
-        pick = next((x for x in reversed(sents) if "?" in x), None) or next(
-            (x for x in reversed(sents) if x.rstrip("。").endswith("か")), sents[-1])
-        question = "?" in pick or pick.rstrip("。").endswith("か")
+        qs = [x for x in sents if sc.is_question(x)]  # 「別の話題にしましょうか。」などの誘いかけは話題にしない
+        pick = next((x for x in reversed(qs) if "?" in x), None) or (qs[-1] if qs else sents[-1])
+        question = sc.is_question(pick)
         for lead in sc.LEADS:
             pick = pick.split(lead)[-1]
         return pick.strip().rstrip("。!?").strip() + ("?" if question else "")
@@ -399,7 +399,11 @@ class ChatHostAgent(FacilitatorAgent):
 
     # ================= 話題の重複・一問一答の検証 =================
     def _validate(self, d: Decision, allowed: list[Action], now: float) -> tuple[Decision, str | None]:
-        d, note = super()._validate(d, allowed, now)
+        fitted = sc.keep_question(d.speech, CHAT_MAX_SENTENCES) if d.action in CHECKED else d.speech
+        trimmed = fitted != d.speech
+        d, note = super()._validate(d.model_copy(update={"speech": fitted}) if trimmed else d, allowed, now)
+        if trimmed and d.action in CHECKED and d.speech:
+            note = "; ".join(x for x in (note, f"問いかけを残して{CHAT_MAX_SENTENCES}文に短縮") if x)
         if d.action in TOPIC_LEAD and self.pending_request is None and self._participant_topic_at == now:
             # 許可はこの判断の前の話題で決めた。同じ判断で LLM が「参加者が新しい話題を始めた」と判断して記録したときだけ
             # 確かめ直す(その話題はまだ始まったばかりなので、切り替え・新しい話題の提供はしない)。LLM の会話の状態の
@@ -432,7 +436,7 @@ class ChatHostAgent(FacilitatorAgent):
         speech = sc.one_question(d.speech)
         if speech != d.speech:
             notes.append("問いかけを1つに")
-        if d.action in NUDGES and sc.repeated_question(speech, recent):
+        if self._repeats_question(d.action, speech, now):
             return Decision(reasoning=d.reasoning), "最近の問いかけと同じ問いのため no_intervention"
         fixed = sc.without_repeated_formula(speech, recent)
         if not fixed:
@@ -447,6 +451,16 @@ class ChatHostAgent(FacilitatorAgent):
             return d, None
         return d.model_copy(update={"speech": speech}), "; ".join(notes)
 
+    def _repeats_question(self, action: Action, speech: str, now: float) -> bool:
+        """深掘り・橋渡しで、最近の AI の問いかけと同じ問いを繰り返すか。ただし、話題に誰かが答えた後で、まだ話して
+        いない人に同じ問いを向ける橋渡し(「ほかの皆さんは、〜?」・個人指名)は、繰り返しではなく自然な広げ方なので止めない。
+        全員が話した後や、誰も答えていない問いの繰り返しは止める。"""
+        if action not in NUDGES or not sc.repeated_question(speech, self._recent_ai()):
+            return False
+        spoken = self.topic_speakers(now)
+        to_others = action == Action.invite_person or sc.to_others(speech)
+        return not (spoken and to_others and not self.everyone_spoke(now))
+
     def live_sentence(self, action: Action, sentence: str, index: int) -> str | None:
         """生成しながら話す一文にも、全文の場合と同じ発言の確認をする。通らなければその文から先は話さない
         (まだ話していなければ全文を待ち、全文の確認に任せる)。"""
@@ -457,7 +471,7 @@ class ChatHostAgent(FacilitatorAgent):
             return out
         recent = self._recent_ai()
         if sc.is_question(out):
-            if self._live_question or action in NUDGES and sc.repeated_question(out, recent):
+            if self._live_question or self._repeats_question(action, out, float("inf")):
                 return None
             self._live_question = True
         elif not sc.without_repeated_formula(out, recent):
