@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import load_settings  # noqa: E402
-from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
+from facilitator.chat.host import agent_class_for  # noqa: E402
 from facilitator.llm.factory import make_llm  # noqa: E402
 from facilitator.logging import TickLogger  # noqa: E402
 from facilitator.report import RecordingLLM, TestReport  # noqa: E402
@@ -45,7 +45,7 @@ def main() -> None:
     t = float(sc.get("start_elapsed", 0))
     llm = RecordingLLM(make_llm(settings))
     policy = scenario_policy(sc, args.preset, parse_sets(args.set))
-    agent = FacilitatorAgent(state, llm, settings, logger=TickLogger(settings.log_dir, sc["id"]),
+    agent = agent_class_for(sc.get("discussion_type"))(state, llm, settings, logger=TickLogger(settings.log_dir, sc["id"]),
                              purpose=sc.get("purpose", "job"), discussion_type=sc.get("discussion_type"), policy=policy)
     if t > 0:
         state.started, state.start_time = True, 0.0

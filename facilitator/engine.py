@@ -18,6 +18,7 @@ import numpy as np
 
 from config import POLICY_PRESET_LABELS, PURPOSE_PRESET, Settings, load_settings
 from facilitator.agent.agent import FacilitatorAgent
+from facilitator.chat.host import agent_class_for
 from facilitator.agent.topic_return import detect_topic_return
 from facilitator.discussion_types import resolve_session_type
 from facilitator.feedback import build_feedback
@@ -255,7 +256,8 @@ class Engine:
             "制限時間": f"{cfg.minutes:g}分",
         }
         self._bot_busy, self._bot_attempt_at, self._bot_answered_id, self._last_bot_end = False, -1e9, -1, -1e9
-        self.agent = FacilitatorAgent(
+        # 司会: 雑談(雑談型)は雑談の司会、それ以外は GD・GW の進行役
+        self.agent = agent_class_for(dtype.key)(
             self.state,
             llm,
             s,
