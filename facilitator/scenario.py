@@ -91,6 +91,9 @@ def judged_by(rec: TickRecord) -> str:
 def judge(cp: dict[str, Any], rec: TickRecord) -> tuple[bool, str]:
     if cp.get("require_llm") and not rec.llm_called:  # LLM 自身の判断を評価したい時点で、ルール層が先に処理した
         return False, f"評価条件不成立: LLM 未実行({rec.gate})"
+    gate = cp.get("expect_gate")  # ルール層の判定を確かめる時点(LLM の見守りを評価する時点ではない)
+    if gate and not rec.gate.startswith(gate):
+        return False, f"ルール層の判定が期待外 {rec.gate}(期待 {gate})"
     action = rec.decision.action.value
     if action in cp.get("forbid", []):
         return False, f"禁止アクション {action}"

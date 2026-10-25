@@ -22,6 +22,6 @@ utterances:
   - {t: 219, d: 2, s: speaker_4, c: 0.86, text: うん。}
 checkpoints:
   - {at: 175.5, when: {organize: high}, expect: [compare_criteria, organize_issues], forbid: [no_intervention], why: 同じ主張が繰り返され始めた。平行線が続く前に比べ方を問う}
-  - {at: 175.5, when: {organize: [low, standard]}, expect: [no_intervention], why: まだ2往復で、根拠も出ている}
+  - {at: 175.5, when: {organize: [low, standard]}, expect: [no_intervention], require_llm: true, why: まだ2往復で、根拠も出ている}
   - {at: 225, when: {organize: high}, expect: [organize_issues], forbid: [no_intervention], why: 合意の節目。参加者自身に決まったこと・未決のことの確認を促す}
-  - {at: 225, when: {organize: [low, standard]}, expect: [no_intervention], why: 議論は進んでいる。定期的な要約は不要}
+  - {at: 225, when: {organize: [low, standard]}, expect: [no_intervention], require_llm: true, why: 議論は進んでいる。定期的な要約は不要}

@@ -18,6 +18,6 @@ utterances:
   - {t: 148, d: 3, s: speaker_4, c: 0.86, text: うーん…。}
   - {t: 152, d: 4, s: speaker_3, c: 0.9, text: AIさん、何かヒントもらえますか？}
 checkpoints:
-  - {at: 136.5, expect: [no_intervention], why: 参加者どうしの質問への回答待ち。AI を話題にした発言も依頼ではない}
+  - {at: 136.5, expect: [no_intervention], require_llm: true, why: 参加者どうしの質問への回答待ち。AI を話題にした発言も依頼ではない}
   - {at: 158.5, when: {content_scope: [hint, concrete]}, expect: [offer_hint, propose_idea], forbid: [no_intervention], why: 進行役への明示的な依頼。範囲の中で応じる}
   - {at: 158.5, when: {content_scope: none}, expect: [no_intervention, ask_question, organize_issues], why: 内容支援なし。依頼の検出もせず、案や観点は出さない}

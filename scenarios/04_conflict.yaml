@@ -17,5 +17,5 @@ utterances:
   - {t: 343, d: 4, s: speaker_1, c: 0.9, text: うーん、でもやっぱりモバイルオーダーの方がいいと思うんですよね。}
   - {t: 348, d: 3, s: speaker_3, c: 0.88, text: 割引の方が現実的だと思いますけど…。}
 checkpoints:
-  - {at: 324, expect: [no_intervention], why: 根拠を出し合う建設的な議論の段階。まだ見守る}
+  - {at: 324, expect: [no_intervention], expect_gate: blocked:short_pause, why: 根拠を出し合う建設的な議論の段階。まだ見守る(直前の発言から1.5秒でルール層が見送る。建設的な対立での LLM 自身の見守りは 14_smooth_with_pauses の 204 秒で評価)}
   - {at: 353, expect: [compare_criteria, organize_issues], forbid: [no_intervention], expect_phase: [evaluation], why: 同じ主張の繰り返しで平行線。比較の基準を問うべき}

@@ -27,7 +27,7 @@ utterances:
   - {t: 238, d: 2, s: speaker_2, c: 0.88, text: うーん。}
 checkpoints:
   - {at: 159, when: {stall: high}, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention], why: 積極的は8秒ほどの沈黙で、話し出すきっかけをつくる}
-  - {at: 159, when: {stall: [low, standard]}, expect: [no_intervention], why: 9秒の沈黙。標準・控えめはまだ待つ}
+  - {at: 159, when: {stall: [low, standard]}, expect: [no_intervention], require_llm: true, why: 9秒の沈黙。標準・控えめはまだ待つ}
   - {at: 209, when: {stall: [standard, high]}, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention], why: 14秒の沈黙と「うーん」で止まっている}
-  - {at: 209, when: {stall: low}, expect: [no_intervention], why: 控えめは15秒以上の停滞まで参加者の再開を待つ}
+  - {at: 209, when: {stall: low}, expect: [no_intervention], require_llm: true, why: 控えめは18秒以上の停滞まで参加者の再開を待つ(LLM が停滞と判断して介入を選んでも、ルール層が見送る)}
   - {at: 260, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention], why: 20秒の沈黙。どの段階でも介入する}

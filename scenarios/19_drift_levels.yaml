@@ -28,8 +28,8 @@ utterances:
   - {t: 276, d: 3, s: speaker_1, c: 0.9, text: いいですね、行きましょう。}
 checkpoints:
   - {at: 210.5, when: {drift: high}, expect: [redirect_topic], why: 積極的は、無関係な話題が2発言ほど続き本題に戻る様子がなければ、続くのを待たずに戻す(標準はまだ見守る時点)}
-  - {at: 210.5, when: {drift: [low, standard]}, expect: [no_intervention], why: 雑談が始まったばかり}
+  - {at: 210.5, when: {drift: [low, standard]}, expect: [no_intervention], require_llm: true, why: 雑談が始まったばかり}
   - {at: 242.5, when: {drift: standard}, expect: [redirect_topic], why: 無関係な話が40秒以上続いている(03 と同じ状況)}
-  - {at: 242.5, when: {drift: high}, expect: [no_intervention], why: 210.5 で軌道修正した直後でクールダウン中(ルール層)}
-  - {at: 242.5, when: {drift: low}, expect: [no_intervention], why: 控えめは、時間が明らかに失われるまで脱線に寛容}
+  - {at: 242.5, when: {drift: high}, expect: [no_intervention], expect_gate: blocked:cooldown, why: 210.5 で軌道修正した直後でクールダウン中(ルール層)}
+  - {at: 242.5, when: {drift: low}, expect: [no_intervention], require_llm: true, why: 控えめは、時間が明らかに失われるまで脱線に寛容}
   - {at: 282, when: {drift: low}, expect: [redirect_topic], why: 雑談が80秒以上続き、前回の判断でも脱線だった}

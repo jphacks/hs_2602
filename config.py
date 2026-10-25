@@ -50,6 +50,9 @@ class Settings:
     # --- 介入ポリシーの段階で変わる判断条件(既定値=標準。控えめ/積極的の値は LEVEL_SETTINGS) ---
     drift_confirm_ticks: int = 0  # 直前にこの回数続けて脱線と判断していなければ redirect_topic を許可しない(0=条件なし)
     quiet_member_sec: float = 0.0  # この秒数以上発言していない人間の参加者を「発言の少ない参加者」として LLM に示す(0=示さない)
+    # LLM が停滞(stalled)と判断して選んだ ask_question / organize_issues(と停滞を理由に許可した内容支援)は、
+    # 沈黙がこの秒数に満たなければ見送る(0=条件なし)。①の遅れの判定が立っているときと、依頼に答えるときは除く
+    stall_min_silence_sec: float = 0.0
 
     # --- 内容支援(介入ポリシー⑥)。値はすべて仮の値 ---
     content_cooldown_sec: float = 120.0  # 自発的な内容支援どうしの最低間隔(参加者からの依頼への応答は除く)
@@ -106,7 +109,8 @@ LEVEL_SETTINGS: dict[str, dict[str, dict[str, Any]]] = {
         "high": {"quiet_member_sec": 60.0},
     },
     "stall": {  # ⑤ 沈黙で判断を始めるまでの秒数
-        "low": {"silence_trigger_sec": 18.0},
+        # 控えめは、定期分析(20秒ごと)が短い沈黙のうちに判断しても、停滞への介入は 18 秒の沈黙まで待つ
+        "low": {"silence_trigger_sec": 18.0, "stall_min_silence_sec": 18.0},
         "high": {"silence_trigger_sec": 8.0},
     },
 }

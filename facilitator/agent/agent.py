@@ -15,6 +15,7 @@ from facilitator.llm.base import LLMClient, LLMError
 from facilitator.logging import TickLogger
 from facilitator.models import AI_SPEAKER, UNKNOWN, UNLIMITED_SEC, Action, AgentOutput, Decision, TickRecord, Utterance
 from facilitator.agent.content_check import content_flags
+from facilitator.agent.name_check import strip_names
 from facilitator.agent.request_detect import detect_request
 from facilitator.policy import CONTENT_ACTIONS, ContentInitiative, InterventionPolicy, level_settings, levels, session_policy
 from facilitator.state import DiscussionState
@@ -25,6 +26,8 @@ RULE_ONLY = {Action.start_gd, Action.time_warning, Action.close_gd}
 PROCESS_ACTIONS = {
     Action.ask_question, Action.organize_issues, Action.compare_criteria, Action.invite_all, Action.invite_person,
 }
+# ⑤控えめで、停滞を理由とするときに沈黙の長さを待たせるアクション
+STALL_ACTIONS = {Action.ask_question, Action.organize_issues}
 FREE_ACTIONS = [
     Action.no_intervention,
     Action.ask_question,
@@ -344,7 +347,39 @@ class FacilitatorAgent:
                 speech = self._template(d.action, now)
             else:
                 return Decision(reasoning=d.reasoning), "発話内容が空のため no_intervention"
+        # 個人名で呼びかけてよいのは invite_person の指名対象だけ(agent/name_check.py)
+        keep = st.speaker_names.get(d.target_speaker) if d.action == Action.invite_person else None
+        fixed, left = strip_names(speech, list(st.speaker_names.values()), keep)
+        if left:
+            if d.action == Action.invite_person:
+                return self._invite_all_instead(d, "発話に指名対象以外の個人名", now)
+            if d.action in RULE_ONLY:
+                return d.model_copy(update={"speech": self._template(d.action, now)}), "個人名を含むため定型文に置換"
+            return Decision(reasoning=d.reasoning), f"個人名({'・'.join(left)})を含むため no_intervention"
+        if fixed != speech:
+            note = "; ".join(x for x in (note, "個人名を言い換え") if x)
+            speech = fixed
         return d.model_copy(update={"speech": speech}), note
+
+    def _hold_short_stall(
+        self, d: Decision, overridden: str | None, analysis: Any, behind: bool, request: Any, now: float
+    ) -> tuple[Decision, str | None]:
+        """⑤停滞への介入(控えめ): 停滞を理由とする介入は、沈黙が stall_min_silence_sec に満たなければ見送る。
+        対象は LLM 自身が停滞(stalled)と判断して選んだ ask_question / organize_issues と、停滞を理由に許可した内容支援だけ。
+        膠着(conflicting)などほかの状態での整理・質問、①の遅れの判定が立っているときの進行の問いかけ、依頼への応答は対象外。
+        「うーん」と言い続けるだけの停滞と、沈黙による停滞は LLM の出力からは区別できないので、どちらも沈黙の長さで待つ。"""
+        th = self._param("stall_min_silence_sec")
+        if th <= 0 or request is not None or behind or analysis.health != "stalled":
+            return d, overridden
+        stall_content = d.action in CONTENT_ACTIONS and self.content_reason == "stalled"
+        if d.action not in STALL_ACTIONS and not stall_content:
+            return d, overridden
+        silence = self.state.silence_sec(now)
+        if silence >= th:
+            return d, overridden
+        return Decision(reasoning=d.reasoning), (
+            f"⑤停滞への介入(控えめ): 沈黙{silence:.0f}秒が{th:.0f}秒未満のため、停滞への {d.action.value} を見送り"
+        )
 
     def _no_naming_reason(self) -> str | None:
         """個人指名を許可しない理由(話者の特定に関わるもの)。指名できる状態なら None。"""
@@ -443,6 +478,7 @@ class FacilitatorAgent:
                     self.support_step = 0  # 停滞が終わったら、支援の段階を最初に戻す
                 st.update_phase(out.analysis.phase, self.dtype.keys, now)
                 decision, overridden = self._validate(out.decision, allowed, now)
+                decision, overridden = self._hold_short_stall(decision, overridden, out.analysis, behind, request, now)
             except (LLMError, ValidationError) as e:
                 # パース失敗・API 失敗時は「介入しない」に倒す。強制イベントだけはテンプレートで処理
                 if len(allowed) == 1 and allowed[0] in RULE_ONLY:
