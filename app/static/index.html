@@ -29,15 +29,16 @@ button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 html, body { overflow: hidden; }
 /* アプリの表示領域。スマホでは画面いっぱい、PC などではスマホの画面比率の枠(縦 / 横は画面に合わせて自動で切り替え) */
-.device { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100dvh; overflow-x: hidden; overflow-y: auto;
-  background: var(--bg); transform: translateZ(0); -webkit-overflow-scrolling: touch; }
+.device { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden;
+  background: var(--bg); transform: translateZ(0); }
+.device-scroll { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 body.framed { background: #f2f2f7; }
 body.framed .device { left: 50%; top: 50%; width: var(--dw); height: var(--dh); border-radius: 46px;
   box-shadow: 0 0 0 11px #1d1d1f, 0 0 0 12px #3a3a3c, 0 40px 90px rgba(0, 0, 0, .28);
   transform: translate(-50%, -50%) scale(var(--k)); }
 /* 縦 ⇄ 横の切り替えだけ動かす(読み込み直後の配置では動かさない) */
 body.framed.anim .device { transition: width .5s cubic-bezier(.2,.8,.2,1), height .5s cubic-bezier(.2,.8,.2,1), transform .5s cubic-bezier(.2,.8,.2,1); }
-body.framed .device::-webkit-scrollbar { width: 0; }
+body.framed .device-scroll::-webkit-scrollbar { width: 0; }
 .screen { display: none; min-height: 100%; animation: fade .4s cubic-bezier(.2,.8,.2,1) both; }
 .screen.active { display: block; }
 @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -306,6 +307,8 @@ body { font-size: 17px; }
 .drawer { top: auto; right: auto; left: 50%; bottom: 0; width: min(var(--col), 100%); height: 78%; border-radius: 26px 26px 0 0;
   transform: translate(-50%, 105%); }
 .drawer.open { transform: translate(-50%, 0); }
+/* 閉じているときは完全に隠す(閉じる動きが終わってから非表示にする) */
+.drawer:not(.open) { visibility: hidden; transition: transform .4s cubic-bezier(.2,.8,.2,1), visibility 0s linear .4s; }
 /* ---------- 進行画面だけはスマホの横持ち(画面の高さに収め、左に時計と参加者、右に会話ログ) ---------- */
 #s-session { max-width: 1180px; }
 #s-session.active { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
@@ -387,6 +390,7 @@ body { font-size: 17px; }
 </head>
 <body>
 <div class="device" id="device">
+<div class="device-scroll" id="scroller">
 
 <!-- ============ 1. モード選択 ============ -->
 <section class="screen" id="s-purpose">
@@ -570,6 +574,8 @@ body { font-size: 17px; }
   </div>
 </section>
 
+</div><!-- /device-scroll -->
+
 <!-- 自己紹介 -->
 <div class="overlay" id="ov-intro">
   <div class="glass modal">
@@ -611,7 +617,8 @@ const seenMsg = new Set();
 
 function show(id) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === id));
-  $("device").scrollTop = 0;
+  $("scroller").scrollTop = 0;
+  if (id !== "s-session") $("drawer").classList.remove("open");  // 判断ログは進行画面でだけ開く
   fitDevice();
   // スマホでは、ディスカッション中だけ横向きに固定を試みる(対応していない端末では何もしない)
   try {
