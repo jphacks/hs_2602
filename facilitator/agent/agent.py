@@ -245,7 +245,7 @@ class FacilitatorAgent:
             return None
         if since < self.settings.drift_redirect_gap_sec:
             return "直前に脱線修正をした"
-        human = [u for u in st.utterances if u.source == "human" and u.end_time <= now]
+        human = [u for u in st.utterances if u.source == "human" and u.end_time <= now and not st.is_intro(u)]
         before = [u.text for u in human if u.start_time < last.time][-4:]
         after = [u.text for u in human if u.start_time >= last.time]
         if detect_topic_return(st.theme, st.analysis, before, after) is None:
@@ -273,7 +273,7 @@ class FacilitatorAgent:
             return False
         if since is None or since >= s.analysis_interval_sec:
             return True
-        recent = [u.text for u in st.utterances if u.source == "human" and u.end_time <= now][-s.drift_check_min_new:]
+        recent = [u.text for u in st.utterances if u.source == "human" and u.end_time <= now and not st.is_intro(u)][-s.drift_check_min_new:]
         if len(recent) < s.drift_check_min_new:
             return False
         return all(detect_topic_return(st.theme, st.analysis, [], [text]) is None for text in recent)
@@ -320,7 +320,7 @@ class FacilitatorAgent:
             if u.id <= self._scanned_id or u.end_time > now:
                 continue
             self._scanned_id = max(self._scanned_id, u.id)
-            if u.source == "human" and detect_request(u.text, bots):
+            if u.source == "human" and not st.is_intro(u) and detect_request(u.text, bots):
                 self.pending_request = u
         self.has_pending_request(now)  # 古い候補は見送る
 
@@ -359,7 +359,8 @@ class FacilitatorAgent:
     def _context(self, now: float, trigger: str, allowed: list[Action], note: str | None) -> dict:
         st = self.state
         transcript = []
-        for u in st.utterances[-self.settings.transcript_window :]:
+        # 自己紹介(声の登録)の発言は、議論の判断材料に含めない
+        for u in [x for x in st.utterances if not st.is_intro(x)][-self.settings.transcript_window :]:
             if u.end_time > now:
                 continue
             if u.source == "ai":

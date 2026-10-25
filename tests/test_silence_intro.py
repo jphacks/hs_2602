@@ -23,7 +23,7 @@ def test_silence_does_not_count_while_transcribing():
 
 def test_self_introduction_is_not_counted_in_speaking_amount():
     st = make()
-    st.add_utterance("speaker_1", "たろうです。よろしくお願いします。", -20.0, -15.0, 1.0)  # 自己紹介(開始前)
+    st.intro_ids.add(st.add_utterance("speaker_1", "たろうです。よろしくお願いします。", -20.0, -15.0, 1.0).id)  # 自己紹介
     st.start_time, st.started = 0.0, True
     st.add_utterance("speaker_2", "はなこです、と言いつつ本題です", 1.0, 3.0, 1.0)
     stats = {x.speaker_id: x for x in st.speaker_stats(10.0)}

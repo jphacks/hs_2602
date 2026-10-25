@@ -163,16 +163,17 @@ def test_settings_have_no_legacy_numeric_presets():
 # ---------- 就活GDの標準: システムプロンプトと数値設定が従来どおり ----------
 # システムプロンプト(sha256 の先頭16桁)。①〜⑤がすべて標準なら、プロンプトを項目ごとに組み立てても
 # 第1段階の時点と同じであること。意図してプロンプトを変えたときだけ更新する
+# 2026-10-25 更新: 発言の偏りの節を「名前が確認済みなら発言の最も少ない人を名前で指名(優先)」に変えた(ユーザー決定)
 PROMPT_SHA = {
-    ("job", "problem_solving"): "95f1eec7203dca03",
-    ("job", "idea_generation"): "efa93f2072780cf7",
-    ("job", "decision_making"): "b229544b4a7b94c8",
-    ("job", "planning"): "853b3068e08d954d",
-    ("general", "problem_solving"): "bdd9dd00950b4bac",
-    ("general", "idea_generation"): "2156328787dac7d2",
-    ("general", "decision_making"): "9f6efd84b388f523",
-    ("general", "planning"): "668c028747d0ccb6",
-    ("general", "generic"): "e660af2776cd8f86",
+    ("job", "problem_solving"): "5b05611e64e024f2",
+    ("job", "idea_generation"): "a6013b2c5673a0b4",
+    ("job", "decision_making"): "cafa3cf7aca000c8",
+    ("job", "planning"): "f8aa01aeb5d63099",
+    ("general", "problem_solving"): "6b87f439bb38fea5",
+    ("general", "idea_generation"): "2a8d3369e9b0c129",
+    ("general", "decision_making"): "15d130fb326a26d7",
+    ("general", "planning"): "d27f3a577317755f",
+    ("general", "generic"): "8eef4f9845e72d53",
 }
 
 
