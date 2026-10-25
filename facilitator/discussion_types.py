@@ -213,13 +213,11 @@ def get_discussion_type(key: str | None = None, purpose: str = "job") -> Discuss
 
 
 def resolve_session_type(key: str | None, purpose: str) -> DiscussionType:
-    """セッション開始時の議論タイプ。就活GDは4種類からの明示的な選択が必須(暗黙に割り当てない)。
-    一般GWは省略時に汎用型(従来どおり)。不明な値はエラー。"""
+    """セッション開始時の議論タイプ。省略(画面の「指定なし」)は就活GD・一般GWとも汎用型(2026-10-25 ユーザー決定)。
+    雑談型は「雑談」モード(一般)だけ。不明な値はエラー。"""
     if not key:
-        if purpose == "job":
-            raise ValueError("就活GDでは議論タイプを選択してください")
         return GENERIC
-    allowed = SELECTABLE_TYPES + ([] if purpose == "job" else [GENERIC.key, CASUAL.key])  # 雑談型は「雑談」モード(一般)だけ
+    allowed = SELECTABLE_TYPES + [GENERIC.key] + ([] if purpose == "job" else [CASUAL.key])
     if key not in allowed:
         raise ValueError(f"選択できない議論タイプです: {key}")
     return DISCUSSION_TYPES[key]

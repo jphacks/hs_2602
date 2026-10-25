@@ -91,7 +91,7 @@ def start(req: StartReq) -> dict:
         return {"ok": False, "error": "テーマを入力してください"}
     if req.discussion_type == "casual" and not req.theme.strip():  # 雑談はテーマなしでもよい
         req.theme = CASUAL_FREE_THEME
-    try:  # 議論タイプは開始前に検証する(就活GDは選択必須。暗黙に割り当てない)
+    try:  # 議論タイプは開始前に検証する(「指定なし」は汎用型)
         resolve_session_type(req.discussion_type, purpose)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
@@ -168,6 +168,10 @@ THEME_POOL = {
         "次の学園祭の企画を決めよう", "チームの会議を短くするには？", "研究室の共有スペースの使い方",
         "新歓イベントのアイデア", "授業でスマホを使うのはありか", "地域のゴミの分別を徹底するには？",
     ],
+    "casual": [  # 雑談モード: 結論のいらない、誰でも話せる身近な話題
+        "休日の過ごし方", "最近ハマっていること", "行ってみたい旅行先", "子どものころの夢",
+        "好きな食べ物とおすすめの店", "最近見た映画やドラマ", "朝型か夜型か", "もしも1日自由に使えたら",
+    ],
 }
 
 
@@ -183,11 +187,18 @@ def theme(req: ThemeReq) -> dict:
     llm = make_llm(load_settings())
     if llm.name in ("mock", "handoff"):
         return {"theme": random.choice(pool), "source": "pool"}
-    who = "就職活動の選考で行うグループディスカッション" if purpose == "job" else "授業・会議・ワークショップで行うグループディスカッション"
-    system = (
-        f"あなたは{who}のテーマを考えます。3〜4人が5〜15分で議論でき、正解が1つに決まらず、"
-        "立場や観点によって意見が分かれるテーマを1つだけ作ってください。30字以内の疑問形か「〜せよ」の形にしてください。"
-    )
+    if purpose == "casual":  # 雑談: 結論を出さずに気軽に話せる身近な話題
+        system = (
+            "あなたは、初対面の3〜4人が5〜15分ほど気軽に雑談するための話題を考えます。"
+            "誰でも自分の経験や好みから話せて、結論を出す必要がなく、話が広がりやすい身近な話題を1つだけ作ってください。"
+            "政治・宗教・プライベートに踏み込みすぎるものは避けます。20字以内の短い名詞句(例: 休日の過ごし方)にしてください。"
+        )
+    else:
+        who = "就職活動の選考で行うグループディスカッション" if purpose == "job" else "授業・会議・ワークショップで行うグループディスカッション"
+        system = (
+            f"あなたは{who}のテーマを考えます。3〜4人が5〜15分で議論でき、正解が1つに決まらず、"
+            "立場や観点によって意見が分かれるテーマを1つだけ作ってください。30字以内の疑問形か「〜せよ」の形にしてください。"
+        )
     user = f"直前に使ったテーマ(これとは違うものにする): {req.exclude or 'なし'}"
     schema = {"type": "object", "properties": {"theme": {"type": "string"}}, "required": ["theme"], "additionalProperties": False}
     try:

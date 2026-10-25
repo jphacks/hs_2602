@@ -439,7 +439,7 @@ body { font-size: 17px; }
       <label class="label" for="f-theme">テーマ<span id="theme-opt" class="hidden">(任意)</span></label>
       <div class="theme-row">
         <input class="input" id="f-theme" placeholder="例：大学の学食の混雑を改善するには？">
-        <button type="button" class="btn primary no-chat" id="btn-theme">自動生成</button>
+        <button type="button" class="btn primary" id="btn-theme">自動生成</button>
       </div>
       <div class="no-chat">
         <span class="label sub-label">議論タイプ</span>
@@ -614,7 +614,7 @@ const mmss = (s) => { s = Math.max(0, Math.floor(s)); return `${String(Math.floo
 const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then((r) => r.json());
 
 const ui = {
-  withAI: false, purpose: "job", dtype: null, minutes: 8, humans: 3, bots: 1, input: "voice", level: 2,
+  withAI: false, purpose: "job", dtype: "", minutes: 8, humans: 3, bots: 1, input: "voice", level: 2,
   knobs: {}, info: null, config: null, started: false,
 };
 let snap = null, logKey = "", doneShown = false;
@@ -684,15 +684,13 @@ const purposeOf = () => (ui.purpose === "job" ? "job" : "general");
 const knobDefaults = (style) => ({ ...(ui.info?.knob_defaults?.[style === "job" ? "job" : "general"] || {}) });
 seg("purpose", "purpose", () => {
   if (ui.purpose !== "custom") ui.knobs = knobDefaults(ui.purpose);
-  if (ui.purpose === "job" && !ui.dtype) ui.dtype = null;          // 就活GDは毎回選ぶ
-  if (ui.purpose !== "job" && ui.dtype == null) ui.dtype = "";  // 就活以外は「指定なし(汎用)」が初期値
   renderTypes(); syncSetup();
 });
-// 議論タイプ: 就活GDは4種類から必須。就活以外は「指定なし(汎用)」も選べる
+// 議論タイプ: 指定なし(汎用)・課題解決型・アイデア創出型・意思決定型・計画立案型。どのスタイルでも「指定なし」が初期値
 const GENERIC_TYPE = { key: "", label: "指定なし(汎用)", phases: ["案出し", "比較検討", "結論"] };
 function typeOptions() {
   const types = ui.info?.discussion_types || [];
-  return purposeOf() === "general" ? [GENERIC_TYPE, ...types] : types;
+  return [GENERIC_TYPE, ...types];
 }
 function typeLabel(key) {
   const t = [GENERIC_TYPE, ...(ui.info?.discussion_types || [])].find((x) => x.key === (key || ""));
@@ -744,7 +742,7 @@ $("btn-theme").onclick = async () => {
   const b = $("btn-theme"); b.disabled = true; b.textContent = "生成中…";
   try {
     const res = await fetch("/api/theme", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ purpose: purposeOf(), exclude: $("f-theme").value.trim() }) });
+      body: JSON.stringify({ purpose: ui.chat ? "casual" : purposeOf(), exclude: $("f-theme").value.trim() }) });
     if (!res.ok) throw new Error(res.status);
     const r = await res.json();
     if (r.theme) { $("f-theme").value = r.theme; $("f-err").textContent = ""; }
@@ -758,7 +756,6 @@ $("setup-form").onsubmit = (ev) => {
   ev.preventDefault();
   const names = [...document.querySelectorAll(".f-name")].slice(0, ui.humans).map((e) => e.value.trim());
   if (!ui.chat && !$("f-theme").value.trim()) { $("f-err").textContent = "テーマを入力するか、自動生成してください"; return; }
-  if (!ui.chat && ui.purpose === "job" && !ui.dtype) { $("f-err").textContent = "議論タイプを選択してください"; return; }
   if (names.some((n) => !n)) { $("f-err").textContent = `参加者の名前を${ui.humans}人分入力してください`; return; }
   const bots = ui.withAI ? ui.bots : 0;
   if (names.length + bots < 2) { $("f-err").textContent = "合計2人以上にしてください(AI参加者ありモードなら AI を加えられます)"; return; }
