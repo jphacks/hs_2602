@@ -391,6 +391,8 @@ class Engine:
         if e.kind == "partial":
             if not self.ai_speaking:  # AI の発話中の途中経過は、ほとんどが AI 自身の声なので出さない
                 self.partial = e.text
+                if self.state and e.text.strip():
+                    self.state.heard_at = self.now()  # 認識中は沈黙を数えない(確定は話し終わってから届くため)
             return
         if e.kind == "error":
             self._note(f"STT エラー: {e.text[:80]}")
@@ -456,12 +458,9 @@ class Engine:
             self.intro.index = i
             self.intro.turns = []
             if i == 0:
-                prompt = (
-                    "はじめに、お一人ずつ、お名前と一言自己紹介をお願いします。"
-                    f"私が声を覚えますので、5秒ほど話してください。では、{name}さんからどうぞ。"
-                )
+                prompt = f"まず一言ずつ自己紹介をお願いします。{name}さんからどうぞ。"
             else:
-                prompt = f"ありがとうございます。次は{name}さん、お願いします。"
+                prompt = f"次は{name}さん、どうぞ。"
             self._say(prompt, record=True, gen=gen)
             t_start = self.now()
             self._voice_end = None
