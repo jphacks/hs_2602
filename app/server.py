@@ -210,6 +210,22 @@ def theme(req: ThemeReq) -> dict:
     return {"theme": random.choice(pool), "source": "pool"}
 
 
+class EnrollReq(BaseModel):
+    index: int  # 人間の参加者の番号(0 始まり)
+
+
+@app.post("/api/enroll")
+def enroll(req: EnrollReq) -> dict:
+    """参加者カードの「声を登録」。押してから話した自己紹介で、その人の声を登録する。"""
+    return engine.enroll(req.index)
+
+
+@app.post("/api/begin")
+def begin() -> dict:
+    """声の登録を終えて議論を始める。"""
+    return engine.begin()
+
+
 @app.post("/api/pause")
 def pause() -> dict:
     engine.pause()

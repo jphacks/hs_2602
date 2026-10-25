@@ -46,7 +46,7 @@ body.framed .device-scroll::-webkit-scrollbar { width: 0; }
 /* ---------- 共通 ---------- */
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; letter-spacing: .06em; }
 /* アプリアイコン風: 角の丸い正方形 + 上からのグラデーション + 白い記号 */
-.purpose .icon, .avatar, .msg .av, .mic {
+.purpose .icon, .avatar, .msg .av {
   background-image: linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,0) 60%); }
 .brand-mark { width: 30px; height: 30px; display: block; }
 .btn { border: 0; background: var(--fill); padding: 10px 18px; border-radius: 999px; color: var(--accent);
@@ -215,7 +215,15 @@ body.framed .device-scroll::-webkit-scrollbar { width: 0; }
 .msg.ai .av { background-color: var(--c); }
 .msg.ai .who b { color: var(--text); }
 .msg .low { color: var(--accent); font-size: 11px; }
-.partial { color: var(--muted); font-style: italic; min-height: 22px; padding: 6px 4px 0; font-size: 14px; }
+.msg.live .bubble { opacity: .75; }
+.msg .live-tag { color: var(--muted); background: var(--fill); }
+/* 声の登録(議論を始める前): 人間の参加者のカードのボタン */
+.enroll-btn { margin-top: 6px; border: 0; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600;
+  background: var(--accent); color: #fff; white-space: nowrap; }
+.enroll-btn.done { background: var(--accent-soft); color: var(--accent); }
+.enroll-btn.rec { background: var(--text); animation: pulse 1.2s ease-in-out infinite; }
+.enroll-btn:disabled:not(.rec) { opacity: .35; }
+@keyframes pulse { 50% { opacity: .55; } }
 .composer { display: flex; gap: 8px; margin-top: 10px; padding-top: 12px; border-top: .5px solid var(--line); }
 .composer select { background: var(--fill); border: 0; border-radius: 999px; padding: 0 12px; }
 .composer .input { padding: 10px 16px; border-radius: 999px; }
@@ -228,14 +236,6 @@ body.framed .device-scroll::-webkit-scrollbar { width: 0; }
 .modal { width: min(480px, 100%); padding: 32px 28px; text-align: center; border-radius: 28px; box-shadow: inset 0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.12) !important; }
 .modal h2 { margin: 14px 0 6px; font-size: 24px; font-weight: 700; }
 .modal p { color: var(--muted); margin: 0 0 18px; }
-.mic { width: 84px; height: 84px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; position: relative; background-color: var(--accent); color: #fff; }
-.mic svg { width: 36px; height: 36px; }
-.mic::before, .mic::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid var(--accent); animation: ripple 1.8s ease-out infinite; }
-.mic::after { animation-delay: .9s; }
-.enrolled { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
-.enrolled span { font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 999px; background: var(--fill); color: var(--muted); }
-.enrolled span.ok { color: var(--accent); background: var(--accent-soft); }
-.enrolled span.now { color: #fff; background: var(--accent); }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .hidden { display: none !important; }
 
@@ -532,7 +532,7 @@ body { font-size: 17px; }
     <div class="theme" id="b-theme">—</div>
     <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-type"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
     <div class="actions">
-      <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>開始</button>
+      <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg><span id="start-label">開始</span></button>
       <button class="btn primary hidden" id="btn-result"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>振り返り</button>
       <button class="btn" id="btn-pause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>一時停止</span></button>
       <button class="btn danger" id="btn-stop" disabled><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>終了</button>
@@ -553,7 +553,6 @@ body { font-size: 17px; }
     <div class="glass logbox" id="logbox" title="タップで大きく表示">
       <div class="head"><h2>会話ログ</h2><span class="head-r"><span class="chip" id="silence"></span><span class="zoom" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></span></span></div>
       <div class="log" id="log"><div class="empty">発言がここに表示されます</div></div>
-      <div class="partial" id="partial"></div>
       <div class="composer">
         <select id="in-speaker"></select>
         <input class="input" id="in-text" placeholder="テキストで発言を追加(Enter で送信)">
@@ -607,15 +606,6 @@ body { font-size: 17px; }
 
 </div><!-- /device-scroll -->
 
-<!-- 自己紹介 -->
-<div class="overlay" id="ov-intro">
-  <div class="glass modal">
-    <div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
-    <h2 id="intro-title">自己紹介</h2>
-    <p>名前と一言を、5秒ほど話してください。AI が声を覚えます。</p>
-    <div class="enrolled" id="intro-list"></div>
-  </div>
-</div>
 
 </div>
 
@@ -831,7 +821,7 @@ function renderReady() {
   ["btn-start", "btn-pause", "btn-stop"].forEach((id) => $(id).classList.remove("hidden"));
   $("btn-result").classList.add("hidden"); ui.fbPromise = null;
 
-  $("log").innerHTML = '<div class="empty">発言がここに表示されます</div>'; $("partial").textContent = ""; $("silence").textContent = "";
+  $("log").innerHTML = '<div class="empty">発言がここに表示されます</div>'; $("silence").textContent = "";
   renderPhases("", "");
   $("pcards").dataset.key = "";
   renderPeople();
@@ -880,16 +870,33 @@ function renderPeople() {
   const key = JSON.stringify(ps.map((p) => [p.id, p.name, p.bot?.stance || "", p.bot?.opinion || ""]));
   if (box.dataset.key !== key) {
     // 参加者の顔ぶれが変わったときだけカードを作り直す(幅のアニメーションを途切れさせないため)
+    const humanIds = ps.filter((p) => !p.bot).map((p) => p.id);
     box.innerHTML = ids.map((id) => {
       const bot = botOf[id];
       return `<div class="glass pcard ${bot ? "bot" : ""}" data-id="${id}" style="--c:${color(id)}">
         <div class="badges"></div>
         <div class="avatar">${bot ? ROBOT : esc(n[id].slice(0, 1))}</div>
         <div class="name">${esc(n[id])}</div>
+        ${bot ? "" : `<button type="button" class="enroll-btn hidden" data-idx="${humanIds.indexOf(id)}"></button>`}
       </div>`;
     }).join("");
     box.dataset.key = key;
+    box.querySelectorAll(".enroll-btn").forEach((b) => b.onclick = async () => {
+      const r = await post("/api/enroll", { index: +b.dataset.idx });
+      if (!r.ok) alert(r.error);
+    });
   }
+  // 声の登録(自己紹介): 議論を始める前だけ、人間の参加者のカードにボタンを出す
+  const intro = snap?.status === "intro" ? snap.intro : null;
+  box.querySelectorAll(".pcard").forEach((card) => {
+    const b = card.querySelector(".enroll-btn"); if (!b) return;
+    b.classList.toggle("hidden", !intro);
+    if (!intro) return;
+    const name = n[card.dataset.id], rec = intro.recording === card.dataset.id, done = intro.enrolled.includes(name);
+    b.textContent = rec ? "話してください…" : done ? "✓ 登録済み" : intro.failed.includes(name) ? "もう一度登録" : "声を登録";
+    b.className = `enroll-btn ${rec ? "rec" : done ? "done" : ""}`;
+    b.disabled = !!intro.recording && !rec;
+  });
   const stats = Object.fromEntries((snap?.stats || []).map((s) => [s.speaker_id, s]));
   const sum = Object.values(stats).reduce((a, s) => a + s.total_speech_sec, 0);
   const enrolled = new Set(snap?.intro?.enrolled || []);
@@ -907,6 +914,8 @@ function renderPeople() {
 function render() {
   const s = snap; if (!s || !s.theme) return;
   const running = s.status === "running" || s.status === "intro";
+  const introNow = s.status === "intro";
+  $("start-label").textContent = introNow ? "議論を始める" : "開始";
   $("b-theme").textContent = s.theme;
   $("b-purpose").textContent = s.purpose === "general" ? "就活以外" : "就活";
   $("b-type").textContent = s.discussion_type || "";
@@ -924,7 +933,7 @@ function render() {
   renderPhases(s.phase, s.status === "finished" ? "" : s.target_phase);
 
   // ボタン
-  $("btn-start").disabled = running || s.status === "finished";
+  $("btn-start").disabled = (running && !introNow) || s.status === "finished" || (introNow && !!s.intro.recording);
   const finished = s.status === "finished" && s.started;  // 終わったら「開始」の代わりに「振り返り」を出す
   ["btn-start", "btn-pause", "btn-stop"].forEach((id) => $(id).classList.toggle("hidden", finished));
   $("btn-result").classList.toggle("hidden", !finished);
@@ -936,14 +945,7 @@ function render() {
 
   renderPeople();
   renderLog(s);
-  $("partial").textContent = s.partial ? `… ${s.partial}` : "";
 
-  // 自己紹介
-  $("ov-intro").classList.toggle("show", s.status === "intro" && !!s.intro.current);
-  if (s.status === "intro") {
-    $("intro-title").textContent = s.intro.current ? `${s.intro.current}さん、どうぞ` : "自己紹介";
-    $("intro-list").innerHTML = (s.humans || Object.keys(s.names)).map((id) => s.names[id]).map((n) => `<span class="${s.intro.enrolled.includes(n) ? "ok" : n === s.intro.current ? "now" : ""}">${s.intro.enrolled.includes(n) ? "✓ " : ""}${esc(n)}</span>`).join("");
-  }
   // 終了
   if (s.status === "finished" && s.started && !doneShown) {
     doneShown = true;
@@ -952,11 +954,17 @@ function render() {
 }
 
 function renderLog(s) {
-  const key = JSON.stringify(s.utterances.map((u) => [u.id, u.speaker_id, u.text]));
+  const live = s.status === "running" && s.partial ? { who: s.partial_speaker, text: s.partial } : null;  // 認識中の発言
+  const key = JSON.stringify([s.utterances.map((u) => [u.id, u.speaker_id, u.text]), live, s.status === "intro"]);
   if (key === logKey || document.activeElement?.classList?.contains("relabel")) return;
   logKey = key;
   const box = $("log"); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-  if (!s.utterances.length) { box.innerHTML = '<div class="empty">発言がここに表示されます</div>'; return; }
+  if (!s.utterances.length && !live) {
+    box.innerHTML = s.status === "intro"
+      ? '<div class="empty">参加者のカードの「声を登録」を押して、<br>一言ずつ自己紹介してください。<br>終わったら「議論を始める」を押します。</div>'
+      : '<div class="empty">発言がここに表示されます</div>';
+    return;
+  }
   const humans = new Set(s.humans || Object.keys(s.names));
   const opts = (sel) => Object.entries(s.names).filter(([id]) => humans.has(id)).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${esc(n)}</option>`).join("")
     + `<option value="unknown" ${sel === "unknown" ? "selected" : ""}>不明</option>`;
@@ -969,6 +977,12 @@ function renderLog(s) {
     : `<div class="msg${cls(u)}" style="--c:${u.speaker_id === "unknown" ? "#c7c7cc" : color(u.speaker_id)}"><div class="av">${esc((s.names[u.speaker_id] || "?").slice(0, 1))}</div>
        <div><div class="who"><select class="relabel" data-id="${u.id}" title="話者を修正">${opts(u.speaker_id)}</select><time>${mmss(u.t)}</time>
        ${u.conf < 0.7 && u.speaker_id !== "unknown" ? '<span class="low">低確信</span>' : ""}</div><div class="bubble">${esc(u.text)}</div></div></div>`).join("");
+  if (live) {  // 認識中: 話している人(推定)の吹き出しを伸ばしていく。確定すると文ごとの発言に置き換わる
+    const c = live.who ? color(live.who) : "#c7c7cc";
+    const nm = live.who ? (s.names[live.who] || "?") : "認識中";
+    box.insertAdjacentHTML("beforeend", `<div class="msg live" style="--c:${c}"><div class="av">${live.who ? esc(nm.slice(0, 1)) : "…"}</div>
+      <div><div class="who"><b>${esc(nm)}</b><span class="aitag live-tag">認識中</span></div><div class="bubble">${esc(live.text)}</div></div></div>`);
+  }
   s.utterances.forEach((u) => seenMsg.add(u.id));
   box.querySelectorAll(".relabel").forEach((el) => el.onchange = () => { post("/api/relabel", { id: +el.dataset.id, speaker_id: el.value }); el.blur(); });
   if (atBottom) box.scrollTop = box.scrollHeight;
@@ -976,6 +990,11 @@ function renderLog(s) {
 
 $("btn-start").onclick = async () => {
   if (!ui.config) return show("s-setup");
+  if (snap?.status === "intro") {  // 声の登録を終えて議論に入る
+    const r = await post("/api/begin");
+    if (!r.ok) alert(r.error);
+    return;
+  }
   $("btn-start").disabled = true;
   const r = await post("/api/start", ui.config);
   if (!r.ok) { $("btn-start").disabled = false; alert(r.error); return; }
