@@ -1,0 +1,115 @@
+"""データ構造の定義。"""
+
+from __future__ import annotations
+
+from enum import Enum
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+UNKNOWN = "unknown"
+UNLIMITED_SEC = 10**6  # 制限時間なし(この値以上なら「制限時間なし」として扱う)
+AI_SPEAKER = "ai"
+
+
+class Utterance(BaseModel):
+    id: int
+    speaker_id: str  # speaker_1..N / unknown / ai。ダイアライゼーションの後修正で差し替わる
+    speaker_label: str | None = None  # ニックネーム(紐づけ済みの場合)
+    text: str
+    start_time: float
+    end_time: float
+    speaker_confidence: float = 0.0
+    source: Literal["human", "ai", "bot"] = "human"  # bot = AI 参加者(進行役の AI とは別)
+
+    @property
+    def duration(self) -> float:
+        return max(0.0, self.end_time - self.start_time)
+
+
+class Action(str, Enum):
+    no_intervention = "no_intervention"
+    start_gd = "start_gd"
+    ask_question = "ask_question"
+    redirect_topic = "redirect_topic"
+    organize_issues = "organize_issues"
+    compare_criteria = "compare_criteria"
+    invite_all = "invite_all"
+    invite_person = "invite_person"
+    return_to_speaker = "return_to_speaker"
+    time_warning = "time_warning"
+    close_gd = "close_gd"
+    # 内容支援(介入ポリシー⑥)。範囲が「なし」のセッションでは出力の選択肢にも入れない
+    offer_hint = "offer_hint"  # 新しい視点や考え方のヒントを1つ示す
+    propose_idea = "propose_idea"  # 具体的なアイデアや解決策の例を1つ示す(決めるのは参加者)
+    # 雑談の司会だけが使う(facilitator/chat/)。GD・GW の出力の選択肢には入れない
+    offer_topic = "offer_topic"  # 新しい話題を出す
+    change_topic = "change_topic"  # 広がらない話題から別の話題へ切り替える
+
+
+CHAT_ONLY_ACTIONS = {Action.offer_topic, Action.change_topic}
+
+
+HEALTH_VALUES = ["progressing", "stalled", "off_topic", "conflicting", "converging"]
+
+
+class Analysis(BaseModel):
+    """Understand の結果(LLM が更新する議論状態)。"""
+
+    phase: str = ""  # 議論タイプのフェーズの key(facilitator/discussion_types.py)
+    phase_reason: str = ""  # そのフェーズだと判断した根拠(短く)
+    health: str = "progressing"
+    issues: list[str] = Field(default_factory=list)
+    opinions: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    agreements: list[str] = Field(default_factory=list)
+    missing_perspectives: list[str] = Field(default_factory=list)
+    recent_summary: str = ""
+
+
+class Decision(BaseModel):
+    action: Action = Action.no_intervention
+    reasoning: str = ""
+    speech: str = ""
+    urgency: float = 0.0
+    target_speaker: str | None = None
+
+
+class AgentOutput(BaseModel):
+    analysis: Analysis
+    decision: Decision
+
+
+class SpeakerStats(BaseModel):
+    speaker_id: str
+    label: str | None
+    label_confirmed: bool
+    total_speech_sec: float
+    turns: int
+    since_last_spoke_sec: float | None  # None = 一度も発言なし
+    is_bot: bool = False  # AI 参加者
+
+
+class TickRecord(BaseModel):
+    """1回の判断の記録(デモで「なぜ介入した/しなかったか」を見せるため)。"""
+
+    time: float
+    trigger: str
+    observed_phase: str  # LLM が判断した実際のフェーズ(この判断後の値)
+    target_phase: str  # 経過時間から計算した目標フェーズ
+    phase_gap: int | None = None  # 目標 - 判断前の実際のフェーズ(段階数)。判断前のフェーズがなければ None
+    phase_behind: bool = False  # 判断前のフェーズで見て、移行を促してよい程度に遅れていたか
+    remaining_sec: float
+    silence_sec: float
+    gate: str  # ルール層の判定(llm / forced:... / blocked:...)
+    allowed_actions: list[str]
+    analysis: Analysis
+    decision: Decision
+    llm_raw_action: str | None = None
+    overridden: str | None = None  # ルール層で書き換えた場合の理由
+    latency_sec: float = 0.0
+    llm_called: bool = False  # この判断で LLM を呼んだか(失敗も含む)
+    llm_usage: dict[str, int] | None = None  # 使用トークン数(Claude のみ)
+    context_last_utt_id: int | None = None  # LLM に渡した発話ログの最後の発言 id(判断後に増えた発言を数えるため)
+    content_reason: str | None = None  # 内容支援を許可した理由(request / stalled / proactive)。許可していなければ None
+    content_flags: list[str] = Field(default_factory=list)  # 発話に内容(案・意見)が混ざった疑い(記録のみ。判断は変えない)
