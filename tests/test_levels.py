@@ -15,6 +15,8 @@ from config import LEVEL_SETTINGS, ROOT, Settings, load_settings  # noqa: E402
 from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
 from facilitator.agent.prompts import (  # noqa: E402
     LEVEL_TEXT,
+    OVERLAP_NOTE,
+    RULES_HEAD,
     PHASE_BEHIND_NOTE,
     PHASE_BEHIND_NOTES,
     build_system_prompt,
@@ -92,7 +94,9 @@ def test_single_item_changes_only_its_own_prompt_text(item, level):
     std = build_system_prompt("job", "problem_solving")
     p = build_system_prompt("job", "problem_solving", levels={item: level})
     assert p != std
-    assert p == std.replace(LEVEL_TEXT[item]["standard"], LEVEL_TEXT[item][level])
+    # 変わるのは、その項目の判断基準の文と、標準以外のときに加わる「場面が重なるとき」の節(どの項目でも同じ1つ)だけ
+    expected = std.replace(LEVEL_TEXT[item]["standard"], LEVEL_TEXT[item][level]).replace(RULES_HEAD, OVERLAP_NOTE + RULES_HEAD)
+    assert p == expected
 
 
 def test_all_combinations_compose_without_interference():

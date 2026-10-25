@@ -25,5 +25,5 @@ utterances:
 checkpoints:
   - {at: 121.5, expect: [no_intervention], require_llm: true, why: 質問への回答を待つ間(2.5秒)。どの段階でもやり取りの最中には割り込まない}
   - {at: 146, when: {turns: high}, expect: [invite_all, invite_person], target_any: [speaker_4], forbid: [no_intervention], why: 区切りで、80秒以上発言していない人に機会をつくる(全体への呼びかけを優先)}
-  - {at: 146, when: {turns: standard}, expect: [no_intervention, invite_all, invite_person], target_any: [speaker_4], why: 結論の前ではないので見守ってもよい}
+  - {at: 146, when: {turns: standard}, expect: [no_intervention, invite_all, invite_person], require_llm: true, target_any: [speaker_4], why: 結論の前ではないので見守ってもよい}
   - {at: 146, when: {turns: low}, expect: [no_intervention], require_llm: true, why: 1回は発言しており極端な偏りではなく、結論の前でもない}
