@@ -507,6 +507,7 @@ body { font-size: 17px; }
     <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-type"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
     <div class="actions">
       <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>開始</button>
+      <button class="btn primary hidden" id="btn-result"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>振り返り</button>
       <button class="btn" id="btn-pause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>一時停止</span></button>
       <button class="btn danger" id="btn-stop" disabled><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>終了</button>
       <button class="btn" id="btn-setup" title="設定に戻る"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -540,7 +541,7 @@ body { font-size: 17px; }
 <section class="screen" id="s-result">
   <div class="bento bento-result">
     <div class="tile tile-hero span-4">
-      <span class="mode-pill">ディスカッション終了</span>
+      <span class="mode-pill">振り返り</span>
       <h1 id="r-theme">—</h1>
       <div class="r-meta" id="r-meta"></div>
     </div>
@@ -552,10 +553,10 @@ body { font-size: 17px; }
     </div>
 
     <div class="tile span-4">
-      <span class="label">振り返り</span>
+      <span class="label">発言の内容</span>
       <div class="choice2" id="fb-tabs">
-        <button type="button" data-v="review" class="on">振り返り</button>
-        <button type="button" data-v="types">発言の種類</button>
+        <button type="button" data-v="types" class="on">発言の種類</button>
+        <button type="button" data-v="review">振り返り(練習用)</button>
       </div>
       <div class="hint fb-note" id="fb-note"></div>
       <div id="fb-body"></div>
@@ -567,6 +568,7 @@ body { font-size: 17px; }
     </div>
 
     <div class="setup-actions span-4">
+      <button type="button" class="btn" id="r-back">← 議論の画面に戻る</button>
       <button type="button" class="btn" id="r-again">同じ設定でもう一度</button>
       <button type="button" class="btn primary" id="r-new">新しく始める</button>
     </div>
@@ -790,6 +792,8 @@ function renderReady() {
   $("c-limit").textContent = c.minutes; showClock(0, c.minutes * 60);
   $("c-bar").style.width = "0"; $("clock").classList.remove("low", "over");
   $("btn-start").disabled = false; $("btn-pause").disabled = true; $("btn-stop").disabled = true;
+  ["btn-start", "btn-pause", "btn-stop"].forEach((id) => $(id).classList.remove("hidden"));
+  $("btn-result").classList.add("hidden"); ui.fbPromise = null;
 
   $("log").innerHTML = '<div class="empty">発言がここに表示されます</div>'; $("partial").textContent = ""; $("silence").textContent = "";
   renderPhases("", "");
@@ -885,6 +889,9 @@ function render() {
 
   // ボタン
   $("btn-start").disabled = running || s.status === "finished";
+  const finished = s.status === "finished" && s.started;  // 終わったら「開始」の代わりに「振り返り」を出す
+  ["btn-start", "btn-pause", "btn-stop"].forEach((id) => $(id).classList.toggle("hidden", finished));
+  $("btn-result").classList.toggle("hidden", !finished);
   $("btn-pause").disabled = s.status !== "running";
   $("btn-pause").querySelector("span").textContent = s.paused ? "再開" : "一時停止";
   $("btn-stop").disabled = !running;
@@ -904,7 +911,7 @@ function render() {
   // 終了
   if (s.status === "finished" && s.started && !doneShown) {
     doneShown = true;
-    showResult();
+    prefetchFeedback();  // 画面は切り替えず、振り返りを先に作り始めておく
   }
 }
 
@@ -986,17 +993,22 @@ async function showResult() {
       <div><div class="who"><b>${esc(u.who)}</b>${tag}<time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`;
   }).join("") : '<div class="empty">発言はありませんでした</div>';
   ui.resultColors = colors;
-  loadFeedback();
+  loadFeedback();  // 終了時に作り始めていれば、それを待つだけ
   show("s-result");
   requestAnimationFrame(() => requestAnimationFrame(() =>  // 帯と棒を 0 から伸ばす
     document.querySelectorAll("#s-result [data-w]").forEach((el) => { el.style.width = el.dataset.w; })));
 }
 // 振り返り(練習の補助)と発言の種類。結果画面を出してから取りに行く(初回は AI が作るので時間がかかる)
-ui.fbTab = "review";
-async function loadFeedback() {
-  ui.fb = null; renderFeedback();
-  const fb = await fetch("/api/feedback").then((x) => x.json()).catch(() => null);
-  ui.fb = fb?.ok ? fb : { ok: false, error: fb?.error || "振り返りを作れませんでした" };
+ui.fbTab = "types";
+function prefetchFeedback() {
+  ui.fb = null;
+  ui.fbPromise = fetch("/api/feedback").then((x) => x.json()).catch(() => null).then((fb) => {
+    ui.fb = fb?.ok ? fb : { ok: false, error: fb?.error || "振り返りを作れませんでした" };
+    if ($("s-result").classList.contains("active")) renderFeedback();
+  });
+}
+function loadFeedback() {
+  if (!ui.fbPromise) prefetchFeedback();
   renderFeedback();
 }
 $("fb-tabs").querySelectorAll("button").forEach((b) => b.onclick = () => {
@@ -1025,6 +1037,8 @@ function renderFeedback() {
         <div class="fb-types">${Object.entries(fb.types).map(([k, label]) => `<span class="${p.types[k] ? "has" : ""}">${esc(label)} ${p.types[k] || 0}</span>`).join("")}</div>
         ${p.examples.length ? `<div class="fb-ex">${p.examples.map((e) => `<div><i>${esc(fb.types[e.type])}</i>「${esc(e.text)}」</div>`).join("")}</div>` : ""}</div>`).join("");
 }
+$("btn-result").onclick = () => showResult();
+$("r-back").onclick = () => show("s-session");
 $("r-new").onclick = () => { ui.started = false; show("s-purpose"); };
 $("r-again").onclick = () => { ui.started = false; show("s-setup"); };
 const send = () => {
