@@ -20,6 +20,7 @@ from config import POLICY_PRESET_LABELS, PURPOSE_PRESET, Settings, load_settings
 from facilitator.agent.agent import FacilitatorAgent
 from facilitator.agent.topic_return import detect_topic_return
 from facilitator.discussion_types import resolve_session_type
+from facilitator.feedback import build_feedback
 from facilitator.llm.factory import make_llm
 from facilitator.logging import TickLogger
 from facilitator.llm.base import LLMError, supports_stream
@@ -32,6 +33,7 @@ from facilitator.participants import (
     level_interval,
     bot_mode_for,
     choose_and_generate,
+    discussion_flow,
     generate_personas,
     generate_utterance,
     pick_bot,
@@ -175,6 +177,8 @@ class Engine:
         self._bot_answered_id = -1  # 名指しに答えた発言 ID(二重に答えない)
         self._last_bot_end = -1e9
         self._speaking_as: str | None = None  # 今声を出している話者(AI_SPEAKER / AI 参加者の ID)
+        self._feedback: tuple[int, dict[str, Any]] | None = None  # (セッションの世代, 振り返り)
+        self._feedback_lock = threading.Lock()
         self._speak_lock = threading.RLock()  # 発話を1つずつにする(_speak_decision → _say の入れ子で取り直す)
         self.ai_level: int | None = None
         self._interval: tuple[float, float] | None = None
@@ -822,6 +826,7 @@ class Engine:
         try:
             last_id = st.latest_id
             transcript = transcript_for_bot(st)
+            flow = discussion_flow(self.agent, self.now())  # 進行役と同じ議論の流れ(いまの段階)
             m = self.agent.llm.mark()
             llm = self.agent.llm
             live: LiveSpeech | None = None
@@ -851,14 +856,14 @@ class Engine:
             try:
                 if addressed_id >= 0:  # 名指しされた人が答える
                     text = generate_utterance(
-                        llm, p, self.cfg.purpose, st.theme, transcript, reason, self.ai_level, on_partial
+                        llm, p, self.cfg.purpose, st.theme, transcript, reason, self.ai_level, on_partial, flow
                     )
                 else:  # 誰が話すかは文脈で選ぶ(直前の話者は除く)
                     last_sid = st.utterances[-1].speaker_id if st.utterances else ""
                     cands = [x for x in self.personas if x.speaker_id != last_sid] or self.personas
                     counts = {x.speaker_id: x.spoken for x in self.personas}
                     p, text, why = choose_and_generate(
-                        llm, cands, self.cfg.purpose, st.theme, transcript, reason, self.ai_level, counts, p, on_partial
+                        llm, cands, self.cfg.purpose, st.theme, transcript, reason, self.ai_level, counts, p, on_partial, flow
                     )
                     if why:
                         reason += f" / {p.name}が話した理由: {why}"
@@ -953,6 +958,22 @@ class Engine:
                 return u.speaker_id
             return None
         return None
+
+    def feedback(self) -> dict[str, Any]:
+        """終了後の振り返り(練習の補助)と発言の種類。セッションごとに1回だけ作って使い回す。"""
+        r = self.result()
+        if not r.get("ok"):
+            return {"ok": False}
+        key = self._gen
+        with self._feedback_lock:
+            if self._feedback is not None and self._feedback[0] == key:
+                return self._feedback[1]
+            humans = [{"id": p["id"], "name": p["name"]} for p in r["people"] if p["kind"] == "human"]
+            # 振り返りの内容はファイルに保存しない(人の発言の本文を含むため)
+            fb = build_feedback(self.agent.llm, r["theme"], r["discussion_type"], r["log"], humans)
+            if key == self._gen:
+                self._feedback = (key, fb)
+            return fb
 
     def result(self) -> dict[str, Any]:
         """終了後の結果画面用: 全部の発言と、参加者ごとの発言量(回数・秒数・文字数)。"""

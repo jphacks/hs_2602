@@ -174,8 +174,10 @@ def _utter_system(p: Persona, purpose: str, level: int | None = None) -> str:
 def generate_utterance(
     llm: LLMClient, p: Persona, purpose: str, theme: str, transcript: list[str], reason: str, level: int | None = None,
     on_partial: Callable[[str], None] | None = None,
+    flow: str = "",
 ) -> str:
-    """on_partial を渡すと、生成途中の JSON テキストを受け取れる(一文ずつ話し始めるため)。"""
+    """on_partial を渡すと、生成途中の JSON テキストを受け取れる(一文ずつ話し始めるため)。
+    flow は議論の流れ(discussion_flow)。発言をある程度その段階に沿わせる。"""
     if llm.name == "mock":
         line = MOCK_LINES[p.spoken % len(MOCK_LINES)].format(stance=p.stance, opinion=p.opinion)
         if on_partial:
@@ -184,7 +186,7 @@ def generate_utterance(
     user = (
         f"テーマ: {theme}\n\n# 直近の発言(古い順)\n"
         + ("\n".join(transcript[-20:]) or "(まだ発言なし)")
-        + f"\n\n# 今あなたが話す理由\n{reason}\n\nあなた({p.name})の次の発言を作ってください。"
+        + f"\n\n{flow}# 今あなたが話す理由\n{reason}\n\nあなた({p.name})の次の発言を作ってください。"
     )
     raw = generate(llm, _utter_system(p, purpose, level), user, UTTER_SCHEMA, {"kind": f"AI参加者({p.name})の発言"}, on_partial)
     return str(raw.get("text", "")).strip()
@@ -227,13 +229,14 @@ def choose_and_generate(
     counts: dict[str, int],
     fallback: Persona,
     on_partial: Callable[[str], None] | None = None,
+    flow: str = "",
 ) -> tuple[Persona, str, str]:
     """話す AI参加者を文脈で選び、その人の発言を作る。(選んだ人, 発言, 選んだ理由) を返す。
     on_partial には生成途中の JSON テキスト(speaker → why → text の順)を渡す。"""
     if llm.name == "mock" or len(personas) == 1:
         p = fallback if llm.name == "mock" else personas[0]
         wrap = (lambda acc: on_partial(f'{{"speaker": "{p.name}", ' + acc[1:])) if on_partial else None
-        return p, generate_utterance(llm, p, purpose, theme, transcript, reason, level, wrap), "最近話していない人"
+        return p, generate_utterance(llm, p, purpose, theme, transcript, reason, level, wrap, flow), "最近話していない人"
     by_name = {p.name: p for p in personas}
     schema = {
         "type": "object",
@@ -249,7 +252,7 @@ def choose_and_generate(
     user = (
         f"テーマ: {theme}\n\n# 直近の発言(古い順)\n"
         + ("\n".join(transcript[-20:]) or "(まだ発言なし)")
-        + f"\n\n# これまでの発言回数\n{stats}\n\n# 今 AI参加者が話す理由\n{reason}\n\n"
+        + f"\n\n# これまでの発言回数\n{stats}\n\n{flow}# 今 AI参加者が話す理由\n{reason}\n\n"
         "誰が話すかを選び、その人の次の発言を作ってください。"
     )
     raw = generate(llm, _choose_system(personas, purpose, level), user, schema, {"kind": "AI参加者の発言(誰が話すかの選択つき)"}, on_partial)
@@ -357,6 +360,31 @@ def pick_bot(
     }
     cands = [p for p in personas if p.speaker_id != last.speaker_id] or personas
     return min(cands, key=lambda p: last_spoke[p.speaker_id]), reason, -1
+
+
+def discussion_flow(agent: Any, now: float) -> str:
+    """AI 参加者に渡す「議論の流れ」。進行役と同じ議論タイプのフェーズと、いまの段階・時間の目安を伝え、
+    発言をある程度その流れに沿わせる(仕切るのは進行役の役目なので、AI 参加者は提案にとどめる)。"""
+    dtype, st = agent.dtype, agent.state
+    if not st.started:
+        return ""
+    target_key, gap, behind = agent.phase_status(now)
+    target = dtype.get(target_key)
+    current = dtype.get(st.observed_phase) or target
+    lines = [
+        f"# 議論の流れ(議論タイプ: {dtype.label})",
+        " → ".join(ph.label for ph in dtype.phases),
+        f"- いまの段階: 「{current.label}」(この段階では、{current.signs})",
+    ]
+    if target is not None and target.key != current.key:
+        lines.append(f"- 時間の目安では「{target.label}」に入っている頃です")
+    lines.append("- 今の段階に合った発言をしてください。先の段階の話(例: 原因を話している最中に解決策の細部)に飛びすぎないようにします")
+    i = dtype.index(current.key)
+    nxt = dtype.phases[i + 1] if i is not None and i + 1 < len(dtype.phases) else None
+    if behind and nxt is not None:  # 段階を飛ばさず、今の次の段階を提案する
+        lines.append(f"- 目安より遅れています。区切りが良ければ「そろそろ{nxt.label}に移りませんか」のように、次の段階へ進むことを自然に提案してもかまいません")
+    lines.append("- 流れはあくまで目安です。直前の発言に応じることを優先し、進行役のように仕切ったり、まとめたりはしません")
+    return "\n".join(lines) + "\n\n"
 
 
 def transcript_for_bot(state: Any) -> list[str]:

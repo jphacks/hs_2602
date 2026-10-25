@@ -17,6 +17,7 @@ from facilitator.participants import (
     LEVELS,
     bot_mode_for,
     choose_and_generate,
+    discussion_flow,
     generate_personas,
     generate_utterance,
     level_interval,
@@ -157,15 +158,16 @@ class VirtualSession:
         p, reason, addressed = picked
         m = llm.mark()
         why = ""
+        flow = discussion_flow(self.agent, t)  # 進行役と同じ議論の流れ(いまの段階)
         try:
             if addressed >= 0:  # 名指しされた人が答える
-                text = generate_utterance(llm, p, self.purpose, st.theme, transcript_for_bot(st), reason, self.level)
+                text = generate_utterance(llm, p, self.purpose, st.theme, transcript_for_bot(st), reason, self.level, flow=flow)
             else:  # 誰が話すかは文脈で選ぶ(直前の話者は除く)
                 last_sid = st.utterances[-1].speaker_id if st.utterances else ""
                 cands = [x for x in self.personas if x.speaker_id != last_sid] or self.personas
                 counts = {x.speaker_id: x.spoken for x in self.personas}
                 p, text, why = choose_and_generate(
-                    llm, cands, self.purpose, st.theme, transcript_for_bot(st), reason, self.level, counts, p
+                    llm, cands, self.purpose, st.theme, transcript_for_bot(st), reason, self.level, counts, p, flow=flow
                 )
         except LLMError as e:
             self.out(f"{INDENT}(AI参加者 {p.name} の発言を生成できませんでした: {e})")

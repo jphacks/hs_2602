@@ -164,6 +164,29 @@ PLANNING = DiscussionType(
     ),
 )
 
+# 雑談型: 結論を出さない会話の練習・交流向け。話しやすさと発言機会の偏りへの配慮を中心にする
+CASUAL = DiscussionType(
+    key="casual",
+    label="雑談型",
+    guidance="結論を出す必要はありません。何を話すかは参加者が決めます。話題がテーマから多少広がっても、雑談として自然なら軌道修正しないでください。"
+             "全員が話しやすい雰囲気づくりと、話す機会の偏りへの配慮を中心にしてください。",
+    support_guidance={
+        "hint": "結論を出す必要はなく、何を話すかは参加者が決めます。話題が途切れたときは、話のきっかけになる問いかけや身近な切り口のヒントを示してよいです。",
+        "concrete": "結論を出す必要はなく、何を話すかは参加者が決めます。話題が途切れたときは、具体的な話題の例を1つ示してよいです。",
+    },
+    phases=(
+        PhaseDef("warm_up", "話題出し", "身近な話や経験から話し始め、話したい話題を出し合っている",
+                 "話し始めが止まったとき、テーマに関する身近な問いかけで話のきっかけを作る", 0.25,
+                 "話しやすい雰囲気で話題を出し合う"),
+        PhaseDef("expand", "広げる", "話題を掘り下げたり別の話題へ自然に移ったりしながら、互いの話を聞き合っている",
+                 "一部の人だけで盛り上がり、話せていない人がいるとき、全体に話を振る", 0.9,
+                 "話題を広げ、互いの考えや経験を聞き合う"),
+        PhaseDef("closing", "締め", "話してみた感想や、印象に残った話を共有している",
+                 "時間が迫ったとき、印象に残った話を一言ずつ共有するよう促す(結論は求めない)", 1.0,
+                 "話した内容を振り返り、気持ちよく終える"),
+    ),
+)
+
 # 一般モード用。既存の3段階(案出し・比較検討・結論)をそのまま残した汎用型
 GENERIC = DiscussionType(
     key="generic",
@@ -175,8 +198,8 @@ GENERIC = DiscussionType(
     ),
 )
 
-DISCUSSION_TYPES = {t.key: t for t in (PROBLEM_SOLVING, IDEA_GENERATION, DECISION_MAKING, PLANNING, GENERIC)}
-SELECTABLE_TYPES = [PROBLEM_SOLVING.key, IDEA_GENERATION.key, DECISION_MAKING.key, PLANNING.key]  # ユーザーが選べる4種類
+DISCUSSION_TYPES = {t.key: t for t in (PROBLEM_SOLVING, IDEA_GENERATION, DECISION_MAKING, PLANNING, CASUAL, GENERIC)}
+SELECTABLE_TYPES = [PROBLEM_SOLVING.key, IDEA_GENERATION.key, DECISION_MAKING.key, PLANNING.key, CASUAL.key]  # ユーザーが選べる5種類
 DEFAULT_TYPE_BY_PURPOSE = {"job": PROBLEM_SOLVING.key, "general": GENERIC.key}
 
 
@@ -188,7 +211,7 @@ def get_discussion_type(key: str | None = None, purpose: str = "job") -> Discuss
 
 
 def resolve_session_type(key: str | None, purpose: str) -> DiscussionType:
-    """セッション開始時の議論タイプ。就活GDは4種類からの明示的な選択が必須(暗黙に割り当てない)。
+    """セッション開始時の議論タイプ。就活GDは選べる種類からの明示的な選択が必須(暗黙に割り当てない)。
     一般GWは省略時に汎用型(従来どおり)。不明な値はエラー。"""
     if not key:
         if purpose == "job":

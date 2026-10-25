@@ -24,6 +24,7 @@ from facilitator.discussion_types import (  # noqa: E402
 )
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
 from facilitator.scenario import load_scenario, run_scenario  # noqa: E402
+from facilitator.models import Action  # noqa: E402
 from facilitator.state import DiscussionState  # noqa: E402
 
 EXPECTED = {
@@ -31,9 +32,10 @@ EXPECTED = {
     "idea_generation": ["目的確認", "アイデア発散", "整理・発展", "まとめ"],
     "decision_making": ["選択肢確認", "評価基準", "比較", "決定"],
     "planning": ["目標整理", "作業洗い出し", "計画具体化", "確認"],
+    "casual": ["話題出し", "広げる", "締め"],
 }
 NEUTRAL_RULE = "アイデア・選択肢・作業や計画についても同じく、参加者が出していないものを持ち込まないでください"
-NEW_TYPES = ["idea_generation", "decision_making", "planning"]
+NEW_TYPES = ["idea_generation", "decision_making", "planning", "casual"]
 
 
 # ---------- 定義 ----------
@@ -195,3 +197,12 @@ def test_type_scenarios_feed_selected_type_and_judge_stalls(name, key):
     stalls = [c for c in res.checks if "no_intervention" in c.forbid]
     assert stalls and not any(c.passed for c in stalls)  # 停滞の時点で見送ると不合格
     assert all(c.passed for c in res.checks if c.expect == ["no_intervention"])
+
+
+def test_casual_type_does_not_ask_for_conclusion():
+    """雑談型は結論を求めない(時間の告知・終了の発言)。"""
+    st = DiscussionState(settings=load_settings(), theme="休日の過ごし方", duration_sec=600)
+    ag = FacilitatorAgent(st, None, load_settings(), purpose="general", discussion_type="casual")
+    warn, close = ag._template(Action.time_warning, 0.0), ag._template(Action.close_gd, 0.0)
+    assert "結論" not in warn and "結論" not in close and "今日はここまで" in close
+    assert "結論を出す必要はありません" in build_system_prompt("general", "casual")

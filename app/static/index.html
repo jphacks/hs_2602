@@ -352,6 +352,28 @@ body { font-size: 17px; }
 .r-person .nums { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .r-person.fac .pct { color: var(--muted); font-size: 14px; font-weight: 600; }
 .r-log { display: flex; flex-direction: column; gap: 12px; }
+/* 振り返り */
+.fb-note { margin: 10px 0 4px; }
+.fb-person { padding: 14px 0; }
+.fb-person + .fb-person { border-top: .5px solid var(--line); }
+.fb-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.fb-head .avatar { width: 32px; height: 32px; border-radius: 9px; font-size: 14px; margin: 0; }
+.fb-head b { font-size: 16px; }
+.fb-head span { margin-left: auto; font-size: 13px; color: var(--muted); }
+.fb-aspect { display: grid; grid-template-columns: 96px auto; gap: 2px 10px; align-items: center; padding: 6px 0; }
+.fb-aspect b { font-size: 14px; font-weight: 600; }
+.fb-aspect q { grid-column: 1 / -1; font-size: 13px; color: var(--muted); quotes: "「" "」"; }
+.lv { justify-self: start; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; }
+.lv.great { background: var(--accent); color: #fff; }
+.lv.good { background: var(--accent-soft); color: var(--accent); }
+.lv.next { background: var(--fill); color: var(--muted); }
+.fb-list { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--tile-2); font-size: 14px; }
+.fb-list b { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.fb-list ul { margin: 0; padding-left: 18px; }
+.fb-types { display: flex; flex-wrap: wrap; gap: 6px; }
+.fb-types span { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--fill); color: var(--faint); }
+.fb-types span.has { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.fb-loading { color: var(--muted); font-size: 14px; padding: 18px 0; text-align: center; }
 .tile .sub-label { display: block; font-size: 15px; font-weight: 600; color: var(--muted); margin: 18px 0 10px; }
 /* スタイルのカードの中の詳細設定 */
 .subcard { margin-top: 16px; padding: 16px 16px 8px; border-radius: 16px; background: var(--tile-2); }
@@ -482,6 +504,7 @@ body { font-size: 17px; }
     <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-type"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
     <div class="actions">
       <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>開始</button>
+      <button class="btn primary hidden" id="btn-result"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>振り返り</button>
       <button class="btn" id="btn-pause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>一時停止</span></button>
       <button class="btn danger" id="btn-stop" disabled><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>終了</button>
       <button class="btn" id="btn-setup" title="設定に戻る"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -515,7 +538,7 @@ body { font-size: 17px; }
 <section class="screen" id="s-result">
   <div class="bento bento-result">
     <div class="tile tile-hero span-4">
-      <span class="mode-pill">ディスカッション終了</span>
+      <span class="mode-pill">振り返り</span>
       <h1 id="r-theme">—</h1>
       <div class="r-meta" id="r-meta"></div>
     </div>
@@ -527,11 +550,22 @@ body { font-size: 17px; }
     </div>
 
     <div class="tile span-4">
+      <span class="label">発言の内容</span>
+      <div class="choice2" id="fb-tabs">
+        <button type="button" data-v="types" class="on">発言の種類</button>
+        <button type="button" data-v="review">フィードバック</button>
+      </div>
+      <div class="hint fb-note" id="fb-note"></div>
+      <div id="fb-body"></div>
+    </div>
+
+    <div class="tile span-4">
       <span class="label" id="r-log-label">会話ログ</span>
       <div class="r-log" id="r-log"></div>
     </div>
 
     <div class="setup-actions span-4">
+      <button type="button" class="btn" id="r-back">← 議論の画面に戻る</button>
       <button type="button" class="btn" id="r-again">同じ設定でもう一度</button>
       <button type="button" class="btn primary" id="r-new">新しく始める</button>
     </div>
@@ -755,6 +789,8 @@ function renderReady() {
   $("c-limit").textContent = c.minutes; showClock(0, c.minutes * 60);
   $("c-bar").style.width = "0"; $("clock").classList.remove("low", "over");
   $("btn-start").disabled = false; $("btn-pause").disabled = true; $("btn-stop").disabled = true;
+  ["btn-start", "btn-pause", "btn-stop"].forEach((id) => $(id).classList.remove("hidden"));
+  $("btn-result").classList.add("hidden"); ui.fbPromise = null;
 
   $("log").innerHTML = '<div class="empty">発言がここに表示されます</div>'; $("partial").textContent = ""; $("silence").textContent = "";
   renderPhases("", "");
@@ -850,6 +886,9 @@ function render() {
 
   // ボタン
   $("btn-start").disabled = running || s.status === "finished";
+  const finished = s.status === "finished" && s.started;  // 終わったら「開始」の代わりに「振り返り」を出す
+  ["btn-start", "btn-pause", "btn-stop"].forEach((id) => $(id).classList.toggle("hidden", finished));
+  $("btn-result").classList.toggle("hidden", !finished);
   $("btn-pause").disabled = s.status !== "running";
   $("btn-pause").querySelector("span").textContent = s.paused ? "再開" : "一時停止";
   $("btn-stop").disabled = !running;
@@ -869,7 +908,7 @@ function render() {
   // 終了
   if (s.status === "finished" && s.started && !doneShown) {
     doneShown = true;
-    showResult();
+    prefetchFeedback();  // 画面は切り替えず、振り返りを先に作り始めておく
   }
 }
 
@@ -950,10 +989,52 @@ async function showResult() {
     return `<div class="msg ${u.source === "ai" ? "ai" : u.source === "bot" ? "bot" : ""}" style="--c:${c}"><div class="av">${av}</div>
       <div><div class="who"><b>${esc(u.who)}</b>${tag}<time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`;
   }).join("") : '<div class="empty">発言はありませんでした</div>';
+  ui.resultColors = colors;
+  loadFeedback();  // 終了時に作り始めていれば、それを待つだけ
   show("s-result");
   requestAnimationFrame(() => requestAnimationFrame(() =>  // 帯と棒を 0 から伸ばす
     document.querySelectorAll("#s-result [data-w]").forEach((el) => { el.style.width = el.dataset.w; })));
 }
+// 振り返り(練習の補助)と発言の種類。結果画面を出してから取りに行く(初回は AI が作るので時間がかかる)
+ui.fbTab = "types";
+function prefetchFeedback() {
+  ui.fb = null;
+  ui.fbPromise = fetch("/api/feedback").then((x) => x.json()).catch(() => null).then((fb) => {
+    ui.fb = fb?.ok ? fb : { ok: false, error: fb?.error || "振り返りを作れませんでした" };
+    if ($("s-result").classList.contains("active")) renderFeedback();
+  });
+}
+function loadFeedback() {
+  if (!ui.fbPromise) prefetchFeedback();
+  renderFeedback();
+}
+$("fb-tabs").querySelectorAll("button").forEach((b) => b.onclick = () => {
+  ui.fbTab = b.dataset.v;
+  $("fb-tabs").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+  renderFeedback();
+});
+function renderFeedback() {
+  const review = ui.fbTab === "review";
+  $("fb-note").textContent = review
+    ? "AI による練習用の参考です。選考の評価には使わないでください。"
+    : "AI が発言を種類に分けたものです(良し悪しの評価ではありません)。";
+  const fb = ui.fb;
+  if (!fb) { $("fb-body").innerHTML = '<div class="fb-loading">AI が振り返りを作成しています…</div>'; return; }
+  if (!fb.ok) { $("fb-body").innerHTML = `<div class="fb-loading">${esc(fb.error)}</div>`; return; }
+  if (!fb.people.length) { $("fb-body").innerHTML = '<div class="fb-loading">対象の参加者がいません</div>'; return; }
+  const head = (p) => `<div class="fb-head"><div class="avatar" style="--c:${ui.resultColors?.[p.id] || "#8e8e93"}">${esc(p.name.slice(0, 1))}</div>
+    <b>${esc(p.name)}</b><span>${p.turns}回の発言</span></div>`;
+  const list = (title, xs) => (xs.length ? `<div class="fb-list"><b>${title}</b><ul>${xs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "");
+  $("fb-body").innerHTML = fb.people.map((p) => review
+    ? `<div class="fb-person">${head(p)}
+        ${p.aspects.map((a) => `<div class="fb-aspect"><b>${esc(a.label)}</b><span class="lv ${a.level}">${esc(fb.levels[a.level] || a.level)}</span>
+          ${a.quote ? `<q>${esc(a.quote)}</q>` : ""}</div>`).join("")}
+        ${list("良かった点", p.good)}${list("次に意識すること", p.next)}</div>`
+    : `<div class="fb-person">${head(p)}
+        <div class="fb-types">${Object.entries(fb.types).map(([k, label]) => `<span class="${p.types[k] ? "has" : ""}">${esc(label)} ${p.types[k] || 0}</span>`).join("")}</div></div>`).join("");
+}
+$("btn-result").onclick = () => showResult();
+$("r-back").onclick = () => show("s-session");
 $("r-new").onclick = () => { ui.started = false; show("s-purpose"); };
 $("r-again").onclick = () => { ui.started = false; show("s-setup"); };
 const send = () => {
