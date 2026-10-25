@@ -61,6 +61,8 @@ def _limit_sentences(text: str, n: int = 3, keep_last: bool = False) -> str:
 
 
 class FacilitatorAgent:
+    invite_all_fallback = INVITE_ALL_FALLBACK  # 個人指名の代わりの全体への呼びかけ(雑談の司会が上書きする)
+
     def __init__(
         self,
         state: DiscussionState,
@@ -104,6 +106,18 @@ class FacilitatorAgent:
     def _cooldown_sec(self) -> float:
         """介入どうしの最低間隔。雑談の司会(facilitator/chat/host.py)が雑談専用の値で上書きする。"""
         return self.settings.cooldown_sec
+
+    def _max_sentences(self, action: Action) -> int:
+        """発話の文数の上限(雑談の司会が上書きする)。"""
+        return MAX_SENTENCES.get(action, 3)
+
+    def _user_prompt(self, ctx: dict) -> str:
+        """LLM に渡す状況説明(雑談の司会が専用のものに上書きする)。"""
+        return build_user_prompt(ctx)
+
+    def _detects_requests(self) -> bool:
+        """進行役への依頼を検知するか(GD・GW は内容支援が有効なときだけ。雑談の司会が上書きする)。"""
+        return self.policy.content_support
 
     def stale_reason(self, now: float, context_utt_id: int | None = None) -> str | None:
         """判断を始めた後に状況が変わり、その判断の発話をやめるべきなら理由を返す(engine が話す直前に確かめる)。
@@ -200,7 +214,7 @@ class FacilitatorAgent:
     def _scan_requests(self, now: float) -> None:
         """新しい人間の発言から、進行役への依頼の候補を探す(内容支援が有効なときだけ)。古い依頼は見送る。"""
         st = self.state
-        if not self.policy.content_support:
+        if not self._detects_requests():
             return
         bots = [st.speaker_names.get(b, "") for b in st.bot_ids]
         for u in st.utterances:
@@ -350,7 +364,7 @@ class FacilitatorAgent:
                 return self._invite_all_instead(d, reason, now)
 
         # 終了は最後の一文で終了を告げるので、切り詰めても締めの告知を残す
-        n = MAX_SENTENCES.get(d.action, 3)
+        n = self._max_sentences(d.action)
         speech = _limit_sentences(d.speech, n, keep_last=d.action == Action.close_gd)
         note = f"発話を{n}文に短縮" if speech and speech != d.speech.strip() else None
         if not speech:
@@ -410,7 +424,7 @@ class FacilitatorAgent:
         if last is not None and now - last < self.settings.person_cooldown_sec:
             return Decision(reasoning=d.reasoning), f"invite_person→no_intervention({reason}。直近に全体への呼びかけ済み)"
         return Decision(
-            action=Action.invite_all, reasoning=d.reasoning, speech=INVITE_ALL_FALLBACK, urgency=d.urgency
+            action=Action.invite_all, reasoning=d.reasoning, speech=self.invite_all_fallback, urgency=d.urgency
         ), f"invite_person→invite_all({reason})"
 
     def _template(self, action: Action, now: float) -> str:
@@ -487,7 +501,7 @@ class FacilitatorAgent:
             try:
                 try:
                     partial = (lambda acc: on_partial(acc, allowed, gate)) if on_partial else None
-                    raw = generate(self.llm, self.system_prompt, build_user_prompt(ctx), self.output_schema, ctx, partial)
+                    raw = generate(self.llm, self.system_prompt, self._user_prompt(ctx), self.output_schema, ctx, partial)
                 finally:
                     usage = getattr(self.llm, "last_usage", None)
                 out = AgentOutput.model_validate(raw)
@@ -581,7 +595,7 @@ class FacilitatorAgent:
     def live_sentence(self, action: Action, sentence: str, index: int) -> str | None:
         """生成しながら話す index 番目(0 始まり)の一文。文数の上限を超えるか、言い換えられない個人名を含めば None
         (その文から先は話さない)。呼びかけ・「〇〇さんの」は全文の場合と同じく言い換える。"""
-        if index >= MAX_SENTENCES.get(action, 3):
+        if index >= self._max_sentences(action):
             return None
         fixed, left = strip_names(sentence, list(self.state.speaker_names.values()))
         return None if left else fixed

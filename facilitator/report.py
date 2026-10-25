@@ -29,6 +29,10 @@ ACTION_JA = {
     "return_to_speaker": "発言を戻す",
     "time_warning": "時間の告知",
     "close_gd": "終了・結論の確認",
+    "offer_hint": "ヒントの提示",
+    "propose_idea": "具体案の例",
+    "offer_topic": "話題の提供",
+    "change_topic": "話題の転換",
 }
 GATE_JA = {
     "blocked:speaking": "誰かが話している",
@@ -36,6 +40,9 @@ GATE_JA = {
     "blocked:short_pause": "沈黙が短い(会話の途中)",
     "blocked:forced_gap": "時間告知を直前の介入から少しあける",
     "blocked:finished": "終了済み",
+    "blocked:chat_free": "参加者どうしで会話が続いている(雑談の自走期)",
+    "blocked:chat_wait_reaction": "ほかの人の反応を待っている(雑談)",
+    "blocked:chat_wait_answer": "問いかけへの答えを待っている(雑談)",
 }
 
 

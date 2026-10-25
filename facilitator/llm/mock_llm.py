@@ -34,6 +34,8 @@ class MockLLM:
         return out
 
     def _decide(self, context: dict[str, Any]) -> dict[str, Any]:
+        if "chat" in context:  # 雑談の司会(判断のタイミングはルール層が決めるので、呼ばれたら状況に合わせて話す)
+            return self._decide_chat(context)
         allowed: list[str] = context["allowed_actions"]
         silence = context["silence_sec"]
         stall = context.get("stall_silence_sec", 12)  # 停滞とみなす沈黙(介入ポリシー⑤で変わる。標準は12秒)
@@ -69,4 +71,28 @@ class MockLLM:
                 "urgency": 0.5 if action != "no_intervention" else 0.0,
                 "target_speaker": None,
             },
+        }
+
+    def _decide_chat(self, context: dict[str, Any]) -> dict[str, Any]:
+        allowed: list[str] = context["allowed_actions"]
+        chat = context["chat"]
+        topic = (chat["topic_candidates"] or ["最近ちょっとハマっていることはありますか?"])[0]
+        action, speech = "no_intervention", ""
+        if len(allowed) == 1:
+            action = allowed[0]
+        elif context.get("request") and "offer_topic" in allowed:
+            action, speech = "offer_topic", f"では、{topic}"
+        elif chat["answerers"] == 1 and "invite_all" in allowed:
+            action, speech = "invite_all", "そうなんですね。ほかの皆さんはどうですか?"
+        elif chat["answers"] and "ask_question" in allowed:
+            action, speech = "ask_question", "いいですね。もう少し詳しく聞かせてもらえますか?"
+        elif chat["unanswered"] >= 2 and "change_topic" in allowed:
+            action, speech = "change_topic", f"話は変わりますが、{topic}"
+        elif "invite_all" in allowed:
+            action, speech = "invite_all", "どなたからでも大丈夫ですよ。思いついたことを気軽に聞かせてください。"
+        return {
+            "analysis": {"phase": context["observed_phase"] or "warm_up", "phase_reason": "(mock)",
+                         "health": "stalled" if action != "no_intervention" else "progressing", "recent_summary": "(mock)"},
+            "decision": {"action": action, "reasoning": "(mock) 雑談: 直前の AI の発言への反応だけで判断", "speech": speech,
+                         "urgency": 0.5 if action != "no_intervention" else 0.0, "target_speaker": None},
         }

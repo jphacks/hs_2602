@@ -1,7 +1,7 @@
 """雑談モードの AI 司会(facilitator/chat/host.py)の分離・接続のテスト(第1段階)。API は呼ばない。
 
-第1段階は分離して接続しただけなので、雑談の司会の振る舞いは、雑談型の議論タイプを使う GD・GW の進行役と同じこと、
-GD・GW では従来の進行役がそのまま使われることを確かめる。
+雑談の司会が雑談型のときだけ使われ、GD・GW では従来の進行役がそのまま使われることを確かめる
+(プロンプト・行動・開始の話題は第3段階で雑談専用にした。tests/test_chat_actions.py)。
 """
 
 from __future__ import annotations
@@ -58,19 +58,19 @@ def _pair(theme: str = "休日の過ごし方"):
     return out
 
 
-def test_prompt_and_schema_are_same_as_before():
-    """プロンプトと出力の選択肢は、雑談専用のものを作る第3段階までは従来と同じ
-    (判断のタイミングは第2段階で雑談専用にした。tests/test_chat_timing.py)。"""
+def test_chat_host_has_own_prompt_and_schema():
+    """第3段階: プロンプトと出力の選択肢は雑談専用(GD・GW の進行役のものは変えない)。"""
     chat, old = _pair()
-    assert chat.system_prompt == old.system_prompt
-    assert chat.output_schema == old.output_schema
+    assert chat.system_prompt != old.system_prompt and chat.output_schema != old.output_schema
 
 
 @pytest.mark.parametrize("theme", ["休日の過ごし方", CASUAL_FREE_THEME])
-def test_stage1_templates_are_same_as_before(theme):
+def test_time_warning_and_close_templates_are_same_as_before(theme):
+    """時間告知・終了の定型文は雑談型のもの(結論を求めない)のまま。開始だけ雑談の司会のあいさつと話題にした。"""
     chat, old = _pair(theme)
-    for a in (Action.start_gd, Action.time_warning, Action.close_gd):
+    for a in (Action.time_warning, Action.close_gd):
         assert chat._template(a, 300.0) == old._template(a, 300.0)
+    assert chat._template(Action.start_gd, 0.0) != old._template(Action.start_gd, 0.0)
 
 
 # ---------- 接続: 画面が雑談モードで送る内容で開始すると、雑談の司会で動く ----------

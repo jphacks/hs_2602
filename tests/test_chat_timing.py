@@ -23,7 +23,7 @@ from facilitator.policy import preset_policy  # noqa: E402
 from facilitator.state import DiscussionState  # noqa: E402
 from tests.sim import SimClock  # noqa: E402
 
-S = load_settings()
+S = load_settings(tts_chars_per_sec=1000.0)  # AI の発話はほぼ一瞬(開始の発言の長さで時刻がずれないように)
 NAMES = {"speaker_1": "たろう", "speaker_2": "はなこ", "speaker_3": "けんた"}
 
 
@@ -37,8 +37,8 @@ class EagerLLM:
 
     def generate_json(self, system, user, schema, ctx):
         allowed = ctx["allowed_actions"]
-        if ctx.get("request") and "offer_hint" in allowed:
-            a, sp = "offer_hint", "身近な休日の過ごし方から話してみるのはどうでしょう?"
+        if ctx.get("request") and "offer_topic" in allowed:
+            a, sp = "offer_topic", "最近行ってよかった場所はありますか?"
         elif len(allowed) == 1:
             a, sp = allowed[0], ""
         elif self.health in ("progressing", "converging"):  # 会話が進んでいると判断したら見守る
@@ -165,7 +165,7 @@ def test_free_phase_still_answers_request_and_time_warning():
     out = run(st, ag, script, 110)
     phase_at_request = [p for t, p, _w in ag.chat_log if t <= 56][-1]
     assert phase_at_request == FREE  # 依頼のときは自走期
-    assert any(a == "offer_hint" and 54 <= t <= 60 for t, a in out)  # 依頼に応じる(自走期でも)
+    assert any(a == "offer_topic" and 54 <= t <= 60 for t, a in out)  # 依頼に応じる(自走期でも)
     assert any(a == "time_warning" for _t, a in out)  # 時間告知(強制イベント)にも応じる
 
 
@@ -203,6 +203,7 @@ def test_engine_cancels_stale_decision(monkeypatch, tmp_path):
         clock.sleep(20)
         eng._run_tick("chat_lead")
         rec = eng.agent.history[-1]
+        assert rec.gate == "llm", rec.gate
         assert rec.decision.action == Action.ask_question and rec.overridden == "発話取りやめ: 判断中に会話が再開した"
         assert len([u for u in eng.state.utterances if u.source == "ai"]) == 1  # 開始の発言だけ
     finally:

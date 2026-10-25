@@ -20,20 +20,42 @@ GD・GW のように議論を進めたり結論を出したりはしない。
   (一時的な沈黙で頻繁に切り替えない)
 - 判断を始めた後に人間の新しい発言があれば、その判断の発話はしない(stale_reason)
 - 同じ状況(新しい発言がない)では、次の待ち時間がたつまで判断し直さない(待つことも選べる。LLM を呼びすぎない)
-話題提供・深掘り・橋渡し・話題転換の具体的な行動とプロンプトは第3・第4段階。数値はすべて仮の値(config.Settings の chat_*)。
+数値はすべて仮の値(config.Settings の chat_*)。
+
+第3段階: 雑談専用のプロンプト・行動・開始の話題。
+- プロンプトと出力スキーマは雑談専用(facilitator/chat/prompts.py)。GD・GW のプロンプトは使わない
+- 行動: offer_topic(話題を出す)/ ask_question(直前の発言を深掘り)/ invite_all(ほかの人に広げる)/
+  change_topic(話題を切り替える)/ no_intervention。invite_person は GD・GW と同じ安全条件のときだけ許可する
+  (ルール層の許可と、名前の確認・信頼度・同一人物の間隔の検証は進行役のものをそのまま使う)。内容支援(offer_hint など)は使わない
+- 依頼(「AIさん、何か話題ありますか」など)には、内容支援の設定によらず応じる。間がないときは話題の提供・転換と全体への返しだけ
+- 開始: あいさつ + 用意した候補の話題(facilitator/chat/topics.py。テーマがあればテーマに沿ったもの)。行動は start_gd のまま
+  (engine の開始の扱いを変えない)なので、開始の発言も AI の発言として第2段階の待ち(答えがなければ待つ)に入る
+- 発話は短く(どの行動も2文まで)
+話題の履歴の管理・話題転換の細かな条件・重複の防止は第4段階(いまは出した話題を記録し、候補から除くだけ)。
 """
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from typing import Any
 
 from facilitator.agent.agent import FacilitatorAgent
+from facilitator.chat.prompts import CHAT_REQUEST_NOTE, CHAT_SYSTEM_PROMPT, build_chat_output_schema, build_chat_user_prompt
+from facilitator.chat.topics import is_free, opening_speech, opening_topic, topic_candidates
 from facilitator.discussion_types import CASUAL
-from facilitator.models import Action, TickRecord, Utterance
+from facilitator.models import Action, Decision, TickRecord, Utterance
 
 LEAD, FREE = "lead", "free"  # AI 主導期 / 自走期
-FLOWING = ("progressing", "converging")  # LLM の analysis.health のうち「会話が進んでいる」
+FLOWING = ("progressing",)  # LLM の analysis.health のうち「会話が進んでいる」(converging は話題が一段落した)
+# 雑談の行動(許可の順)。invite_person は安全条件を満たすときだけ加える
+CHAT_ACTIONS = [Action.no_intervention, Action.offer_topic, Action.ask_question, Action.invite_all, Action.change_topic]
+# 間がない(chat_min_gap_sec)ときの依頼への応答: 話題の提供・転換と、意見を求められたときの全体への返しだけ
+REQUEST_ACTIONS = [Action.no_intervention, Action.offer_topic, Action.change_topic, Action.invite_all]
+TOPIC_ACTIONS = {Action.start_gd, Action.offer_topic, Action.change_topic}  # 話題を出す行動(出した話題を記録する)
+CHAT_MAX_SENTENCES = 2  # 雑談の発話は短く(開始・時間告知・終了の定型文は除く)
+CHAT_INVITE_ALL = "ほかの皆さんはどうですか?よければ聞かせてください。"
+SCHEMA_ACTIONS = CHAT_ACTIONS + [Action.invite_person, Action.time_warning, Action.close_gd]
 
 
 @dataclass
@@ -50,8 +72,15 @@ class ChatState:
 class ChatHostAgent(FacilitatorAgent):
     """雑談の司会(人間どうしの交流をつくる。会話の参加者にはならない)。"""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    invite_all_fallback = CHAT_INVITE_ALL
+
+    def __init__(self, *args: Any, rng: random.Random | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        self.system_prompt = CHAT_SYSTEM_PROMPT  # GD・GW のプロンプト(介入ポリシーの文)は使わない
+        self.output_schema = build_chat_output_schema(SCHEMA_ACTIONS)
+        self.rng = rng or random.Random()
+        self.opening: str | None = None  # 開始の話題(最初の判断で候補から選ぶ)
+        self.topics_used: list[str] = []  # AI が出した話題(発言)。第4段階で話題の管理に使う
         self.chat_phase = LEAD
         self.chat_phase_since: float | None = None  # いまの時期に入った時刻
         self.chat_log: list[tuple[float, str, str]] = []  # 時期の切り替え (時刻, 新しい時期, 理由)
@@ -59,6 +88,47 @@ class ChatHostAgent(FacilitatorAgent):
     # ================= 雑談専用の値 =================
     def _cooldown_sec(self) -> float:
         return self.settings.chat_min_gap_sec
+
+    def _max_sentences(self, action: Action) -> int:
+        return CHAT_MAX_SENTENCES
+
+    def _detects_requests(self) -> bool:
+        return True  # 話題を求める依頼には、内容支援の設定によらず応じる
+
+    def _content_actions(self, now: float) -> tuple[list[Action], str | None]:
+        return [], None  # 内容支援(offer_hint / propose_idea)は使わない。話題は offer_topic / change_topic で出す
+
+    # ================= 開始の話題・発話 =================
+    def _template(self, action: Action, now: float) -> str:
+        if action == Action.start_gd:  # あいさつ + 用意した候補の話題(時間や進め方の説明はしない)
+            if self.opening is None:
+                self.opening = opening_topic(self.state.theme, self.rng)
+            return opening_speech(self.state.theme, self.opening)
+        return super()._template(action, now)  # 時間告知・終了は雑談型の定型文(結論を求めない)
+
+    def _record(self, d: Decision, now: float, content_reason: str | None = None) -> None:
+        super()._record(d, now, content_reason)
+        if d.action in TOPIC_ACTIONS:
+            self.topics_used.append(self.opening if d.action == Action.start_gd and self.opening else d.speech)
+
+    def _context(self, now: float, trigger: str, allowed: list[Action], note: str | None) -> dict:
+        ctx = super()._context(now, trigger, allowed, note)
+        ctx["transcript"] = [line.replace("AI(ファシリテーター)", "AI(司会)") for line in ctx["transcript"]]
+        cs = self.chat_state(now)
+        ctx["chat"] = {
+            "phase": self.chat_phase,
+            "free_theme": is_free(self.state.theme),
+            "since_ai": cs.since_ai,
+            "answers": len(cs.humans_after_ai),
+            "answerers": len({u.speaker_id for u in cs.humans_after_ai}),
+            "unanswered": cs.unanswered,
+            "topics_used": list(self.topics_used),
+            "topic_candidates": topic_candidates(self.state.theme, self.topics_used)[:3],
+        }
+        return ctx
+
+    def _user_prompt(self, ctx: dict) -> str:
+        return build_chat_user_prompt(ctx)
 
     # ================= 会話の状態 =================
     def chat_state(self, now: float) -> ChatState:
@@ -173,13 +243,21 @@ class ChatHostAgent(FacilitatorAgent):
     def _gate(self, now: float) -> tuple[str, list[Action], str | None]:
         """GD・GW と同じルール層(強制イベント・発話中・依頼など)のうえに、雑談の待ちの条件を重ねる。"""
         gate, allowed, note = super()._gate(now)
-        if gate != "llm" or self.pending_request is not None:
-            return gate, allowed, note  # 強制イベント・見送り・依頼への応答(llm:request)はそのまま
+        if gate == "blocked:cooldown" and self.pending_request is not None:
+            # 間がなくても依頼には応じる(進行役は内容支援があるときだけ応じるが、雑談では話題で応じる)
+            return "llm:request", list(REQUEST_ACTIONS), CHAT_REQUEST_NOTE
+        if gate != "llm":
+            return gate, allowed, note  # 強制イベント・見送りはそのまま
+        chat = list(CHAT_ACTIONS)
+        if Action.invite_person in allowed:  # 個人指名は進行役と同じ条件(話者情報が使え、名前が確認済み)のときだけ
+            chat.append(Action.invite_person)
+        if self.pending_request is not None:
+            return gate, chat, None  # 依頼には自走期でも応じる
         cs = self.update_phase(now)
         wait = self.chat_wait_reason(now, cs)
         if wait:
             return f"blocked:{wait}", [], None
-        return gate, allowed, note
+        return gate, chat, None
 
     def stale_reason(self, now: float, context_utt_id: int | None = None) -> str | None:
         """判断を始めた後に人間の新しい発言があれば、その判断の発話はしない(古い会話の状況を前提に話さない)。"""
