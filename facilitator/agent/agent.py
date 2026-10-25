@@ -542,7 +542,14 @@ class FacilitatorAgent:
                 record.overridden = f"生成しながら {action.value} として話した(最終判断: {d.action.value})"
             d = Decision(action=action, reasoning=d.reasoning, speech=spoken, urgency=d.urgency)
             record.decision = d
+            record.content_flags = content_flags(action, spoken)  # 実際に話した文で検査し直す
         self._record(d, now, record.content_reason)
+
+    def record_spoken(self, now: float, action: Action, spoken: str) -> None:
+        """判断の途中で(LLM 以外の理由で)失敗したが、生成しながら一部を話してしまった発言を介入として記録する
+        (記録しないとクールダウンが効かず、すぐにまた話してしまうため)。"""
+        reason = self.content_reason if action in CONTENT_ACTIONS else None
+        self._record(Decision(action=action, reasoning="判断の途中で失敗(話した分を記録)", speech=spoken), now, reason)
 
     # ---------- 生成しながら話すときの検証(全文を待つ場合の _validate / _hold_short_stall と同じ方針) ----------
     def live_ok(self, action: Action, now: float) -> bool:

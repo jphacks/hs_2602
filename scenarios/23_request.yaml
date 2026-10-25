@@ -20,4 +20,4 @@ utterances:
 checkpoints:
   - {at: 136.5, expect: [no_intervention], require_llm: true, why: 参加者どうしの質問への回答待ち。AI を話題にした発言も依頼ではない}
   - {at: 158.5, when: {content_scope: [hint, concrete]}, expect: [offer_hint, propose_idea], forbid: [no_intervention], why: 進行役への明示的な依頼。範囲の中で応じる}
-  - {at: 158.5, when: {content_scope: none}, expect: [no_intervention, ask_question, organize_issues], why: 内容支援なし。依頼の検出もせず、案や観点は出さない}
+  - {at: 158.5, when: {content_scope: none}, expect: [no_intervention, ask_question, organize_issues], require_llm: true, why: 内容支援なし。依頼の検出もせず、案や観点は出さない}

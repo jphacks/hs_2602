@@ -528,13 +528,22 @@ class Engine:
                         live.action = act
                     feeder.feed(acc)
 
+            failed: Exception | None = None
             try:
                 rec = self.agent.tick(self.now(), trigger, act=False, on_partial=on_partial)
+            except Exception as e:  # LLM の失敗は tick の中で見送りになる。ここに来るのはそれ以外の想定外の失敗
+                failed = e
             finally:
                 if live is not None:
                     if live.started:
                         feeder.finish()  # 句点のない最後の文
                     live.close()
+            if failed is not None:
+                if live is not None and live.started:  # 話した分は介入として記録する(クールダウンが効くように)
+                    live.wait()
+                    if live.utt is not None and live.action is not None and gen == self._gen:
+                        self.agent.record_spoken(live.utt.start_time, live.action, live.text)
+                raise failed
             if gen != self._gen:  # LLM の応答待ちの間に次のセッションが始まった。古い判断は捨てる
                 return
             if self._sec is not None:

@@ -174,10 +174,11 @@ def _all_scenarios():
 
 
 def test_every_watch_checkpoint_declares_who_decides():
-    """「見守り」だけを期待する時点は、LLM の判断(require_llm)かルール層の判定(expect_gate)のどちらかを明示する。"""
+    """「見守り」を正解に含む時点は、LLM の判断(require_llm)かルール層の判定(expect_gate)のどちらかを明示する
+    (ルール層が見送っただけで、LLM が見守れたと数えないため)。"""
     missing = [
         (sc["id"], cp["at"]) for sc in _all_scenarios() for cp in sc["checkpoints"]
-        if cp["expect"] == ["no_intervention"] and not cp.get("require_llm") and not cp.get("expect_gate")
+        if "no_intervention" in cp["expect"] and not cp.get("require_llm") and not cp.get("expect_gate")
     ]
     assert not missing, missing
 
