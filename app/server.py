@@ -114,6 +114,12 @@ def start(req: StartReq) -> dict:
     return {"ok": True}
 
 
+@app.get("/api/result")
+def result() -> dict:
+    """終了したセッションの全発言と、参加者ごとの発言量(結果画面用)。"""
+    return engine.result()
+
+
 @app.get("/api/info")
 def info() -> dict:
     """画面の初期値。モック版(mock-test ブランチ)ではテキスト入力を既定にする。"""
