@@ -373,9 +373,6 @@ body { font-size: 17px; }
 .fb-types { display: flex; flex-wrap: wrap; gap: 6px; }
 .fb-types span { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--fill); color: var(--faint); }
 .fb-types span.has { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.fb-ex { margin-top: 8px; font-size: 13px; color: var(--muted); }
-.fb-ex div { padding: 3px 0; }
-.fb-ex i { font-style: normal; font-weight: 600; color: var(--text); margin-right: 6px; }
 .fb-loading { color: var(--muted); font-size: 14px; padding: 18px 0; text-align: center; }
 .tile .sub-label { display: block; font-size: 15px; font-weight: 600; color: var(--muted); margin: 18px 0 10px; }
 /* スタイルのカードの中の詳細設定 */
@@ -556,7 +553,7 @@ body { font-size: 17px; }
       <span class="label">発言の内容</span>
       <div class="choice2" id="fb-tabs">
         <button type="button" data-v="types" class="on">発言の種類</button>
-        <button type="button" data-v="review">振り返り(練習用)</button>
+        <button type="button" data-v="review">フィードバック</button>
       </div>
       <div class="hint fb-note" id="fb-note"></div>
       <div id="fb-body"></div>
@@ -1034,8 +1031,7 @@ function renderFeedback() {
           ${a.quote ? `<q>${esc(a.quote)}</q>` : ""}</div>`).join("")}
         ${list("良かった点", p.good)}${list("次に意識すること", p.next)}</div>`
     : `<div class="fb-person">${head(p)}
-        <div class="fb-types">${Object.entries(fb.types).map(([k, label]) => `<span class="${p.types[k] ? "has" : ""}">${esc(label)} ${p.types[k] || 0}</span>`).join("")}</div>
-        ${p.examples.length ? `<div class="fb-ex">${p.examples.map((e) => `<div><i>${esc(fb.types[e.type])}</i>「${esc(e.text)}」</div>`).join("")}</div>` : ""}</div>`).join("");
+        <div class="fb-types">${Object.entries(fb.types).map(([k, label]) => `<span class="${p.types[k] ? "has" : ""}">${esc(label)} ${p.types[k] || 0}</span>`).join("")}</div></div>`).join("");
 }
 $("btn-result").onclick = () => showResult();
 $("r-back").onclick = () => show("s-session");
