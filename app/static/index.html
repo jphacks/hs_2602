@@ -352,6 +352,11 @@ body { font-size: 17px; }
 .r-person .nums { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .r-person.fac .pct { color: var(--muted); font-size: 14px; font-weight: 600; }
 .r-log { display: flex; flex-direction: column; gap: 12px; }
+.tile .sub-label { display: block; font-size: 15px; font-weight: 600; color: var(--muted); margin: 18px 0 10px; }
+/* カスタム以外: 標準の値を表示するだけで、変更はできない */
+.detail.locked .adv-inner { opacity: .45; pointer-events: none; }
+.detail:not(.locked) .lock-hint { display: none; }
+.lock-hint { margin: -4px 0 6px; }
 </style>
 </head>
 <body>
@@ -399,10 +404,7 @@ body { font-size: 17px; }
         <input class="input" id="f-theme" placeholder="例：大学の学食の混雑を改善するには？">
         <button type="button" class="btn primary" id="btn-theme">自動生成</button>
       </div>
-    </div>
-
-    <div class="tile span-4">
-      <span class="label">議論タイプ</span>
+      <span class="label sub-label">議論タイプ</span>
       <div class="choice2 type-grid" id="seg-type"></div>
       <div class="hint" id="type-hint"></div>
     </div>
@@ -446,8 +448,9 @@ body { font-size: 17px; }
     </div>
 
 
-    <div class="tile span-4 detail hidden" id="detail-tile">
-      <span class="label">カスタム</span>
+    <div class="tile span-4 detail" id="detail-tile">
+      <span class="label">詳細設定</span>
+      <div class="hint lock-hint" id="lock-hint">スタイルで「カスタム」を選ぶと変更できます</div>
       <div id="detail-body">
           <div class="adv-inner">
             <div id="knobs"></div>
@@ -673,18 +676,27 @@ function syncSetup() {
   document.querySelectorAll(".person-in").forEach((el, i) => el.classList.toggle("hidden", i >= ui.humans));
   document.querySelectorAll(".ai-only").forEach((el) => el.classList.toggle("hidden", !ui.withAI));
   const on = (id, v) => $(id).querySelectorAll("button").forEach((b) => b.classList.toggle("on", String(v) === b.dataset.v));
-  on("purpose", ui.purpose); on("seg-input", ui.input); on("seg-level", ui.level);
-  $("detail-tile").classList.toggle("hidden", ui.purpose !== "custom");
+  on("purpose", ui.purpose); on("seg-level", ui.level);
+  // 詳細設定: カスタムのときだけ変更できる。それ以外は実際に使う標準の値を表示する
+  const custom = ui.purpose === "custom";
+  $("detail-tile").classList.toggle("locked", !custom);
+  ["f-intro", "f-tts", "f-spk"].forEach((id) => {
+    const el = $(id);
+    if (!custom && !el.disabled) { el.dataset.saved = el.checked; el.checked = true; }
+    if (custom && el.disabled && el.dataset.saved != null) el.checked = el.dataset.saved === "true";
+    el.disabled = !custom;
+  });
+  const inputShown = custom ? ui.input : (ui.info?.default_mode || "voice");
   // 就活では選考の公平性のため、AI が参加者の出していない観点を持ち込まない(提案度合いは標準まで)
   const jobCap = ui.purpose === "job";
   if (jobCap && ui.knobs.suggest > 1) ui.knobs.suggest = 1;
   $("knobs").querySelectorAll(".seg").forEach((g) => g.querySelectorAll("button").forEach((b) => {
-    b.classList.toggle("on", +b.dataset.v === (ui.knobs[g.dataset.knob] ?? 1));
+    b.classList.toggle("on", +b.dataset.v === (custom ? ui.knobs[g.dataset.knob] ?? 1 : 1));
     b.disabled = jobCap && g.dataset.knob === "suggest" && +b.dataset.v === 2;
   }));
-  if ($("knob-hint")) $("knob-hint").textContent = jobCap ? "就活では提案度合いは標準までです" : "";
-  $("mode-hint").textContent = ui.input === "voice"
-    ? "マイクで聞き取ります" : "発言を入力します";
+  if ($("knob-hint")) $("knob-hint").textContent = jobCap && custom ? "就活では提案度合いは標準までです" : "";
+  on("seg-input", inputShown);
+  $("mode-hint").textContent = inputShown === "voice" ? "マイクで聞き取ります" : "発言を入力します";
 }
 $("btn-theme").onclick = async () => {
   const b = $("btn-theme"); b.disabled = true; b.textContent = "生成中…";
