@@ -67,6 +67,13 @@ def started(st, ag, answer_at: float | None = 20.0):
     return end + 4 + 10.0
 
 
+def weak_twice(st, ag):
+    """開始の話題に1人だけ答え、橋渡しにも反応がない状態(話題を切り替えてよい状態)にする。返り値は判断する時刻。"""
+    now = started(st, ag)
+    ag._act(Decision(action=Action.invite_all, speech="ほかの皆さんはどうですか?"), now)
+    return st.utterances[-1].end_time + 25.0
+
+
 # ---------- 1. 雑談専用のプロンプト ----------
 def test_chat_prompt_is_separate_and_covers_policy():
     _st, ag = make_chat()
@@ -84,7 +91,7 @@ def test_user_prompt_uses_chat_context():
     now = started(st, ag)
     ag.tick(now, "chat_lead")
     u = llm.user
-    assert "AI 主導期" in u and "答えた人: 1人" in u and "これまでに AI が出した話題" in u and "話題の候補" in u
+    assert "AI 主導期" in u and "答えた人: 1人" in u and "# 最近扱った話題" in u and "# いまの話題" in u and "話題の候補" in u
     assert "AI(司会)" in u and "ファシリテーター" not in u and "目標フェーズ" not in u
     assert ag.opening not in llm.ctx["chat"]["topic_candidates"]  # 出した話題は候補から除く
 
@@ -114,9 +121,10 @@ def test_gate_allows_chat_actions_and_person_only_when_safe():
     st, ag = make_chat()
     now = started(st, ag)
     gate, allowed, _ = ag._gate(now)
-    assert gate == "llm" and allowed == CHAT_ACTIONS + [Action.invite_person]  # 名前確認済み・信頼度十分
+    # 名前確認済み・信頼度十分なら個人指名も。1人が答えたばかりなので、話題の提供・転換はまだ許可しない(第4段階)
+    assert gate == "llm" and allowed == [Action.no_intervention, Action.ask_question, Action.invite_all, Action.invite_person]
     st2, ag2 = make_chat(names=False)
-    gate, allowed, _ = ag2._gate(started(st2, ag2))
+    gate, allowed, _ = ag2._gate(weak_twice(st2, ag2))
     assert allowed == CHAT_ACTIONS  # 名前が確認されていなければ個人指名は許可しない
     gd = FacilitatorAgent(st, StubLLM(), load_settings(), purpose="general", policy=preset_policy("general_gw"))
     later = now + 60  # GD・GW のクールダウン(45秒)の後
@@ -133,17 +141,17 @@ def test_gd_actions_are_rejected_in_chat(action):
 
 @pytest.mark.parametrize("action", ["offer_topic", "ask_question", "invite_all", "change_topic"])
 def test_chat_actions_are_spoken_and_recorded(action):
-    st, ag = make_chat(StubLLM(action, "そうなんですね。休みの日はどこかに出かけますか?最近だとどうですか?"))
-    rec = ag.tick(started(st, ag), "chat_lead")
+    st, ag = make_chat(StubLLM(action, "そうなんですね。最近見て面白かった動画はありますか?最近だとどうですか?"))
+    rec = ag.tick(weak_twice(st, ag), "chat_lead")
     assert rec.decision.action.value == action
-    assert rec.decision.speech == "そうなんですね。休みの日はどこかに出かけますか?"  # 2文まで
+    assert rec.decision.speech == "そうなんですね。最近見て面白かった動画はありますか?"  # 2文まで
     assert st.interventions[-1].action.value == action and st.utterances[-1].source == "ai"
     assert rec.content_flags == []
 
 
 def test_names_and_person_invite_follow_existing_safety():
     st, ag = make_chat(StubLLM("offer_topic", "はなこさんは、最近行ってよかった場所はありますか?"))
-    rec = ag.tick(started(st, ag), "chat_lead")
+    rec = ag.tick(weak_twice(st, ag), "chat_lead")
     assert "はなこ" not in rec.decision.speech  # 個人名は invite_person 以外では使わない(文頭の呼びかけは外す)
     # 名前が確認されていない人への指名は、雑談用の全体への呼びかけにする
     st2, ag2 = make_chat(StubLLM("invite_person", "よければ、どうですか?", target="speaker_9"))
@@ -259,7 +267,7 @@ def test_engine_streams_chat_actions_with_mock(monkeypatch, tmp_path):
         eng._run_tick(trig)
         assert eng.state.interventions[-1].action == Action.offer_topic
         assert eng.state.utterances[-1].text.startswith("では、")
-        assert eng.agent.topics_used[-1] == eng.state.utterances[-1].text
+        assert eng.state.utterances[-1].text == "では、" + eng.agent.topics_used[-1]
     finally:
         eng.stop()
 

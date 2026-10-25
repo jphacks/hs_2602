@@ -64,6 +64,12 @@ class Settings:
     chat_free_min_links: int = 2  # AI の発言の後、つながった発言がこの回数あれば自走期に移る(1回でも LLM が進んでいると判断すれば移る)
     chat_lull_silence_sec: float = 15.0  # 自走期にこの沈黙が続いたら、会話が途切れたとみなす
     chat_free_min_sec: float = 20.0  # 自走期に移ってからこの秒数は、途切れても AI 主導期に戻さない(一時的な沈黙で切り替えないため)
+    # 話題の管理(facilitator/chat/topic_tracker.py)。値はすべて仮の値
+    chat_topic_change_after: int = 2  # 同じ話題で、AI の働きかけへの反応が薄い(答えなし・1人だけ)ことがこの回数続いたら話題を切り替えてよい
+    chat_one_on_one_max: int = 2  # 同じ1人とだけの一問一答がこの回数続いたら、深掘りの質問(ask_question)を許可せず全体へ広げる
+    chat_same_nudge_max: int = 2  # 同じ話題で、同じ働きかけ(深掘り・橋渡し)が薄い反応のままこの回数続いたら、その働きかけは繰り返さない
+    chat_recent_topics: int = 5  # 重複を避ける「最近扱った話題」の数(AI が出したもの・参加者が始めたもの)
+    chat_topic_similarity: float = 0.4  # 話題の種類で決まらないとき、同じ話題とみなす2文字の組の重なり
 
     # --- 内容支援(介入ポリシー⑥)。値はすべて仮の値 ---
     content_cooldown_sec: float = 120.0  # 自発的な内容支援どうしの最低間隔(参加者からの依頼への応答は除く)

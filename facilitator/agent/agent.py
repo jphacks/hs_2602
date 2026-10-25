@@ -115,6 +115,9 @@ class FacilitatorAgent:
         """LLM に渡す状況説明(雑談の司会が専用のものに上書きする)。"""
         return build_user_prompt(ctx)
 
+    def _observe_output(self, raw: dict, now: float) -> None:
+        """検証済みの LLM の出力を受け取る(GD・GW は何もしない。雑談の司会が話題の判断を読む)。"""
+
     def _detects_requests(self) -> bool:
         """進行役への依頼を検知するか(GD・GW は内容支援が有効なときだけ。雑談の司会が上書きする)。"""
         return self.policy.content_support
@@ -505,6 +508,7 @@ class FacilitatorAgent:
                 finally:
                     usage = getattr(self.llm, "last_usage", None)
                 out = AgentOutput.model_validate(raw)
+                self._observe_output(raw, now)
                 raw_action = out.decision.action.value
                 st.analysis = out.analysis
                 self.off_topic_streak = self.off_topic_streak + 1 if out.analysis.health == "off_topic" else 0

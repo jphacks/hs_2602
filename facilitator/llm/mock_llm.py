@@ -74,6 +74,8 @@ class MockLLM:
         }
 
     def _decide_chat(self, context: dict[str, Any]) -> dict[str, Any]:
+        """雑談の司会。許可された行動の中で: 依頼 → 話題を出す / 切り替えてよい(反応が薄い状態が続いた)→ 切り替える /
+        1人だけ答えた → ほかの人へ広げる / 2人以上が答えた → 深掘り / 一段落した → 新しい話題 / 答えなし → 答えやすく呼びかける。"""
         allowed: list[str] = context["allowed_actions"]
         chat = context["chat"]
         topic = (chat["topic_candidates"] or ["最近ちょっとハマっていることはありますか?"])[0]
@@ -82,17 +84,21 @@ class MockLLM:
             action = allowed[0]
         elif context.get("request") and "offer_topic" in allowed:
             action, speech = "offer_topic", f"では、{topic}"
+        elif "change_topic" in allowed:
+            action, speech = "change_topic", f"話は変わりますが、{topic}"
         elif chat["answerers"] == 1 and "invite_all" in allowed:
             action, speech = "invite_all", "そうなんですね。ほかの皆さんはどうですか?"
         elif chat["answers"] and "ask_question" in allowed:
             action, speech = "ask_question", "いいですね。もう少し詳しく聞かせてもらえますか?"
-        elif chat["unanswered"] >= 2 and "change_topic" in allowed:
-            action, speech = "change_topic", f"話は変わりますが、{topic}"
+        elif "offer_topic" in allowed:
+            action, speech = "offer_topic", f"では、{topic}"
         elif "invite_all" in allowed:
             action, speech = "invite_all", "どなたからでも大丈夫ですよ。思いついたことを気軽に聞かせてください。"
+        current = chat.get("topic") or {}
         return {
             "analysis": {"phase": context["observed_phase"] or "warm_up", "phase_reason": "(mock)",
-                         "health": "stalled" if action != "no_intervention" else "progressing", "recent_summary": "(mock)"},
-            "decision": {"action": action, "reasoning": "(mock) 雑談: 直前の AI の発言への反応だけで判断", "speech": speech,
+                         "health": "stalled" if action != "no_intervention" else "progressing", "recent_summary": "(mock)",
+                         "topic": current.get("text", ""), "topic_by": current.get("by", "none")},
+            "decision": {"action": action, "reasoning": "(mock) 雑談: 許可された行動と直前の反応だけで判断", "speech": speech,
                          "urgency": 0.5 if action != "no_intervention" else 0.0, "target_speaker": None},
         }

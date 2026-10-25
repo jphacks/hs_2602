@@ -31,7 +31,19 @@ GD・GW のように議論を進めたり結論を出したりはしない。
 - 開始: あいさつ + 用意した候補の話題(facilitator/chat/topics.py。テーマがあればテーマに沿ったもの)。行動は start_gd のまま
   (engine の開始の扱いを変えない)なので、開始の発言も AI の発言として第2段階の待ち(答えがなければ待つ)に入る
 - 発話は短く(どの行動も2文まで)
-話題の履歴の管理・話題転換の細かな条件・重複の防止は第4段階(いまは出した話題を記録し、候補から除くだけ)。
+
+第4段階: 話題の管理と、続ける・広げる・切り替えるの判断(facilitator/chat/topic_tracker.py)。
+- AI が出した話題と、参加者が自分たちで始めた話題(LLM の analysis.topic_by)を記録する。最近の話題と実質的に
+  同じ話題は候補に出さず、LLM が出そうとしたら候補に差し替える(生成しながら話す場合は、その文から先を話さない)
+- 話題ごとに AI の働きかけへの反応(答えなし / 1人だけ / 人間どうしの会話)を数え、ルール層で許可する行動を決める
+  - change_topic: 同じ話題で反応が薄い働きかけが chat_topic_change_after 回続いたときだけ(すぐには変えない)
+  - offer_topic: いまの話題がない、一段落した(LLM が converging と判断、または広がった後に途切れた)、
+    または切り替えてよいときだけ
+  - ask_question: 同じ1人との一問一答が chat_one_on_one_max 回続いたら許可しない(全体へ広げる)。
+    その人への個人指名も全体への呼びかけにする
+  - ask_question / invite_all: 同じ働きかけが薄い反応のまま chat_same_nudge_max 回続いたら、それは繰り返さない
+  - 依頼には従来どおり応じる(話題の制限はかけない)
+- どれを選ぶか(続ける・深掘り・橋渡し・切り替え・待つ)は、許可の範囲で LLM が会話履歴と反応から判断する
 """
 
 from __future__ import annotations
@@ -42,7 +54,8 @@ from typing import Any
 
 from facilitator.agent.agent import FacilitatorAgent
 from facilitator.chat.prompts import CHAT_REQUEST_NOTE, CHAT_SYSTEM_PROMPT, build_chat_output_schema, build_chat_user_prompt
-from facilitator.chat.topics import is_free, opening_speech, opening_topic, topic_candidates
+from facilitator.chat.topic_tracker import TopicStatus, TopicTracker
+from facilitator.chat.topics import is_free, opening_speech, opening_topic
 from facilitator.discussion_types import CASUAL
 from facilitator.models import Action, Decision, TickRecord, Utterance
 
@@ -55,6 +68,8 @@ REQUEST_ACTIONS = [Action.no_intervention, Action.offer_topic, Action.change_top
 TOPIC_ACTIONS = {Action.start_gd, Action.offer_topic, Action.change_topic}  # 話題を出す行動(出した話題を記録する)
 CHAT_MAX_SENTENCES = 2  # 雑談の発話は短く(開始・時間告知・終了の定型文は除く)
 CHAT_INVITE_ALL = "ほかの皆さんはどうですか?よければ聞かせてください。"
+TOPIC_LEAD = {Action.offer_topic: "では、", Action.change_topic: "話は変わりますが、"}  # 話題を候補に差し替えるときの前置き
+NOT_TURNS = {Action.time_warning, Action.close_gd}  # 話題への働きかけに数えない AI の発言
 SCHEMA_ACTIONS = CHAT_ACTIONS + [Action.invite_person, Action.time_warning, Action.close_gd]
 
 
@@ -80,7 +95,8 @@ class ChatHostAgent(FacilitatorAgent):
         self.output_schema = build_chat_output_schema(SCHEMA_ACTIONS)
         self.rng = rng or random.Random()
         self.opening: str | None = None  # 開始の話題(最初の判断で候補から選ぶ)
-        self.topics_used: list[str] = []  # AI が出した話題(発言)。第4段階で話題の管理に使う
+        self.topics = TopicTracker(self.settings, self.state.theme)  # 話題の記録(AI が出したもの・参加者が始めたもの)
+        self._topic_health: tuple[float, str] | None = None  # 直近の LLM の判断 (時刻, health)。話題が一段落したかに使う
         self.chat_phase = LEAD
         self.chat_phase_since: float | None = None  # いまの時期に入った時刻
         self.chat_log: list[tuple[float, str, str]] = []  # 時期の切り替え (時刻, 新しい時期, 理由)
@@ -106,10 +122,39 @@ class ChatHostAgent(FacilitatorAgent):
             return opening_speech(self.state.theme, self.opening)
         return super()._template(action, now)  # 時間告知・終了は雑談型の定型文(結論を求めない)
 
+    @property
+    def topics_used(self) -> list[str]:
+        """AI が出した話題(古い順)。"""
+        return self.topics.ai_topics()
+
+    @staticmethod
+    def _topic_text(speech: str) -> str:
+        """話題の発言から、話題そのもの(最後の問いかけの文)を取り出す(前置きの相づちで話題を取り違えないように)。"""
+        parts = [p for p in speech.replace("?", "?").split("?") if p.strip()]
+        last = parts[-1] if parts else speech
+        for lead in ("話は変わりますが、", "では、", "まずは、"):
+            last = last.split(lead)[-1]
+        return last.split("。")[-1].strip() + ("?" if "?" in speech or "?" in speech else "")
+
     def _record(self, d: Decision, now: float, content_reason: str | None = None) -> None:
         super()._record(d, now, content_reason)
         if d.action in TOPIC_ACTIONS:
-            self.topics_used.append(self.opening if d.action == Action.start_gd and self.opening else d.speech)
+            self.topics.ai_topic(self.opening if d.action == Action.start_gd and self.opening else self._topic_text(d.speech), now)
+        if d.action not in NOT_TURNS:
+            self.topics.note_turn(now, d.action)
+
+    def _observe_output(self, raw: dict, now: float) -> None:
+        """LLM が判断した話題を読む: 参加者が自分たちで新しい話題を始めたなら、その流れを話題として記録する。"""
+        a = raw.get("analysis") or {}
+        if a.get("topic_by") == "participants" and isinstance(a.get("topic"), str):
+            self.topics.participant_topic(a["topic"], now)
+        self._topic_health = (now, str(a.get("health", "")))
+
+    def topic_status(self, now: float) -> TopicStatus:
+        cur = self.topics.current
+        h = self._topic_health
+        settled = cur is not None and h is not None and h[0] >= cur.since and h[1] == "converging"
+        return self.topics.status(self.state, now, settled)
 
     def _context(self, now: float, trigger: str, allowed: list[Action], note: str | None) -> dict:
         ctx = super()._context(now, trigger, allowed, note)
@@ -122,10 +167,27 @@ class ChatHostAgent(FacilitatorAgent):
             "answers": len(cs.humans_after_ai),
             "answerers": len({u.speaker_id for u in cs.humans_after_ai}),
             "unanswered": cs.unanswered,
-            "topics_used": list(self.topics_used),
-            "topic_candidates": topic_candidates(self.state.theme, self.topics_used)[:3],
+            "topics_used": self.topics.recent(),
+            "topic_candidates": self.topics.candidates()[:3],
+            "topic": self._topic_context(now),
         }
         return ctx
+
+    def _topic_context(self, now: float) -> dict | None:
+        ts = self.topic_status(now)
+        if ts.topic is None:
+            return None
+        return {
+            "text": ts.topic.text,
+            "by": ts.topic.source,
+            "age_sec": now - ts.topic.since,
+            "reactions": ts.reactions,
+            "weak_streak": ts.weak_streak,
+            "one_on_one": ts.one_on_one,
+            "one_on_one_max": self.settings.chat_one_on_one_max,
+            "engaged": ts.engaged,
+            "settled": ts.settled,
+        }
 
     def _user_prompt(self, ctx: dict) -> str:
         return build_chat_user_prompt(ctx)
@@ -252,12 +314,48 @@ class ChatHostAgent(FacilitatorAgent):
         if Action.invite_person in allowed:  # 個人指名は進行役と同じ条件(話者情報が使え、名前が確認済み)のときだけ
             chat.append(Action.invite_person)
         if self.pending_request is not None:
-            return gate, chat, None  # 依頼には自走期でも応じる
+            return gate, chat, None  # 依頼には自走期でも応じる(話題の制限はかけない)
         cs = self.update_phase(now)
         wait = self.chat_wait_reason(now, cs)
         if wait:
             return f"blocked:{wait}", [], None
+        ts = self.topic_status(now)
+        if not ts.can_change:  # 反応が薄くてもすぐには変えない(深掘り・橋渡し・待つを先に)
+            chat.remove(Action.change_topic)
+        if not ts.can_offer:  # いまの話題が続いている間は、新しい話題を重ねない
+            chat.remove(Action.offer_topic)
+        if ts.one_on_one >= self.settings.chat_one_on_one_max and Action.ask_question in chat:  # 一問一答が続きすぎない
+            chat.remove(Action.ask_question)
+        if ts.repeated in chat:  # 同じ働きかけを薄い反応のまま繰り返さない(切り替えるか待つ)
+            chat.remove(ts.repeated)
         return gate, chat, None
+
+    # ================= 話題の重複・一問一答の検証 =================
+    def _validate(self, d: Decision, allowed: list[Action], now: float) -> tuple[Decision, str | None]:
+        d, note = super()._validate(d, allowed, now)
+        if d.action in TOPIC_LEAD and d.action != Action.no_intervention and self.pending_request is None:
+            # 許可はこの判断の前の話題で決めた。同じ判断で LLM が「参加者が新しい話題を始めた」と判断していたら、
+            # その話題はまだ始まったばかりなので、切り替え・新しい話題の提供はしない(参加者の流れを尊重する)
+            ts = self.topic_status(now)
+            if not (ts.can_change if d.action == Action.change_topic else ts.can_offer):
+                return Decision(reasoning=d.reasoning), f"参加者が始めた話題を尊重し {d.action.value} を見送り"
+        if d.action in TOPIC_LEAD and self.topics.is_recent(self._topic_text(d.speech)):
+            fresh = self.topics.candidates()
+            why = "最近の話題と重なる"
+            if not fresh:
+                return Decision(reasoning=d.reasoning), f"{why}ため no_intervention(候補なし)"
+            d = d.model_copy(update={"speech": TOPIC_LEAD[d.action] + fresh[0]})
+            note = "; ".join(x for x in (note, f"{why}ため話題を候補に差し替え") if x)
+        if d.action == Action.invite_person:
+            ts = self.topic_status(now)
+            if ts.one_on_one >= self.settings.chat_one_on_one_max and d.target_speaker == ts.partner:
+                return self._invite_all_instead(d, "同じ人との一問一答が続いている", now)
+        return d, note
+
+    def live_ok(self, action: Action, now: float) -> bool:
+        """話題の提供・転換は、生成しながら話さず全文を待つ(重複の差し替えと、同じ判断で分かる参加者の話題の確認を
+        話し始める前に行うため)。"""
+        return action not in TOPIC_LEAD and super().live_ok(action, now)
 
     def stale_reason(self, now: float, context_utt_id: int | None = None) -> str | None:
         """判断を始めた後に人間の新しい発言があれば、その判断の発話はしない(古い会話の状況を前提に話さない)。"""

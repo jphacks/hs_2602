@@ -2,12 +2,13 @@
 
 初対面でも答えやすい、身近で個人的すぎない話題だけを用意する(家族・恋愛・収入・健康・政治・宗教などは入れない)。
 テーマが指定されていればテーマに沿った候補を、空(自由な雑談)なら一般的な候補を使う。
-話題の履歴の管理・重複の防止は第4段階(ここでは、出した話題を除いて候補を返すだけ)。
+最近扱った話題(AI が出したもの・参加者が始めたもの)と実質的に同じ候補は除く(similar_topic)。
 """
 
 from __future__ import annotations
 
 import random
+import re
 
 from facilitator.discussion_types import CASUAL_FREE_THEME
 
@@ -62,13 +63,51 @@ THEME_TEMPLATES = [
 ]
 
 
+# 言い方が違うだけで実質的に同じ話題を見分けるための、話題の種類(どれかの語を含めば、その種類の話題)
+TOPIC_GROUPS: dict[str, tuple[str, ...]] = {
+    "休日": ("休み", "休日", "週末", "連休"),
+    "趣味": ("ハマ", "趣味", "続けている"),
+    "食べ物": ("食べ", "食事", "料理", "ご飯", "ごはん", "グルメ", "お店", "おいし"),
+    "場所": ("行って", "行きたい", "場所", "旅行", "旅", "出かけ", "観光"),
+    "生活リズム": ("朝型", "夜型", "早起き"),
+    "作品": ("動画", "番組", "映画", "ドラマ", "アニメ", "音楽", "本", "作品", "ゲーム", "見たり聞いたり"),
+    "自由な日": ("自由な日", "丸一日"),
+    "季節": ("季節",),
+    "学生生活": ("学生", "授業", "サークル", "部活", "学校", "大学"),
+    "仕事": ("仕事", "バイト", "アルバイト", "職場"),
+}
+SIMILAR_BIGRAM = 0.4  # 語の種類で決まらないときに、同じ話題とみなす2文字の組の重なり(仮の値)
+_NOISE = re.compile(r"[\s、。!?!?「」『』・]|ですか|ますか|ありますか|でしょう|ください|聞かせて|最近|ちょっと")
+
+
+def topic_groups(text: str) -> set[str]:
+    return {g for g, words in TOPIC_GROUPS.items() if any(w in text for w in words)}
+
+
+def _bigrams(text: str) -> set[str]:
+    t = _NOISE.sub("", text)
+    return {t[i : i + 2] for i in range(len(t) - 1)}
+
+
+def similar_topic(a: str, b: str, theme: str = "", threshold: float = SIMILAR_BIGRAM) -> bool:
+    """2つの話題が実質的に同じか(粗い判定)。テーマそのものの種類(テーマが「休日」なら休日)は、どの話題にも
+    含まれうるので比べない。種類が重なれば同じ、種類で決まらなければ2文字の組の重なりで見る。"""
+    ignore = set() if is_free(theme) else topic_groups(theme)
+    ga, gb = topic_groups(a) - ignore, topic_groups(b) - ignore
+    if ga and gb:
+        return bool(ga & gb)
+    x, y = _bigrams(a), _bigrams(b)
+    return bool(x and y) and len(x & y) / len(x | y) >= threshold
+
+
 def is_free(theme: str) -> bool:
     return not theme.strip() or theme == CASUAL_FREE_THEME
 
 
-def topic_candidates(theme: str, used: list[str] | None = None) -> list[str]:
-    """テーマに沿った話題の候補(出した話題は除く)。テーマの候補を使い切ったら、一般的な候補を足す。"""
-    used_set = set(used or [])
+def topic_candidates(theme: str, used: list[str] | None = None, threshold: float = SIMILAR_BIGRAM) -> list[str]:
+    """テーマに沿った話題の候補。used(最近扱った話題)と実質的に同じものは除く。
+    テーマの候補を使い切ったら、一般的な候補を足す。"""
+    used = list(used or [])
     if is_free(theme):
         pool = list(FREE_TOPICS)
     else:
@@ -77,7 +116,7 @@ def topic_candidates(theme: str, used: list[str] | None = None) -> list[str]:
         pool += FREE_TOPICS
     out = []
     for q in pool:
-        if q not in used_set and q not in out:
+        if q not in out and not any(q == u or similar_topic(q, u, theme, threshold) for u in used):
             out.append(q)
     return out
 

@@ -38,6 +38,16 @@ CHAT_SYSTEM_PROMPT = """\
 - no_intervention: 見守ります。speech は空文字にします。
 - time_warning / close_gd: ルール層が指示したときだけ選びます(下の「発話のルール」)。
 
+# 話題を続けるか、広げるか、切り替えるか
+状況説明の「いまの話題」(話題・AI の働きかけへの反応)と発話ログから判断します。
+- 参加者が興味を示している(詳しく話す、質問し合う、ほかの人も乗ってくる)なら、その話題を優先します。
+- 反応が薄くても、すぐに話題を変えません。まず、直前の発言を手がかりにした深掘り(ask_question)や、ほかの人への橋渡し(invite_all)を試すか、待ちます。
+- 1人だけが答えているときは、その人との一問一答を続けすぎず、全体への橋渡しを基本にします。
+- 同じ話題で働きかけても反応が得られない状態が続いたら、別の話題を出します(change_topic。許可されているときだけ)。
+- 参加者どうしで自然に話題が変わったら、その流れを尊重します。あなたが出した話題に戻す必要はありません。
+- 盛り上がっている最中には、話題を切り替えません。
+- 「最近扱った話題」と同じ話題や、言い方を変えただけの同じ話題は出しません。
+
 # 話題の選び方
 - 初対面でも話しやすい、身近で答えやすい話題にします(休日の過ごし方、最近ハマっていること、食べ物、行ってみたい場所など)。
 - 個人的すぎる話題(家族構成・恋愛・収入・健康・容姿・政治・宗教など)や、答えにくい深刻な話題は避けます。
@@ -60,7 +70,9 @@ analysis で会話の状態を更新し、decision で行動を決めてくだ�
 - analysis.phase: warm_up(話題出し・話し始め)/ expand(話題が広がり、互いの話を聞き合っている)/ closing(終わりが近く、感想を共有している)のいずれか
 - analysis.phase_reason: そのように判断した根拠(直近の発言の要点を1文で)
 - analysis.health: progressing(人間どうしの会話が続いている・応答がある)/ stalled(会話が止まっている・反応がない)/ converging(いまの話題が一段落した)のいずれか
-- analysis.recent_summary: いま何の話題で話しているか(短く)
+- analysis.recent_summary: 直近の会話の様子(短く)
+- analysis.topic: いま話している話題を短い問いかけか名詞句で(例:「休みの日の過ごし方」)。まだ話題がなければ空文字
+- analysis.topic_by: その話題を出したのが ai(あなた)か participants(参加者が自分たちで始めた・移った)か。話題がなければ none
 - decision.reasoning: その行動を選んだ理由(見守る場合は、なぜ見守るのか)を日本語で1〜2文
 - decision.urgency: 0.0〜1.0
 """
@@ -74,6 +86,7 @@ REQUEST_NOTE = (
     "司会のあなたへの依頼なら、許可されたアクションの範囲で応じてください(話題を求められたら offer_topic / change_topic、"
     "意見を求められたら自分の意見は言わずに参加者に返す)。参加者どうしのやり取りや、AI を話題にしているだけなら no_intervention を選びます。"
 )
+REACTION_JA = {"none": "答えなし", "single": "1人だけ答えた", "engaged": "参加者どうしの会話になった"}
 PHASE_JA = {"lead": "AI 主導期(参加者が話すきっかけをつくる時期)", "free": "自走期(参加者どうしで会話が続いている時期)"}
 
 
@@ -89,8 +102,10 @@ def build_chat_output_schema(actions: list[Action]) -> dict[str, Any]:
                     "phase_reason": {"type": "string"},
                     "health": {"type": "string", "enum": CHAT_HEALTH},
                     "recent_summary": {"type": "string"},
+                    "topic": {"type": "string"},
+                    "topic_by": {"type": "string", "enum": ["ai", "participants", "none"]},
                 },
-                "required": ["phase", "phase_reason", "health", "recent_summary"],
+                "required": ["phase", "phase_reason", "health", "recent_summary", "topic", "topic_by"],
                 "additionalProperties": False,
             },
             "decision": {
@@ -133,8 +148,20 @@ def build_chat_user_prompt(ctx: dict[str, Any]) -> str:
         f"- 直前の AI の発言の後の参加者の発言: {chat['answers']}回(答えた人: {chat['answerers']}人)",
         f"- 答えのないまま続いた AI の発言: {chat['unanswered']}回",
     ]
+    topic = chat.get("topic")
+    if topic:
+        by = "AI が出した" if topic["by"] == "ai" else "参加者が始めた"
+        react = " → ".join(REACTION_JA[r] for r in topic["reactions"]) or "まだなし"
+        lines.append("\n# いまの話題")
+        lines.append(f"- {topic['text']}({by}、{topic['age_sec']:.0f}秒前から)")
+        lines.append(f"- この話題での AI の働きかけへの反応(古い順): {react}")
+        if topic["one_on_one"] >= topic["one_on_one_max"]:
+            lines.append(f"- 同じ1人とだけの一問一答が{topic['one_on_one']}回続いています")
+        if topic["settled"]:
+            lines.append("- この話題は一段落したようです")
     if chat["topics_used"]:
-        lines.append("- これまでに AI が出した話題: " + " / ".join(chat["topics_used"][-5:]))
+        lines.append("\n# 最近扱った話題(同じ話題・言い換えただけの話題は出さない)")
+        lines.extend(f"- {t}" for t in chat["topics_used"])
     if chat["topic_candidates"]:
         lines.append("\n# 話題の候補(参考。流れに合わなければ使わなくてよい)")
         lines.extend(f"- {q}" for q in chat["topic_candidates"])
