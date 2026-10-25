@@ -37,7 +37,8 @@ def content_flags(action: Action, speech: str) -> list[str]:
     範囲によらず「そのアクションで言ってよいこと」を基準にする。"""
     if not speech or action in (Action.no_intervention, Action.start_gd, Action.time_warning, Action.close_gd):
         return []
-    if action == Action.propose_idea:  # 具体案は出してよいが、勧めたり意見を言ったりはしない
+    if action in (Action.propose_idea, Action.offer_topic, Action.change_topic):
+        # 具体案・話題(雑談の司会)は出してよいが、勧めたり意見を言ったりはしない
         patterns = OPINION
     elif action == Action.offer_hint:  # ヒントは観点・例まで。具体案や意見は含めない
         patterns = IDEA + OPINION

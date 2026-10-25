@@ -42,6 +42,12 @@ class Action(str, Enum):
     # 内容支援(介入ポリシー⑥)。範囲が「なし」のセッションでは出力の選択肢にも入れない
     offer_hint = "offer_hint"  # 新しい視点や考え方のヒントを1つ示す
     propose_idea = "propose_idea"  # 具体的なアイデアや解決策の例を1つ示す(決めるのは参加者)
+    # 雑談の司会だけが使う(facilitator/chat/)。GD・GW の出力の選択肢には入れない
+    offer_topic = "offer_topic"  # 新しい話題を出す
+    change_topic = "change_topic"  # 広がらない話題から別の話題へ切り替える
+
+
+CHAT_ONLY_ACTIONS = {Action.offer_topic, Action.change_topic}
 
 
 HEALTH_VALUES = ["progressing", "stalled", "off_topic", "conflicting", "converging"]
