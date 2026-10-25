@@ -1,0 +1,13 @@
+id: b2_reserved
+title: 人間3人 + AI参加者1人(控えめモード)
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 300
+ai_count: 1
+until: 75
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた}
+utterances:
+  - {t: 18, d: 5, s: speaker_1, text: 原因は、お昼に人が集中することだと思います。}
+  - {t: 24, d: 4, s: speaker_2, text: 会計が遅いのもありますよね。}
+  - {t: 29, d: 4, s: speaker_3, text: キャッシュレスにすれば速くなりそう。}
+  - {t: 34, d: 3, s: speaker_1, text: 確かに。ほかに何かありますかね。}
+  - {t: 55, d: 4, s: speaker_2, text: 席が足りないのも問題だと思います。}

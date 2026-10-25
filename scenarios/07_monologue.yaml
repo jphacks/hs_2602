@@ -1,0 +1,17 @@
+id: 07_monologue
+title: 特定の1人が長時間話し続ける
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 200
+initial_phase: solution_ideation
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 200, d: 25, s: speaker_1, c: 0.92, text: 僕が思うに、一番の問題はレジなんですよ。僕は毎日学食に行ってるんですけど、12時10分くらいに行くと必ずレジで5分は待たされるんです。現金で小銭を探してる人がいたり、ポイントカードを出したりで、一人あたりの時間が長い。だからまずレジを全部キャッシュレスにするべきで、それは絶対に効果があると思います。他の大学でもやってるところがあるって聞きましたし。}
+  - {t: 226, d: 1, s: speaker_2, c: 0.85, text: はい。}
+  - {t: 228, d: 28, s: speaker_1, c: 0.92, text: それに、キャッシュレスにすれば売上のデータも取れるので、どの時間にどのメニューが売れるかもわかるんです。そうすれば作り置きもできるし、提供時間も短くなる。あと、レジの人も減らせるので人件費も下がって、その分を席を増やすことに回せます。つまり、キャッシュレス化をすれば全部の問題が一気に解決するんですよ。僕はこれ以外ないと思ってます。}
+  - {t: 257, d: 1, s: speaker_3, c: 0.83, text: なるほど…}
+  - {t: 259, d: 25, s: speaker_1, c: 0.92, text: で、導入の費用なんですけど、最近は安い端末もあるので、そこまで高くないはずです。大学の予算でも十分いけると思います。反対する人もいるかもしれないですけど、学生にアンケートを取ればみんな賛成するはずですし、やらない理由がないですよね。なので、結論はキャッシュレス化でいいんじゃないかと思います。}
+checkpoints:
+  - {at: 270, when: {drift: [low, standard]}, expect: [no_intervention], expect_gate: blocked:speaking, why: 発話中なので話さない(長くても遮らない)}
+  - {at: 270, when: {drift: high}, expect: [no_intervention], expect_gate: llm:drift_interrupt, why: 本題についての長い発言で脱線ではない。②積極的では発話中でも脱線修正だけは LLM に任せるので、LLM 自身が見守る}
+  - {at: 286, expect: [invite_all, invite_person, organize_issues, ask_question], forbid: [no_intervention], target_any: [speaker_2, speaker_3, speaker_4], why: 1人が約80秒話し続け、他の人は相槌のみ。区切りで他の人の考えを引き出す}

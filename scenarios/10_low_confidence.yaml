@@ -1,0 +1,18 @@
+id: 10_low_confidence
+title: 話者ラベルの確信度が低い / unknown が多い
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 120
+initial_phase: cause_analysis
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 120, d: 5, s: speaker_1, c: 0.55, text: 原因は昼の時間に人が集中することだと思います。}
+  - {t: 126, d: 4, s: speaker_2, c: 0.4, text: あと会計も遅いですよね。}
+  - {t: 131, d: 5, s: speaker_1, c: 0.62, text: キャッシュレスにすれば早くなりそうです。}
+  - {t: 137, d: 4, s: speaker_2, c: 0.5, text: モバイルオーダーもいいかもしれません。}
+  - {t: 142, d: 5, s: speaker_1, c: 0.75, text: モバイルオーダーは便利ですけど、お金がかかりそう。}
+  - {t: 148, d: 4, s: speaker_2, c: 0.45, text: じゃあキャッシュレスの方がいいのかな。}
+  - {t: 153, d: 3, s: speaker_1, c: 0.58, text: そうかもしれないですね。}
+  - {t: 157, d: 2, s: speaker_2, c: 0.48, text: うーん。}
+checkpoints:
+  - {at: 172, expect: [invite_all, ask_question, organize_issues], forbid: [invite_person, no_intervention], expect_phase: [solution_ideation, evaluation], why: 2つの声だけで会話が止まった。話者識別の信頼度が低いので個人指名せず全体に呼びかける}

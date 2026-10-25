@@ -1,0 +1,16 @@
+id: 25_drift_first_chatter
+title: テーマと関係ない発言が1つ出ただけ(②脱線への対応の境界)
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 180
+initial_phase: solution_ideation
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+# 2回目の追加評価(19 の 204 秒以降を除いた派生ケース)を正式化。03_off_topic の 204.5 秒はルール層(2秒の間)で決まるため、
+# LLM 自身が「一言の雑談」を見守れるかはこのシナリオで評価する(期待は仮説。Claude では積極的でも見守った)
+utterances:
+  - {t: 180, d: 6, s: speaker_3, c: 0.9, text: 対策としては、キャッシュレスレジと空き教室の開放が出てますね。}
+  - {t: 187, d: 5, s: speaker_4, c: 0.88, text: あとはメニューごとに並ぶ列を分けるのもいいかも。}
+  - {t: 193, d: 4, s: speaker_1, c: 0.9, text: メニューの話で言うと、ラーメンが一番並んでますよね。}
+  - {t: 198, d: 5, s: speaker_2, c: 0.86, text: 学食のラーメン、正直駅前のラーメン屋の方がおいしくないですか？}
+checkpoints:
+  - {at: 206, expect: [no_intervention], require_llm: true, why: テーマと関係ない発言が1つ出ただけ(3秒の間)。どの段階でも一言の雑談は見守る}

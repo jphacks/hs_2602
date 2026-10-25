@@ -1,0 +1,38 @@
+id: 01_smooth
+title: 順調に進む議論(開始から)
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 0
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+utterances:
+  - {t: 20, d: 6, s: speaker_1, c: 0.92, text: じゃあまず、混雑の原因から考えませんか？お昼の12時台に人が集中してるのが一番大きいと思うんですけど。}
+  - {t: 27, d: 5, s: speaker_2, c: 0.88, text: 確かに。あと、レジの会計に時間がかかってる気もします。現金の人が多いので。}
+  - {t: 33, d: 5, s: speaker_3, c: 0.9, text: 席が足りないのもありますよね。食べ終わっても話してる人がいて回転が悪いというか。}
+  - {t: 39, d: 5, s: speaker_4, c: 0.86, text: 原因は、時間の集中、会計の遅さ、席の回転の3つくらいに分けられそうですね。}
+  - {t: 45, d: 7, s: speaker_1, c: 0.91, text: そうですね。じゃあそれぞれに対策を出していきましょうか。時間の集中なら、授業の終わる時間をずらすとか。}
+  - {t: 53, d: 4, s: speaker_2, c: 0.85, text: それは大学全体の話になるので難しそうだけど、効果は大きいですよね。}
+  - {t: 58, d: 4, s: speaker_3, c: 0.9, text: 会計の遅さなら、キャッシュレス専用レジを作るのはどうですか。}
+  - {t: 63, d: 4, s: speaker_4, c: 0.87, text: モバイルオーダーもありですね。並ぶ時間そのものがなくなるので。}
+  - {t: 68, d: 3, s: speaker_1, c: 0.9, text: でもモバイルオーダーは導入コストがかかりそう。}
+  - {t: 72, d: 6, s: speaker_4, c: 0.84, text: アプリを一から作ると高いですけど、既存のサービスを使えば安くできるかもしれません。}
+  - {t: 79, d: 7, s: speaker_2, c: 0.89, text: 席の回転については、食後の滞在時間を減らす工夫が要りますね。ピーク時間だけ食事専用席にするとか。}
+  - {t: 87, d: 4, s: speaker_3, c: 0.9, text: 空き教室を昼休みだけ開放するのもいいかも。}
+  - {t: 92, d: 2, s: speaker_1, c: 0.88, text: なるほど。案がだいぶ出てきましたね。}
+  - {t: 97, d: 6, s: speaker_4, c: 0.86, text: じゃあ、どの案が一番効果があるか比べてみませんか？コストと効果の二つの軸で見るとか。}
+  - {t: 104, d: 5, s: speaker_2, c: 0.9, text: いいですね。効果で言うと、時間の集中を解消するのが一番大きい気がします。}
+  - {t: 110, d: 5, s: speaker_3, c: 0.88, text: でも授業時間の変更は学食だけでは決められないので、実現性は低いですよね。}
+  - {t: 116, d: 4, s: speaker_1, c: 0.91, text: 実現性も軸に入れましょう。コスト、効果、実現性の三つで。}
+  - {t: 121, d: 7, s: speaker_4, c: 0.85, text: そうすると、キャッシュレスレジは、コスト低め、効果は中くらい、実現性は高いですね。}
+  - {t: 129, d: 5, s: speaker_2, c: 0.89, text: モバイルオーダーは、コスト中、効果大、実現性は中くらいかな。}
+  - {t: 135, d: 5, s: speaker_3, c: 0.9, text: 空き教室の開放は、コストほぼゼロで、実現性も高いと思います。}
+  - {t: 141, d: 4, s: speaker_1, c: 0.9, text: 効果はどうでしょう。教室で食べたい人がどれくらいいるか。}
+  - {t: 146, d: 5, s: speaker_3, c: 0.87, text: 友達に聞いたら、席があるならどこでもいいって人が多かったです。}
+  - {t: 152, d: 6, s: speaker_4, c: 0.86, text: じゃあ空き教室とキャッシュレスレジを組み合わせるのが、すぐできて効果もありそうですね。}
+  - {t: 159, d: 5, s: speaker_2, c: 0.9, text: モバイルオーダーは中長期の案として残しておくのはどうですか。}
+checkpoints:
+  - {at: 0, expect: [start_gd], why: 開始時はAIがテーマと進め方を説明する}
+  - {at: 95.5, when: {drift: [low, standard]}, expect: [no_intervention], expect_gate: blocked:short_pause, why: 原因整理から案出しまで自走している。一瞬の間で割り込まない}
+  - {at: 95.5, when: {drift: high}, expect: [no_intervention], expect_gate: llm:drift_interrupt, why: 本題の議論が自走している。②積極的では発話中・短い間でも脱線修正だけはルール層が LLM に任せるので、LLM 自身が脱線ではないと判断して見守る}
+  - {at: 125, when: {drift: [low, standard]}, expect: [no_intervention], expect_gate: blocked:speaking, why: 発話中(VAD)なので話さない}
+  - {at: 125, when: {drift: high}, expect: [no_intervention], expect_gate: llm:drift_interrupt, why: 本題の議論が自走している。②積極的では発話中・短い間でも脱線修正だけはルール層が LLM に任せるので、LLM 自身が脱線ではないと判断して見守る}
+  - {at: 166, expect: [no_intervention], require_llm: true, expect_phase: [evaluation, conclusion], why: 自ら比較軸を設定し収束に向かっている。見守るべき}
