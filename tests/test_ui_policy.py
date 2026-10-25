@@ -1,11 +1,8 @@
-"""画面・API と介入ポリシーのテスト(プリセットと変更した項目、旧 API の互換、セッションへの反映、依頼待ちの解除)。
-API は呼ばない(LLM はモック)。画面のスクリプトは node があれば偽の DOM の上で動かす(tests/ui_policy_harness.js)。"""
+"""画面・API と介入ポリシーのテスト(プリセットと変更した項目、画面の「詳細」との互換、セッションへの反映、依頼待ちの解除)。
+API は呼ばない(LLM はモック)。"""
 
 from __future__ import annotations
 
-import json
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -14,7 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app.server as server  # noqa: E402
-from config import POLICY_PRESETS, ROOT, load_settings  # noqa: E402
+from config import POLICY_PRESETS, ROOT, STYLE_KNOBS, load_settings  # noqa: E402
 from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
 from facilitator.agent.prompts import build_system_prompt  # noqa: E402
 from facilitator.engine import Engine  # noqa: E402
@@ -56,58 +53,13 @@ def test_content_help_matches_actual_behavior():
     assert "頼まれたとき" in help_["none"]
 
 
-# ---------- 画面のスクリプト(node) ----------
-@pytest.fixture(scope="module")
-def ui_steps(tmp_path_factory):
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("node がないため画面のスクリプトは確かめない")
-    spec = tmp_path_factory.mktemp("ui") / "spec.json"
-    spec.write_text(json.dumps(ui_spec(), ensure_ascii=False), encoding="utf-8")
-    r = subprocess.run([node, str(ROOT / "tests" / "ui_policy_harness.js"), str(HTML), str(spec)],
-                       capture_output=True, text=True, encoding="utf-8", timeout=60)
-    assert r.returncode == 0, r.stderr
-    return {s["label"]: s for s in json.loads(r.stdout)}
-
-
-def test_ui_preset_values_are_shown(ui_steps):
-    assert ui_steps["job_default"]["values"] == POLICY_PRESETS["job_gd"]
-    assert ui_steps["general_default"]["values"] == POLICY_PRESETS["general_gw"]
-    assert ui_steps["job_default"]["payload"] == {"policy_preset": "job_gd", "policy": {}}
-
-
-def test_ui_sends_only_changed_items(ui_steps):
-    s = ui_steps["general_organize_low"]
-    assert s["payload"] == {"policy_preset": "general_gw", "policy": {"organize": "low"}}
-    assert s["values"] == {**POLICY_PRESETS["general_gw"], "organize": "low"}  # ほかの項目はプリセットの値のまま
-    assert ui_steps["job_stall_back"]["payload"]["policy"] == {}  # 初期値に戻したら「未変更」
-    assert ui_steps["general_same_purpose"]["payload"]["policy"] == {"organize": "low"}  # 同じスタイルの押し直しでは消えない
-
-
-def test_ui_preset_switch_resets_changes(ui_steps):
-    assert ui_steps["general_default"]["payload"]["policy"] == {}  # スタイルの変更でプリセットが変わった
-    assert ui_steps["choose_job_gd"] == {**ui_steps["choose_job_gd"], "preset": "job_gd", "values": POLICY_PRESETS["job_gd"]}
-    s = ui_steps["pinned_purpose_change"]  # プリセットを選んだ後はスタイルを変えてもプリセットと変更を保つ
-    assert s["preset"] == "job_gd" and s["payload"]["policy"] == {"turns": "high"}
-
-
-def test_ui_content_dependency(ui_steps):
-    s = ui_steps["general_scope_none"]
-    assert s["values"]["content_scope"] == "none" and s["values"]["content_initiative"] == "none"
-    assert ui_steps["general_scope_back"]["values"]["content_initiative"] == "stalled"  # 戻すとプリセットの値に戻る
-
-
-def test_ui_job_neutrality_notice(ui_steps):
-    assert ui_steps["job_default"]["notice"] == ""
-    assert ui_steps["job_content_hint"]["notice"] == JOB_CONTENT_NOTICE
-    assert ui_steps["job_with_gw_preset"]["notice"] == JOB_CONTENT_NOTICE
-    assert ui_steps["general_default"]["notice"] == ""  # 就活以外では出さない
-
-
-def test_ui_no_longer_sends_legacy_settings():
+# ---------- 画面(第4段階の前の UI に戻した)と API の互換 ----------
+def test_ui_sends_legacy_knobs_that_api_accepts():
+    """現在の画面は「詳細」の5項目(knobs)と preset "A" を送る。名前は /api/info の knobs から表示する。"""
     html = HTML.read_text(encoding="utf-8")
-    assert "knobs:" not in html and 'preset: "A"' not in html and "custom: {}" not in html
-    assert "...policyPayload()" in html and "policy_preset: s.policy_preset" in html  # 再読み込みでも引き継ぐ
+    assert "knobs: { ...ui.knobs }" in html and 'preset: "A"' in html and "ui.info?.knobs" in html
+    assert "policy-items" not in html and "policyPayload" not in html  # 第4段階の「介入の設定」は撤去
+    assert set(server.info()["knobs"]) == set(STYLE_KNOBS)
 
 
 # ---------- API: 入力からポリシーを決める ----------
@@ -195,9 +147,28 @@ def test_api_legacy_style_b_no_longer_changes_numbers(engine):
     assert engine.agent._param("silence_trigger_sec") == 8.0  # ⑤ 積極的として扱う
 
 
-def test_api_info_serves_policy_spec():
+def test_api_info_serves_knob_labels_and_policy_spec():
     info = server.info()
-    assert info["policy"] == ui_spec() and "knobs" not in info and "presets" not in info
+    assert info["knobs"] == {k: v["label"] for k, v in STYLE_KNOBS.items()}  # 画面の「詳細」
+    assert info["policy"] == ui_spec() and "presets" not in info  # API の利用元向け(旧進行スタイルの数値は廃止)
+
+
+@pytest.mark.parametrize(
+    "purpose,knobs,check",
+    [
+        ("job", dict.fromkeys(["phase", "redirect", "organize", "turns", "suggest"], 1), lambda p: p == InterventionPolicy()),
+        ("general", dict.fromkeys(["phase", "redirect", "organize", "turns", "suggest"], 1),
+         lambda p: (p.organize, p.turns, p.stall, p.content_scope.value) == (Level.standard, Level.standard, Level.high, "hint")),
+        ("general", {"phase": 1, "redirect": 1, "organize": 2, "turns": 1, "suggest": 0},
+         lambda p: p.organize == Level.high and p.content_scope.value == "none"),
+        ("job", {"phase": 1, "redirect": 1, "organize": 1, "turns": 1, "suggest": 2}, lambda p: p == InterventionPolicy()),
+    ],
+)
+def test_api_start_with_current_ui_payload(engine, purpose, knobs, check):
+    """現在の画面が送る形(preset "A"・custom {}・knobs)で開始すると、介入ポリシーに変換されてセッションに反映される。"""
+    extra = {} if purpose == "general" else {"discussion_type": "planning"}
+    r = server.start(server.StartReq(purpose=purpose, preset="A", custom={}, knobs=knobs, **BASE, **extra))
+    assert r["ok"] and check(engine.policy)
 
 
 # ---------- 依頼待ちの解除(AI 参加者が待ち続けない) ----------

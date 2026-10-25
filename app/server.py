@@ -133,7 +133,8 @@ def info() -> dict:
     return {
         "llm": "mock" if mock else base.llm_model,
         "default_mode": "text" if mock else "voice",
-        "policy": ui_spec(),  # 介入ポリシーの項目・選択肢・説明・プリセット(画面はこれを表示する)
+        "knobs": {k: v["label"] for k, v in STYLE_KNOBS.items()},  # 画面の「詳細」の5項目の名前(送られた値は介入ポリシーに変換)
+        "policy": ui_spec(),  # 介入ポリシーの項目・選択肢・説明・プリセット(API の利用元向け。現在の画面は使わない)
         "discussion_types": [  # 画面で選べる議論タイプ
             {"key": k, "label": DISCUSSION_TYPES[k].label, "phases": [p.label for p in DISCUSSION_TYPES[k].phases]}
             for k in SELECTABLE_TYPES
