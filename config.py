@@ -79,9 +79,14 @@ CUSTOM_KEYS = {"cooldown_sec", "silence_trigger_sec", "analysis_interval_sec", "
 
 # 画面の「詳細」で選ぶ進行の調整。0=控えめ / 1=標準(既定・これまでの評価値) / 2=積極的
 # settings: 数値設定の上書き / prompt: 進行役への指示(システムプロンプトの末尾に足す)
+LEVEL3 = ["控えめ", "標準", "積極的"]
+
+# 画面の「詳細設定」。①〜⑤は 控えめ / 標準 / 積極的、⑥-A・⑥-B は内容支援(答えに近い手助け)をどこまでするか。
+# 各段階は 数値設定の上書き(settings) と 進行役への追加の指示(prompt) を持つ
 STYLE_KNOBS: dict[str, dict[str, Any]] = {
-    "phase": {
-        "label": "次のフェーズへの進行度合い",
+    "progress": {
+        "label": "① 進行・時間管理",
+        "options": LEVEL3,
         "levels": [
             {"settings": {"phase_behind_gap": 3, "phase_behind_late_gap": 2, "phase_behind_late_fraction": 0.75},
              "prompt": "フェーズの移行は急がない。参加者が十分に話し合うことを優先し、移行を促すのは大きく遅れたときだけにする。"},
@@ -91,7 +96,8 @@ STYLE_KNOBS: dict[str, dict[str, Any]] = {
         ],
     },
     "redirect": {
-        "label": "脱線修正の積極度",
+        "label": "② 脱線への対応",
+        "options": LEVEL3,
         "levels": [
             {"settings": {"redirect_wait_max_sec": 10.0},
              "prompt": "脱線には寛容にする。雑談が長く続き、議論の時間が明らかに失われているときだけ軌道修正する。"},
@@ -101,55 +107,89 @@ STYLE_KNOBS: dict[str, dict[str, Any]] = {
         ],
     },
     "organize": {
-        "label": "話題整理の積極度",
+        "label": "③ 論点・意見の整理",
+        "options": LEVEL3,
         "levels": [
             {"settings": {}, "prompt": "論点整理や比較基準の提示は控えめにし、参加者自身が整理するのを待つ。"},
             {"settings": {}, "prompt": ""},
-            {"settings": {}, "prompt": "意見が増えてきたら、区切りで論点を整理したり比較の基準を示したりして、議論の見通しを良くする。"},
+            {"settings": {}, "prompt": "意見が増えてきたら、区切りで論点や出た意見を整理し、議論の見通しを良くする。"},
         ],
     },
     "turns": {
-        "label": "どれだけ話を回すか",
+        "label": "④ 発言機会の調整",
+        "options": LEVEL3,
         "levels": [
-            {"settings": {"cooldown_sec": 60.0, "silence_trigger_sec": 15.0, "analysis_interval_sec": 25.0},
+            {"settings": {"person_cooldown_sec": 180.0, "cooldown_sec": 60.0},
              "prompt": "発言機会の調整は控えめにし、参加者どうしの自然なやり取りに任せる。"},
             {"settings": {}, "prompt": ""},
-            {"settings": {"cooldown_sec": 30.0, "silence_trigger_sec": 8.0, "analysis_interval_sec": 15.0},
+            {"settings": {"person_cooldown_sec": 75.0, "cooldown_sec": 30.0},
              "prompt": "発言の少ない人に積極的に話を振り、全員が考えを示せるように回す。"},
         ],
     },
-    "suggest": {
-        "label": "AIからの提案度合い",
+    "stall": {
+        "label": "⑤ 停滞への介入",
+        "options": LEVEL3,
         "levels": [
-            {"settings": {}, "prompt": "問いかけだけで進行し、観点や切り口を自分からは示さない。"},
+            {"settings": {"silence_trigger_sec": 18.0, "analysis_interval_sec": 25.0},
+             "prompt": "沈黙や行き詰まりにはすぐに介入せず、参加者が自力で立て直すのを待つ。"},
+            {"settings": {}, "prompt": ""},
+            {"settings": {"silence_trigger_sec": 8.0, "analysis_interval_sec": 15.0},
+             "prompt": "議論が止まりかけたら、早めに問いかけて流れを作る。"},
+        ],
+    },
+    "content": {
+        "label": "⑥-A 内容支援の範囲",
+        "options": ["なし", "ヒントまで", "具体案まで"],
+        "levels": [
             {"settings": {}, "prompt": ""},
             {"settings": {},
-             "prompt": "議論に足りない観点(例: 費用、利用者の立場、実現性)を具体的に示してよい。ただし解決策・結論・自分の意見は言わない。"},
+             "prompt": "考える手がかりになるヒント(観点・切り口・身近な例)まで示してよい。具体的な解決策や結論、あなた自身の意見は示さない。"},
+            {"settings": {},
+             "prompt": "具体的な案の例まで示してよい。ただし複数の選択肢として示し、どれにするかは参加者に任せる。特定の結論へ誘導しない。"},
+        ],
+    },
+    "content_when": {
+        "label": "⑥-B 自発的な内容支援",
+        "options": ["なし", "停滞時のみ", "積極的"],
+        "levels": [
+            {"settings": {}, "prompt": "内容の支援は自分からはせず、参加者から求められたときだけ行う。"},
+            {"settings": {}, "prompt": "内容の支援は、議論が停滞したときだけ自分から行う。"},
+            {"settings": {}, "prompt": "議論を深めるのに役立つと判断したら、停滞していなくても自分から内容の支援をしてよい。"},
         ],
     },
 }
 
-
-# 就活GDでは選考の公平性のため、進行役が参加者の出していない観点を持ち込まない(prompts.PURPOSE_RULES["job"])。
-# そのため「AIからの提案度合い」は就活では標準までに抑える
-JOB_MAX_LEVEL = {"suggest": 1}
+# スタイルごとの詳細設定の初期値(GD用 = 就活、GW用 = 就活以外。カスタムは GW用から始める)
+STYLE_DEFAULTS: dict[str, dict[str, int]] = {
+    "job": {"progress": 1, "redirect": 1, "organize": 1, "turns": 1, "stall": 1, "content": 0, "content_when": 0},
+    "general": {"progress": 1, "redirect": 1, "organize": 2, "turns": 2, "stall": 2, "content": 1, "content_when": 1},
+}
+CONTENT_KEYS = ("content", "content_when")
 
 
 def knob_overrides(knobs: dict[str, int] | None, purpose: str = "job") -> tuple[dict[str, Any], list[str]]:
-    """詳細の選択から、数値設定の上書きと進行役への追加の指示を作る。"""
+    """詳細設定の選択から、数値設定の上書きと進行役への追加の指示を作る。選ばれていない項目は用途の初期値を使う。
+    ⑥-A が「なし」なら ⑥-B も「なし」に固定し、内容支援の指示は出さない。"""
+    chosen = {**STYLE_DEFAULTS.get(purpose, STYLE_DEFAULTS["job"]),
+              **{k: v for k, v in (knobs or {}).items() if k in STYLE_KNOBS and v in (0, 1, 2)}}
+    if chosen["content"] == 0:
+        chosen["content_when"] = 0
     overrides: dict[str, Any] = {}
     notes: list[str] = []
-    for key, level in (knobs or {}).items():
-        spec = STYLE_KNOBS.get(key)
-        if not spec or level not in (0, 1, 2):
+    for key, spec in STYLE_KNOBS.items():
+        if key in CONTENT_KEYS and chosen["content"] == 0:
             continue
-        if purpose == "job":
-            level = min(level, JOB_MAX_LEVEL.get(key, 2))
-        choice = spec["levels"][level]
+        choice = spec["levels"][chosen[key]]
         overrides.update(choice["settings"])
         if choice["prompt"]:
             notes.append(f"- {spec['label']}: {choice['prompt']}")
     return overrides, notes
+
+
+def content_support_allowed(knobs: dict[str, int] | None, purpose: str = "job") -> bool:
+    """内容支援(⑥-A)が「なし」以外か。"""
+    chosen = {**STYLE_DEFAULTS.get(purpose, STYLE_DEFAULTS["job"]), **(knobs or {})}
+    return chosen.get("content", 0) in (1, 2)
 
 
 def load_settings(**overrides) -> Settings:

@@ -103,8 +103,14 @@ def build_system_prompt(purpose: str = "job", discussion_type: str | None = None
     dtype = get_discussion_type(discussion_type, p)
     extra = ""
     if style_notes:
-        # 主催者が画面の「詳細」で選んだ進行の調整。上の方針(特に答えを与えない)の範囲内で従う
-        extra = "\n# 主催者による進行の調整(上の方針の範囲内で従う)\n" + "\n".join(style_notes) + "\n"
+        # 主催者が画面の「詳細設定」で選んだ進行の調整。基本は上の方針の範囲内で従う。
+        # 内容支援(⑥)を許可した場合だけ、その範囲に限って「答えを与えない」「観点を持ち込まない」より優先する
+        extra = (
+            "\n# 主催者による進行の調整\n"
+            "上の方針の範囲内で従ってください。ただし「⑥」(内容支援)の項目がある場合は、そこに書かれた範囲に限り、"
+            "上の「解決策・正解を示さない」「参加者が出していない観点を持ち込まない」より優先します。\n"
+            + "\n".join(style_notes) + "\n"
+        )
     return PURPOSE_INTRO[p] + COMMON_PROMPT + build_phase_block(dtype) + PURPOSE_RULES[p] + extra
 
 
