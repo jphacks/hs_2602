@@ -12,5 +12,5 @@ utterances:
   - {t: 257, d: 1, s: speaker_3, c: 0.83, text: なるほど…}
   - {t: 259, d: 25, s: speaker_1, c: 0.92, text: で、導入の費用なんですけど、最近は安い端末もあるので、そこまで高くないはずです。大学の予算でも十分いけると思います。反対する人もいるかもしれないですけど、学生にアンケートを取ればみんな賛成するはずですし、やらない理由がないですよね。なので、結論はキャッシュレス化でいいんじゃないかと思います。}
 checkpoints:
-  - {at: 270, expect: [no_intervention], why: 発話中なので話さない(長くても遮らない)}
+  - {at: 270, expect: [no_intervention], expect_gate: blocked:speaking, why: 発話中なので話さない(長くても遮らない)}
   - {at: 286, expect: [invite_all, invite_person, organize_issues, ask_question], forbid: [no_intervention], target_any: [speaker_2, speaker_3, speaker_4], why: 1人が約80秒話し続け、他の人は相槌のみ。区切りで他の人の考えを引き出す}

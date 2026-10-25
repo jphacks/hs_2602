@@ -1,0 +1,27 @@
+id: 21_organize_levels
+title: 対立と合意の節目での③論点・意見の整理の段階
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 150
+initial_phase: evaluation
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+# 同じ主張の2往復(平行線の始まり)と、まとめの発言がないままの合意の節目で、段階ごとの違いを見る(期待は仮説)
+utterances:
+  - {t: 150, d: 5, s: speaker_1, c: 0.9, text: 一番効くのはキャッシュレス化だと思います。会計が速くなるので。}
+  - {t: 156, d: 5, s: speaker_2, c: 0.88, text: いや、券売機を増やす方が早いですよ。導入も簡単だし。}
+  - {t: 162, d: 5, s: speaker_1, c: 0.9, text: でも券売機だと結局並びますよね。キャッシュレスの方がいい。}
+  - {t: 168, d: 5, s: speaker_2, c: 0.88, text: キャッシュレスは慣れてない人もいるから、券売機の方が確実です。}
+  - {t: 176, d: 4, s: speaker_3, c: 0.9, text: 両方ありかもしれないですね。}
+  - {t: 181, d: 5, s: speaker_4, c: 0.86, text: 短期は券売機、長期はキャッシュレスとか？}
+  - {t: 187, d: 4, s: speaker_1, c: 0.9, text: それいいですね。}
+  - {t: 192, d: 4, s: speaker_2, c: 0.88, text: 賛成です。}
+  - {t: 197, d: 5, s: speaker_3, c: 0.9, text: あとは席の問題ですかね。}
+  - {t: 203, d: 5, s: speaker_1, c: 0.9, text: 席は、食べ終わったら席を譲るルールとか。}
+  - {t: 209, d: 4, s: speaker_2, c: 0.88, text: 掲示を出すくらいならできそう。}
+  - {t: 214, d: 4, s: speaker_3, c: 0.9, text: 掲示、いいですね。}
+  - {t: 219, d: 2, s: speaker_4, c: 0.86, text: うん。}
+checkpoints:
+  - {at: 175.5, when: {organize: high}, expect: [compare_criteria, organize_issues], forbid: [no_intervention], why: 同じ主張が繰り返され始めた。平行線が続く前に比べ方を問う}
+  - {at: 175.5, when: {organize: [low, standard]}, expect: [no_intervention], require_llm: true, why: まだ2往復で、根拠も出ている}
+  - {at: 225, when: {organize: high}, expect: [organize_issues], forbid: [no_intervention], why: 合意の節目。参加者自身に決まったこと・未決のことの確認を促す}
+  - {at: 225, when: {organize: [low, standard]}, expect: [no_intervention], require_llm: true, why: 議論は進んでいる。定期的な要約は不要}

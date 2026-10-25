@@ -7,6 +7,13 @@ from typing import Any, Callable
 from facilitator.llm.stream import simulate_stream
 
 
+MOCK_SUPPORT = [
+    ("propose_idea", "例えば、時間帯ごとに割引をする案も考えられます。皆さんはどう思いますか?"),
+    ("offer_hint", "利用する人の立場から見ると、どんな困りごとがありそうでしょう?"),
+    ("ask_question", "ここまでの案の中で、一番効果が大きそうなのはどれだと思いますか?"),
+]
+
+
 class MockLLM:
     name = "mock"
     streams = True  # 画面の確認用に、生成途中の JSON を少しずつ渡す(ストリーミングの再現)
@@ -29,6 +36,7 @@ class MockLLM:
     def _decide(self, context: dict[str, Any]) -> dict[str, Any]:
         allowed: list[str] = context["allowed_actions"]
         silence = context["silence_sec"]
+        stall = context.get("stall_silence_sec", 12)  # 停滞とみなす沈黙(介入ポリシー⑤で変わる。標準は12秒)
         action, speech = "no_intervention", ""
         if len(allowed) == 1:
             action = allowed[0]
@@ -36,13 +44,17 @@ class MockLLM:
                 "time_warning": "残り時間が少なくなってきました。そろそろ結論をまとめていきましょうか。",
                 "close_gd": "時間になりました。グループとしての結論を確認させてください。",
             }.get(action, "")
-        elif silence >= 12 and "ask_question" in allowed:
-            action, speech = "ask_question", "ここまでの案の中で、一番効果が大きそうなのはどれだと思いますか?"
+        elif silence >= stall or context.get("request"):
+            # 停滞時・依頼時は、許可されている中で一番踏み込んだ支援を選ぶ(内容支援の段階の配線確認用)
+            for a, text in MOCK_SUPPORT:
+                if a in allowed:
+                    action, speech = a, text
+                    break
         return {
             "analysis": {
                 "phase": context["observed_phase"] or context["target_phase"],
                 "phase_reason": "(mock)",
-                "health": "stalled" if silence >= 12 else "progressing",
+                "health": "stalled" if silence >= stall else "progressing",
                 "issues": [],
                 "opinions": [],
                 "conflicts": [],

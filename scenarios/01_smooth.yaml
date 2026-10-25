@@ -31,6 +31,6 @@ utterances:
   - {t: 159, d: 5, s: speaker_2, c: 0.9, text: モバイルオーダーは中長期の案として残しておくのはどうですか。}
 checkpoints:
   - {at: 0, expect: [start_gd], why: 開始時はAIがテーマと進め方を説明する}
-  - {at: 95.5, expect: [no_intervention], why: 原因整理から案出しまで自走している。一瞬の間で割り込まない}
-  - {at: 125, expect: [no_intervention], why: 発話中(VAD)なので話さない}
+  - {at: 95.5, expect: [no_intervention], expect_gate: blocked:short_pause, why: 原因整理から案出しまで自走している。一瞬の間で割り込まない}
+  - {at: 125, expect: [no_intervention], expect_gate: blocked:speaking, why: 発話中(VAD)なので話さない}
   - {at: 166, expect: [no_intervention], require_llm: true, expect_phase: [evaluation, conclusion], why: 自ら比較軸を設定し収束に向かっている。見守るべき}

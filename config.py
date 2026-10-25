@@ -47,6 +47,18 @@ class Settings:
     phase_behind_late_gap: int = 1  # または、この段階数以上遅れていて
     phase_behind_late_fraction: float = 0.6  # 経過がこの割合以上
 
+    # --- 介入ポリシーの段階で変わる判断条件(既定値=標準。控えめ/積極的の値は LEVEL_SETTINGS) ---
+    drift_confirm_ticks: int = 0  # 直前にこの回数続けて脱線と判断していなければ redirect_topic を許可しない(0=条件なし)
+    quiet_member_sec: float = 0.0  # この秒数以上発言していない人間の参加者を「発言の少ない参加者」として LLM に示す(0=示さない)
+    # LLM が停滞(stalled)と判断して選んだ ask_question / organize_issues(と停滞を理由に許可した内容支援)は、
+    # 沈黙がこの秒数に満たなければ見送る(0=条件なし)。①の遅れの判定が立っているときと、依頼に答えるときは除く
+    stall_min_silence_sec: float = 0.0
+
+    # --- 内容支援(介入ポリシー⑥)。値はすべて仮の値 ---
+    content_cooldown_sec: float = 120.0  # 自発的な内容支援どうしの最低間隔(参加者からの依頼への応答は除く)
+    content_max_spontaneous: int = 3  # 1回の GD で自発的に行う内容支援の上限(依頼への応答は数えない)
+    request_expire_sec: float = 30.0  # 進行役への依頼に、この秒数のうちに応じられなければ見送る
+
     # --- LLM ---
     llm_provider: str = os.getenv("LLM_PROVIDER", "mock")  # mock-test ブランチ: 既定はモック(anthropic | mock | handoff)
     llm_model: str = os.getenv("LLM_MODEL", "claude-opus-5-5")
@@ -63,133 +75,73 @@ class Settings:
     log_transcript_text: bool = False  # 個人情報保護のためデフォルトで発話本文はログに残さない
 
 
-# 画面で選ぶ進行スタイル。A は Step 1 で評価した既定値
-PRESETS: dict[str, dict[str, float]] = {
-    "A": {},  # 標準(推奨)
-    "B": {  # 積極サポート: 沈黙や停滞により早く介入する
-        "cooldown_sec": 30.0,
-        "silence_trigger_sec": 8.0,
-        "analysis_interval_sec": 15.0,
-        "min_silence_for_intervention_sec": 1.5,
-    },
-}
-# カスタム設定で画面から変更できる項目
-CUSTOM_KEYS = {"cooldown_sec", "silence_trigger_sec", "analysis_interval_sec", "min_silence_for_intervention_sec"}
-
-
-# 画面の「詳細」で選ぶ進行の調整。0=控えめ / 1=標準(既定・これまでの評価値) / 2=積極的
-# settings: 数値設定の上書き / prompt: 進行役への指示(システムプロンプトの末尾に足す)
-LEVEL3 = ["控えめ", "標準", "積極的"]
-
-# 画面の「詳細設定」。①〜⑤は 控えめ / 標準 / 積極的、⑥-A・⑥-B は内容支援(答えに近い手助け)をどこまでするか。
-# 各段階は 数値設定の上書き(settings) と 進行役への追加の指示(prompt) を持つ
+# 旧画面の「詳細」の5項目(knobs: 0=控えめ / 1=標準 / 2=積極的)。旧 API の互換のため受け付けて介入ポリシーに変換する
+# (現在の画面は介入ポリシーの項目を直接送る)。phase / redirect / organize / turns → ①〜④、
+# suggest → ⑥(0 → 内容支援なし / 1 → プリセットのまま / 2 → ヒントまで・積極的)。facilitator/policy.py の from_knobs
 STYLE_KNOBS: dict[str, dict[str, Any]] = {
-    "progress": {
-        "label": "① 進行・時間管理",
-        "options": LEVEL3,
-        "levels": [
-            {"settings": {"phase_behind_gap": 3, "phase_behind_late_gap": 2, "phase_behind_late_fraction": 0.75},
-             "prompt": "フェーズの移行は急がない。参加者が十分に話し合うことを優先し、移行を促すのは大きく遅れたときだけにする。"},
-            {"settings": {}, "prompt": ""},
-            {"settings": {"phase_behind_gap": 1, "phase_behind_late_gap": 1, "phase_behind_late_fraction": 0.45},
-             "prompt": "時間配分を重視し、目標フェーズより遅れ始めたら、区切りで次のフェーズへの移行を早めに促す。"},
-        ],
+    "phase": {"label": "次のフェーズへの進行度合い"},
+    "redirect": {"label": "脱線修正の積極度"},
+    "organize": {"label": "話題整理の積極度"},
+    "turns": {"label": "どれだけ話を回すか"},
+    "suggest": {"label": "AIからの提案度合い"},
+}
+
+
+# 旧「詳細」(knobs)で送られた就活の「AIからの提案度合い」は、旧画面と同じく標準までに抑える(旧 API の互換)。
+# 現在の画面は介入ポリシーの⑥を直接送り、就活GDでも内容支援を有効にできる(中立設定ではない旨を表示する)
+JOB_MAX_LEVEL = {"suggest": 1}
+
+
+# 介入ポリシー①〜⑤の段階ごとの判断条件(Settings の上書き)。標準は上書きなし(=現行の値)。
+# 値はすべて仮の値で、シナリオ評価(第5段階)で調整する。各項目は自分の判断条件だけを変え、
+# クールダウン(45秒)・分析間隔(20秒)・割り込まないための間(2秒)はどの項目・段階でも変えない
+LEVEL_SETTINGS: dict[str, dict[str, dict[str, Any]]] = {
+    "progress": {  # ① 目標フェーズより「遅れている」とみなす条件(LLM に時間配分の注意を出す条件)
+        "low": {"phase_behind_gap": 3, "phase_behind_late_gap": 2, "phase_behind_late_fraction": 0.75},
+        "high": {"phase_behind_gap": 1, "phase_behind_late_gap": 1, "phase_behind_late_fraction": 0.45},
     },
-    "redirect": {
-        "label": "② 脱線への対応",
-        "options": LEVEL3,
-        "levels": [
-            {"settings": {"redirect_wait_max_sec": 10.0},
-             "prompt": "脱線には寛容にする。雑談が長く続き、議論の時間が明らかに失われているときだけ軌道修正する。"},
-            {"settings": {}, "prompt": ""},
-            {"settings": {"redirect_wait_max_sec": 25.0},
-             "prompt": "テーマから話がそれ始めたら、続く前に早めに軌道修正する。"},
-        ],
+    "drift": {  # ② 控えめ: 前回の判断でも脱線と見ていた(2回続けて脱線)ときだけ redirect_topic を許可
+        "low": {"drift_confirm_ticks": 1},
+        "high": {},
     },
-    "organize": {
-        "label": "③ 論点・意見の整理",
-        "options": LEVEL3,
-        "levels": [
-            {"settings": {}, "prompt": "論点整理や比較基準の提示は控えめにし、参加者自身が整理するのを待つ。"},
-            {"settings": {}, "prompt": ""},
-            {"settings": {}, "prompt": "意見が増えてきたら、区切りで論点や出た意見を整理し、議論の見通しを良くする。"},
-        ],
+    "organize": {},  # ③ 判断基準(プロンプト)だけを変える
+    "turns": {  # ④ 積極的: 60秒以上発言していない人間の参加者を LLM に示す(個人指名の条件は変えない)
+        "high": {"quiet_member_sec": 60.0},
     },
-    "turns": {
-        "label": "④ 発言機会の調整",
-        "options": LEVEL3,
-        "levels": [
-            {"settings": {"person_cooldown_sec": 180.0, "cooldown_sec": 60.0},
-             "prompt": "発言機会の調整は控えめにし、参加者どうしの自然なやり取りに任せる。"},
-            {"settings": {}, "prompt": ""},
-            {"settings": {"person_cooldown_sec": 75.0, "cooldown_sec": 30.0},
-             "prompt": "発言の少ない人に積極的に話を振り、全員が考えを示せるように回す。"},
-        ],
-    },
-    "stall": {
-        "label": "⑤ 停滞への介入",
-        "options": LEVEL3,
-        "levels": [
-            {"settings": {"silence_trigger_sec": 18.0, "analysis_interval_sec": 25.0},
-             "prompt": "沈黙や行き詰まりにはすぐに介入せず、参加者が自力で立て直すのを待つ。"},
-            {"settings": {}, "prompt": ""},
-            {"settings": {"silence_trigger_sec": 8.0, "analysis_interval_sec": 15.0},
-             "prompt": "議論が止まりかけたら、早めに問いかけて流れを作る。"},
-        ],
-    },
-    "content": {
-        "label": "⑥-A 内容支援の範囲",
-        "options": ["なし", "ヒントまで", "具体案まで"],
-        "levels": [
-            {"settings": {}, "prompt": ""},
-            {"settings": {},
-             "prompt": "考える手がかりになるヒント(観点・切り口・身近な例)まで示してよい。具体的な解決策や結論、あなた自身の意見は示さない。"},
-            {"settings": {},
-             "prompt": "具体的な案の例まで示してよい。ただし複数の選択肢として示し、どれにするかは参加者に任せる。特定の結論へ誘導しない。"},
-        ],
-    },
-    "content_when": {
-        "label": "⑥-B 自発的な内容支援",
-        "options": ["なし", "停滞時のみ", "積極的"],
-        "levels": [
-            {"settings": {}, "prompt": "内容の支援は自分からはせず、参加者から求められたときだけ行う。"},
-            {"settings": {}, "prompt": "内容の支援は、議論が停滞したときだけ自分から行う。"},
-            {"settings": {}, "prompt": "議論を深めるのに役立つと判断したら、停滞していなくても自分から内容の支援をしてよい。"},
-        ],
+    "stall": {  # ⑤ 沈黙で判断を始めるまでの秒数
+        # 控えめは、定期分析(20秒ごと)が短い沈黙のうちに判断しても、停滞への介入は 18 秒の沈黙まで待つ
+        "low": {"silence_trigger_sec": 18.0, "stall_min_silence_sec": 18.0},
+        "high": {"silence_trigger_sec": 8.0},
     },
 }
 
-# スタイルごとの詳細設定の初期値(GD用 = 就活、GW用 = 就活以外。カスタムは GW用から始める)
-STYLE_DEFAULTS: dict[str, dict[str, int]] = {
-    "job": {"progress": 1, "redirect": 1, "organize": 1, "turns": 1, "stall": 1, "content": 0, "content_when": 0},
-    "general": {"progress": 1, "redirect": 1, "organize": 2, "turns": 2, "stall": 2, "content": 1, "content_when": 1},
+
+# 介入ポリシーのプリセット(facilitator/policy.py の InterventionPolicy の初期値)。利用者は選んだ後に各項目を変更できる
+# ①〜⑤: low=控えめ / standard=標準(現行の就活GD相当) / high=積極的
+# ⑥-A content_scope: none=なし / hint=ヒントまで / concrete=具体案まで
+# ⑥-B content_initiative: none=依頼されたときだけ / stalled=停滞時のみ / proactive=積極的(content_scope が none なら none に固定)
+POLICY_PRESETS: dict[str, dict[str, str]] = {
+    "job_gd": {  # 就活GD用: 参加者の自主性を重視し、必要なときだけ進行を支援する。内容は出さない
+        "progress": "standard",
+        "drift": "standard",
+        "organize": "standard",
+        "turns": "standard",
+        "stall": "standard",
+        "content_scope": "none",
+        "content_initiative": "none",
+    },
+    "general_gw": {  # 一般GW用: 話しやすい場をつくり、人間の発言を引き出す。必要に応じて考え方のヒントを出せる
+        "progress": "standard",
+        "drift": "standard",
+        "organize": "high",
+        "turns": "high",
+        "stall": "high",
+        "content_scope": "hint",
+        "content_initiative": "stalled",
+    },
 }
-CONTENT_KEYS = ("content", "content_when")
-
-
-def knob_overrides(knobs: dict[str, int] | None, purpose: str = "job") -> tuple[dict[str, Any], list[str]]:
-    """詳細設定の選択から、数値設定の上書きと進行役への追加の指示を作る。選ばれていない項目は用途の初期値を使う。
-    ⑥-A が「なし」なら ⑥-B も「なし」に固定し、内容支援の指示は出さない。"""
-    chosen = {**STYLE_DEFAULTS.get(purpose, STYLE_DEFAULTS["job"]),
-              **{k: v for k, v in (knobs or {}).items() if k in STYLE_KNOBS and v in (0, 1, 2)}}
-    if chosen["content"] == 0:
-        chosen["content_when"] = 0
-    overrides: dict[str, Any] = {}
-    notes: list[str] = []
-    for key, spec in STYLE_KNOBS.items():
-        if key in CONTENT_KEYS and chosen["content"] == 0:
-            continue
-        choice = spec["levels"][chosen[key]]
-        overrides.update(choice["settings"])
-        if choice["prompt"]:
-            notes.append(f"- {spec['label']}: {choice['prompt']}")
-    return overrides, notes
-
-
-def content_support_allowed(knobs: dict[str, int] | None, purpose: str = "job") -> bool:
-    """内容支援(⑥-A)が「なし」以外か。"""
-    chosen = {**STYLE_DEFAULTS.get(purpose, STYLE_DEFAULTS["job"]), **(knobs or {})}
-    return chosen.get("content", 0) in (1, 2)
+PURPOSE_PRESET = {"job": "job_gd", "general": "general_gw"}  # 用途ごとの既定のプリセット
+POLICY_PRESET_LABELS = {"job_gd": "GD用(就活)", "general_gw": "GW用(一般)"}  # 画面に出す名前
 
 
 def load_settings(**overrides) -> Settings:

@@ -1,0 +1,29 @@
+id: 20_quiet_member_levels
+title: 長く発言していない人と④発言機会の調整の段階
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 60
+initial_phase: problem_definition
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+# みさきは最初に1回話しただけで、その後80秒以上発言していない。結論の前ではない区切りで、段階ごとの違いを見る(期待は仮説)
+utterances:
+  - {t: 60, d: 4, s: speaker_4, c: 0.88, text: 原因から整理しませんか。}
+  - {t: 65, d: 5, s: speaker_1, c: 0.9, text: 賛成です。まず時間の集中が大きいと思います。}
+  - {t: 71, d: 5, s: speaker_2, c: 0.88, text: 会計の遅さもありますよね。}
+  - {t: 77, d: 4, s: speaker_3, c: 0.9, text: 席の少なさもです。}
+  - {t: 82, d: 5, s: speaker_1, c: 0.9, text: 時間の集中は、授業の終わる時間が同じだからですよね。}
+  - {t: 88, d: 4, s: speaker_2, c: 0.88, text: そうそう。2限終わりに一気に来る。}
+  - {t: 93, d: 5, s: speaker_3, c: 0.9, text: 会計は現金の人が多いのが原因かも。}
+  - {t: 99, d: 4, s: speaker_1, c: 0.9, text: キャッシュレスの比率ってどのくらいなんでしょう。}
+  - {t: 104, d: 4, s: speaker_2, c: 0.88, text: 半分くらいって聞いたことあります。}
+  - {t: 109, d: 5, s: speaker_3, c: 0.9, text: 席は、食べ終わっても話してる人が多いですよね。}
+  - {t: 115, d: 4, s: speaker_1, c: 0.9, text: それ、けんたさんはどう思います？}
+  - {t: 122, d: 5, s: speaker_3, c: 0.9, text: 長居は仕方ないけど、混む時間だけでも譲り合えたらいいですね。}
+  - {t: 128, d: 4, s: speaker_2, c: 0.88, text: たしかに。}
+  - {t: 133, d: 5, s: speaker_1, c: 0.9, text: じゃあ原因は、時間の集中・会計・席の回転の3つで整理できましたね。}
+  - {t: 139, d: 2, s: speaker_3, c: 0.9, text: そうですね。}
+checkpoints:
+  - {at: 121.5, expect: [no_intervention], require_llm: true, why: 質問への回答を待つ間(2.5秒)。どの段階でもやり取りの最中には割り込まない}
+  - {at: 146, when: {turns: high}, expect: [invite_all, invite_person], target_any: [speaker_4], forbid: [no_intervention], why: 区切りで、80秒以上発言していない人に機会をつくる(全体への呼びかけを優先)}
+  - {at: 146, when: {turns: standard}, expect: [no_intervention, invite_all, invite_person], target_any: [speaker_4], why: 結論の前ではないので見守ってもよい}
+  - {at: 146, when: {turns: low}, expect: [no_intervention], require_llm: true, why: 1回は発言しており極端な偏りではなく、結論の前でもない}

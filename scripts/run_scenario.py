@@ -3,6 +3,7 @@
 使い方:
   python scripts/run_scenario.py scenarios/02_stalled.yaml
   python scripts/run_scenario.py scenarios/05_time_short.yaml --until 610 --llm mock
+  python scripts/run_scenario.py scenarios/18_stall_levels.yaml --llm mock --set stall=high   # 介入ポリシーを指定
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
 from facilitator.llm.factory import make_llm  # noqa: E402
 from facilitator.logging import TickLogger  # noqa: E402
 from facilitator.report import RecordingLLM, TestReport  # noqa: E402
-from facilitator.scenario import load_scenario  # noqa: E402
+from facilitator.scenario import load_scenario, parse_sets, scenario_policy  # noqa: E402
 from facilitator.state import DiscussionState  # noqa: E402
 
 
@@ -32,6 +33,8 @@ def main() -> None:
     ap.add_argument("--llm", choices=["anthropic", "mock", "handoff"])
     ap.add_argument("--until", type=float, help="再生終了時刻(経過秒)。省略時は最後の発話+30秒")
     ap.add_argument("--step", type=float, default=0.5, help="仮想時計の刻み(秒)")
+    ap.add_argument("--preset", help="介入ポリシーのプリセット(job_gd / general_gw)")
+    ap.add_argument("--set", action="append", metavar="ITEM=LEVEL", help="介入ポリシーの項目(例 stall=high)")
     args = ap.parse_args()
 
     settings = load_settings(**({"llm_provider": args.llm} if args.llm else {}))
@@ -41,8 +44,9 @@ def main() -> None:
         state.set_speaker_name(sid, name, confirmed=sc.get("names_confirmed", True))
     t = float(sc.get("start_elapsed", 0))
     llm = RecordingLLM(make_llm(settings))
+    policy = scenario_policy(sc, args.preset, parse_sets(args.set))
     agent = FacilitatorAgent(state, llm, settings, logger=TickLogger(settings.log_dir, sc["id"]),
-                             discussion_type=sc.get("discussion_type"))
+                             purpose=sc.get("purpose", "job"), discussion_type=sc.get("discussion_type"), policy=policy)
     if t > 0:
         state.started, state.start_time = True, 0.0
         state.observed_phase = sc.get("initial_phase", "")
@@ -53,7 +57,7 @@ def main() -> None:
     pending = sorted(sc["utterances"], key=lambda u: u["t"] + u["d"])
     end = args.until or max(u["t"] + u["d"] for u in pending) + 30
 
-    print(f"=== {sc['title']} / テーマ: {sc['theme']} ===")
+    print(f"=== {sc['title']} / テーマ: {sc['theme']} / 介入ポリシー: {policy.summary()} ===")
     skipped: dict[str, list[float]] = {}  # 定期分析の時刻なのに見送った時刻(理由別)
     while t <= end and not state.finished:
         while pending and pending[0]["t"] + pending[0]["d"] <= t:
