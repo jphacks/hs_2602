@@ -58,3 +58,13 @@ def test_mock_feedback_works_without_llm():
     assert fb["ok"] and [p["name"] for p in fb["people"]] == ["たろう", "はなこ"]
     assert fb["people"][1]["types"]["question"] == 1
     assert fb["people"][0]["good"] and fb["people"][0]["next"]
+
+
+def test_self_introduction_is_not_reviewed():
+    """自己紹介(声の登録)の発言は、振り返り・発言の種類に含めない。"""
+    llm = FakeLLM()
+    log = [{"id": 9, "speaker_id": "speaker_2", "who": "はなこ", "text": "はなこです。よろしくお願いします。", "source": "human", "intro": True}] + LOG
+    fb = build_feedback(llm, "学食", "課題解決型", log, HUMANS)
+    assert 9 not in llm.schema["properties"]["utterances"]["items"]["properties"]["id"]["enum"]
+    assert "よろしくお願いします" not in llm.user
+    assert next(p for p in fb["people"] if p["name"] == "はなこ")["turns"] == 1

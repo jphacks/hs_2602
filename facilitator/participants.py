@@ -390,7 +390,7 @@ def discussion_flow(agent: Any, now: float) -> str:
 def transcript_for_bot(state: Any) -> list[str]:
     st = state
     lines = []
-    for u in st.utterances[-20:]:
+    for u in [x for x in st.utterances if not st.is_intro(x)][-20:]:  # 自己紹介は含めない
         if u.source == "ai":
             who = "進行役(AI)"
         elif u.source == "bot":

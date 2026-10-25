@@ -148,6 +148,7 @@ def build_feedback(
     """log: 全発言 {id, speaker_id, who, text, source}。humans: 人間の参加者 {id, name}。
     返り値: {ok, people: [{id, name, turns, types: {種類: 回数}, aspects, good, next}], types, levels}"""
     human_ids = {h["id"] for h in humans}
+    log = [u for u in log if not u.get("intro")]  # 自己紹介(声の登録)は振り返り・分類に含めない
     targets = [u for u in log if u["source"] == "human" and u["speaker_id"] in human_ids and u["text"].strip()]
     if llm.name == "mock":
         raw = _mock(humans, targets)

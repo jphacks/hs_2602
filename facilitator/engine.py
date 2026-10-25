@@ -561,7 +561,7 @@ class Engine:
                 if name in self.intro.failed:
                     self.intro.failed.remove(name)
                 for t in turns:
-                    st.add_utterance(sid, t.text, t.start, t.end, 1.0)
+                    st.intro_ids.add(st.add_utterance(sid, t.text, t.start, t.end, 1.0).id)  # 自己紹介として印を付ける
                 self._note(f"{name}さんの声を登録しました({len(audio) / 16000:.1f}秒)")
             else:
                 if name not in self.intro.failed and name not in self.intro.enrolled:
@@ -1106,15 +1106,16 @@ class Engine:
         names = {f"speaker_{i + 1}": n for i, n in enumerate(cfg.names)}
         names.update({p.speaker_id: p.name for p in self.personas})
         done = [u for u in st.utterances if u.start_time <= now]
+        counted = [u for u in done if not st.is_intro(u)]  # 自己紹介は発言回数・発言量に数えない(ログには残す)
 
         def amount(us: list[Any]) -> dict[str, Any]:
             return {"turns": len(us), "sec": round(sum(max(0.0, u.end_time - u.start_time) for u in us), 1),
                     "chars": sum(len(u.text) for u in us)}
 
         people = []
-        order = list(names) + ([UNKNOWN] if any(u.speaker_id == UNKNOWN for u in done) else [])
+        order = list(names) + ([UNKNOWN] if any(u.speaker_id == UNKNOWN for u in counted) else [])
         for sid in order:
-            mine = [u for u in done if u.speaker_id == sid and u.source != "ai"]
+            mine = [u for u in counted if u.speaker_id == sid and u.source != "ai"]
             kind = "bot" if sid in st.bot_ids else ("unknown" if sid == UNKNOWN else "human")
             people.append({"id": sid, "name": names.get(sid, "不明"), "kind": kind, **amount(mine)})
         return {
@@ -1125,7 +1126,7 @@ class Engine:
             "elapsed": round(st.elapsed(now), 1) if st.started else 0.0,
             "duration": st.duration_sec,
             "people": people,
-            "facilitator": amount([u for u in done if u.source == "ai"]),
+            "facilitator": amount([u for u in counted if u.source == "ai"]),
             "interventions": len(st.interventions),
             "log": [
                 {
@@ -1135,6 +1136,7 @@ class Engine:
                     "who": "AI ファシリテーター" if u.source == "ai" else (names.get(u.speaker_id) or "不明"),
                     "text": u.text,
                     "source": u.source,
+                    "intro": st.is_intro(u),
                 }
                 for u in done
             ],
