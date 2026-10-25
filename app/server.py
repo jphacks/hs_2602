@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import random  # noqa: E402
 
-from config import CUSTOM_KEYS, PRESETS, STYLE_KNOBS, load_settings  # noqa: E402
+from config import CUSTOM_KEYS, PRESETS, STYLE_DEFAULTS, STYLE_KNOBS, load_settings  # noqa: E402
 from facilitator.llm.base import LLMError  # noqa: E402
 from facilitator.llm.factory import make_llm  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
@@ -130,7 +130,8 @@ def info() -> dict:
         "llm": "mock" if mock else base.llm_model,
         "default_mode": "text" if mock else "voice",
         "presets": {name: {**defaults, **vals} for name, vals in PRESETS.items()},
-        "knobs": {k: v["label"] for k, v in STYLE_KNOBS.items()},
+        "knobs": [{"key": k, "label": v["label"], "options": v["options"]} for k, v in STYLE_KNOBS.items()],
+        "knob_defaults": STYLE_DEFAULTS,  # スタイルごとの詳細設定の初期値(job = GD用、general = GW用)
         "discussion_types": [  # 画面で選べる議論タイプ
             {"key": k, "label": DISCUSSION_TYPES[k].label, "phases": [p.label for p in DISCUSSION_TYPES[k].phases]}
             for k in SELECTABLE_TYPES

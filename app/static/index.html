@@ -353,10 +353,10 @@ body { font-size: 17px; }
 .r-person.fac .pct { color: var(--muted); font-size: 14px; font-weight: 600; }
 .r-log { display: flex; flex-direction: column; gap: 12px; }
 .tile .sub-label { display: block; font-size: 15px; font-weight: 600; color: var(--muted); margin: 18px 0 10px; }
-/* カスタム以外: 標準の値を表示するだけで、変更はできない */
-.detail.locked .adv-inner { opacity: .45; pointer-events: none; }
-.detail:not(.locked) .lock-hint { display: none; }
-.lock-hint { margin: -4px 0 6px; }
+/* スタイルのカードの中の詳細設定 */
+.subcard { margin-top: 16px; padding: 16px 16px 8px; border-radius: 16px; background: var(--tile-2); }
+.subcard > .label { display: block; font-size: 15px; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
+.subcard .seg { background: rgba(0, 0, 0, .06); }
 </style>
 </head>
 <body>
@@ -438,32 +438,29 @@ body { font-size: 17px; }
       </div>
     </div>
 
-    <div class="tile span-2 tile-style">
+    <div class="tile span-4 tile-style">
       <span class="label">スタイル</span>
       <div class="choice3" id="purpose">
         <button type="button" data-v="job">就活</button>
         <button type="button" data-v="general">就活以外</button>
         <button type="button" data-v="custom">カスタム</button>
       </div>
+      <div class="subcard" id="detail-tile">
+        <span class="label">詳細設定</span>
+        <div class="hint" id="style-hint"></div>
+        <div id="knobs"></div>
+      </div>
     </div>
 
-
-    <div class="tile span-4 detail" id="detail-tile">
-      <span class="label">詳細設定</span>
-      <div class="hint lock-hint" id="lock-hint">スタイルで「カスタム」を選ぶと変更できます</div>
-      <div id="detail-body">
-          <div class="adv-inner">
-            <div id="knobs"></div>
-            <h3 style="margin-top:22px">その他</h3>
-            <div class="knob"><span>入力方法</span><div class="seg" id="seg-input"><button type="button" data-v="voice">🎙 音声</button><button type="button" data-v="text">⌨ テキスト</button></div></div>
-            <div class="hint" id="mode-hint" style="margin:-4px 0 10px"></div>
-            <div class="toggles">
-              <label class="toggle"><input type="checkbox" id="f-intro" checked>自己紹介で声を登録</label>
-              <label class="toggle"><input type="checkbox" id="f-tts" checked>AI の声を出す</label>
-              <label class="toggle"><input type="checkbox" id="f-spk" checked>話者情報を使う</label>
-            </div>
-          </div>
-        </div>
+    <div class="tile span-4">
+      <span class="label">その他</span>
+      <div class="knob"><span>入力方法</span><div class="seg" id="seg-input"><button type="button" data-v="voice">🎙 音声</button><button type="button" data-v="text">⌨ テキスト</button></div></div>
+      <div class="hint" id="mode-hint" style="margin:-4px 0 10px"></div>
+      <div class="toggles">
+        <label class="toggle"><input type="checkbox" id="f-intro" checked>自己紹介で声を登録</label>
+        <label class="toggle"><input type="checkbox" id="f-tts" checked>AI の声を出す</label>
+        <label class="toggle"><input type="checkbox" id="f-spk" checked>話者情報を使う</label>
+      </div>
     </div>
 
     <div class="setup-actions span-4">
@@ -567,7 +564,7 @@ const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Typ
 
 const ui = {
   withAI: false, purpose: "job", dtype: null, minutes: 8, humans: 3, bots: 1, input: "voice", level: 2,
-  knobs: { phase: 1, redirect: 1, organize: 1, turns: 1, suggest: 1 }, info: null, config: null, started: false,
+  knobs: {}, info: null, config: null, started: false,
 };
 let snap = null, logKey = "", doneShown = false;
 const seenMsg = new Set();
@@ -609,7 +606,6 @@ document.querySelectorAll(".purpose").forEach((b) => b.onclick = () => {
 
 /* ---------- 2. 設定 ---------- */
 const LEVEL_NAMES = { 1: "やさしい", 2: "ふつう", 3: "むずかしい" };
-const KNOB_LEVELS = ["控えめ", "標準", "積極的"];
 $("people").innerHTML = [0, 1, 2, 3].map((i) => `<div class="person-in"><span class="dot" style="background:${COLORS[i]}"></span>
   <input class="input f-name" placeholder="${i + 1}人目"></div>`).join("");
 
@@ -631,10 +627,12 @@ function seg(id, key, after) {
 }
 // スタイルのカスタムは、就活以外の進行に「カスタム」の設定(進行の調整・入力方法など)を加えたもの
 const purposeOf = () => (ui.purpose === "job" ? "job" : "general");
+const knobDefaults = (style) => ({ ...(ui.info?.knob_defaults?.[style === "job" ? "job" : "general"] || {}) });
 seg("purpose", "purpose", () => {
+  if (ui.purpose !== "custom") ui.knobs = knobDefaults(ui.purpose);
   if (ui.purpose === "job" && !ui.dtype) ui.dtype = null;          // 就活GDは毎回選ぶ
   if (ui.purpose !== "job" && ui.dtype == null) ui.dtype = "";  // 就活以外は「指定なし(汎用)」が初期値
-  renderTypes();
+  renderTypes(); syncSetup();
 });
 // 議論タイプ: 就活GDは4種類から必須。就活以外は「指定なし(汎用)」も選べる
 const GENERIC_TYPE = { key: "", label: "指定なし(汎用)", phases: ["案出し", "比較検討", "結論"] };
@@ -657,9 +655,8 @@ seg("seg-input", "input");
 seg("seg-level", "level");
 
 function renderKnobs() {
-  const labels = ui.info?.knobs || {};
-  $("knobs").innerHTML = Object.entries(labels).map(([k, label]) => `<div class="knob"><span>${esc(label)}</span>
-    <div class="seg" data-knob="${k}">${KNOB_LEVELS.map((t, i) => `<button type="button" data-v="${i}">${t}</button>`).join("")}</div></div>`).join("")
+  $("knobs").innerHTML = (ui.info?.knobs || []).map((k) => `<div class="knob"><span>${esc(k.label)}</span>
+    <div class="seg" data-knob="${k.key}">${k.options.map((t, i) => `<button type="button" data-v="${i}">${esc(t)}</button>`).join("")}</div></div>`).join("")
     + '<div class="hint" id="knob-hint"></div>';
   $("knobs").querySelectorAll(".seg").forEach((g) => g.querySelectorAll("button").forEach((b) => b.onclick = () => {
     if (b.disabled) return;
@@ -677,26 +674,16 @@ function syncSetup() {
   document.querySelectorAll(".ai-only").forEach((el) => el.classList.toggle("hidden", !ui.withAI));
   const on = (id, v) => $(id).querySelectorAll("button").forEach((b) => b.classList.toggle("on", String(v) === b.dataset.v));
   on("purpose", ui.purpose); on("seg-level", ui.level);
-  // 詳細設定: カスタムのときだけ変更できる。それ以外は実際に使う標準の値を表示する
-  const custom = ui.purpose === "custom";
-  $("detail-tile").classList.toggle("locked", !custom);
-  ["f-intro", "f-tts", "f-spk"].forEach((id) => {
-    const el = $(id);
-    if (!custom && !el.disabled) { el.dataset.saved = el.checked; el.checked = true; }
-    if (custom && el.disabled && el.dataset.saved != null) el.checked = el.dataset.saved === "true";
-    el.disabled = !custom;
-  });
-  const inputShown = custom ? ui.input : (ui.info?.default_mode || "voice");
-  // 就活では選考の公平性のため、AI が参加者の出していない観点を持ち込まない(提案度合いは標準まで)
-  const jobCap = ui.purpose === "job";
-  if (jobCap && ui.knobs.suggest > 1) ui.knobs.suggest = 1;
+  // 詳細設定: どのスタイルでも変えられる。⑥-A(内容支援の範囲)が「なし」なら ⑥-B も「なし」に固定する
+  if (!ui.knobs.content) ui.knobs.content_when = 0;
   $("knobs").querySelectorAll(".seg").forEach((g) => g.querySelectorAll("button").forEach((b) => {
-    b.classList.toggle("on", +b.dataset.v === (custom ? ui.knobs[g.dataset.knob] ?? 1 : 1));
-    b.disabled = jobCap && g.dataset.knob === "suggest" && +b.dataset.v === 2;
+    b.classList.toggle("on", +b.dataset.v === (ui.knobs[g.dataset.knob] ?? 1));
+    b.disabled = g.dataset.knob === "content_when" && !ui.knobs.content && +b.dataset.v !== 0;
   }));
-  if ($("knob-hint")) $("knob-hint").textContent = jobCap && custom ? "就活では提案度合いは標準までです" : "";
-  on("seg-input", inputShown);
-  $("mode-hint").textContent = inputShown === "voice" ? "マイクで聞き取ります" : "発言を入力します";
+  if ($("knob-hint")) $("knob-hint").textContent = ui.knobs.content ? "" : "⑥-A が「なし」のときは、⑥-B も「なし」になります";
+  $("style-hint").textContent = { job: "GD用の初期値です。変更できます", general: "GW用の初期値です。変更できます", custom: "自由に設定できます(就活以外の進め方)" }[ui.purpose] || "";
+  on("seg-input", ui.input);
+  $("mode-hint").textContent = ui.input === "voice" ? "マイクで聞き取ります" : "発言を入力します";
 }
 $("btn-theme").onclick = async () => {
   const b = $("btn-theme"); b.disabled = true; b.textContent = "生成中…";
@@ -721,15 +708,11 @@ $("setup-form").onsubmit = (ev) => {
   const bots = ui.withAI ? ui.bots : 0;
   if (names.length + bots < 2) { $("f-err").textContent = "合計2人以上にしてください(AI参加者ありモードなら AI を加えられます)"; return; }
   $("f-err").textContent = "";
-  // カスタム以外は標準の設定で進行する(進行の調整はすべて標準、入力方法は既定、声の登録・AI の声・話者情報はオン)
-  const custom = ui.purpose === "custom";
   ui.config = {
-    theme: $("f-theme").value.trim(), minutes: ui.minutes, names,
-    mode: custom ? ui.input : (ui.info?.default_mode || "voice"),
-    intro: custom ? $("f-intro").checked : true, tts: custom ? $("f-tts").checked : true,
-    use_speaker_info: custom ? $("f-spk").checked : true,
+    theme: $("f-theme").value.trim(), minutes: ui.minutes, names, mode: ui.input,
+    intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
     purpose: purposeOf(), preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level,
-    knobs: custom ? { ...ui.knobs } : {},
+    knobs: { ...ui.knobs },
   };
   snap = null; logKey = ""; doneShown = false; ui.started = false; seenMsg.clear();
   renderReady();
@@ -982,7 +965,7 @@ $("in-text").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.is
 
 /* ---------- 起動 ---------- */
 fetch("/api/info").then((r) => r.json()).then((info) => {
-  ui.info = info; ui.input = info.default_mode; renderKnobs(); renderTypes(); syncSetup();
+  ui.info = info; ui.input = info.default_mode; ui.knobs = knobDefaults(ui.purpose); renderKnobs(); renderTypes(); syncSetup();
 });
 let first = true;
 function connect() {
