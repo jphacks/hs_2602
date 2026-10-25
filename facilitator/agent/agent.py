@@ -17,7 +17,8 @@ from facilitator.models import AI_SPEAKER, UNKNOWN, UNLIMITED_SEC, Action, Agent
 from facilitator.agent.content_check import content_flags
 from facilitator.agent.name_check import strip_names
 from facilitator.agent.request_detect import detect_request
-from facilitator.policy import CONTENT_ACTIONS, ContentInitiative, InterventionPolicy, level_settings, levels, session_policy
+from facilitator.agent.topic_return import topic_terms
+from facilitator.policy import CONTENT_ACTIONS, ContentInitiative, InterventionPolicy, Level, level_settings, levels, session_policy
 from facilitator.state import DiscussionState
 
 # ルール層だけが発動させるアクション(LLM が自発的に選ぶことはできない)
@@ -41,6 +42,13 @@ REQUEST_IN_COOLDOWN_NOTE = (
     "「進行役への依頼」の発言が、あなたに考えるヒントやアイデアを求める依頼なら、許可された内容支援で応じてください。"
     "依頼でない場合や、内容支援では応じられない依頼の場合は no_intervention を選んでください(ほかの介入はしません)。"
 )
+DRIFT_INTERRUPT_NOTE = (
+    "参加者が話している途中、または発言の間が短い時点です。②脱線への対応が「積極的」のため、脱線修正(redirect_topic)"
+    "だけは割り込んで行えます。判断基準は通常どおりです(テーマと関係ない話題が2発言ほど続き、本題に戻る様子がなければ "
+    "redirect_topic。一言の雑談やテーマに関わる経験談、すでに本題に戻っているなら no_intervention)。"
+    "ほかの介入はこの時点ではできません。"
+)
+DRIFT_INTERRUPT_ACTIONS = [Action.no_intervention, Action.redirect_topic]
 INVITE_ALL_FALLBACK ="まだお話しされていない方も、ここまでの議論についてどう考えているか聞かせてもらえますか?"
 REDIRECT_MAX_SENTENCES = 2  # 軌道修正は短い区切りで話すので短くする
 # 発話の文数の上限(既定は3文)。ヒントは問いの形の短いものにする
@@ -77,6 +85,7 @@ class FacilitatorAgent:
         policy: InterventionPolicy | None = None,  # 介入ポリシー。省略時は用途の既定のプリセット
     ) -> None:
         self.clock = clock or time
+        self.purpose = purpose
         self.policy = policy or session_policy(purpose)
         # ①〜⑤の段階で変わる判断条件。標準の項目は settings の値をそのまま使う(_param)
         self.level_settings = level_settings(self.policy)
@@ -102,6 +111,8 @@ class FacilitatorAgent:
         self.support_step = 0  # 停滞が続く間の支援の段階(0: なし / 1: 進行支援をした / 2: ヒントを出した / 3: 具体案を出した)
         self.pending_request: Utterance | None = None  # まだ応じていない、進行役への依頼の候補
         self._scanned_id = -1  # 依頼を探し終えた発言 id
+        self._llm_seen_id: int | None = None  # 直近の LLM 判断に渡した発話ログの最後の発言 id(脱線の確認に使う)
+        self._trigger = "periodic"  # いまの tick のトリガー(_gate が見る)
 
     def _cooldown_sec(self) -> float:
         """介入どうしの最低間隔。雑談の司会(facilitator/chat/host.py)が雑談専用の値で上書きする。"""
@@ -141,6 +152,8 @@ class FacilitatorAgent:
         if not st.started:
             return "forced:start_gd", [Action.start_gd], None
         if st.is_speaking(now):
+            if self._drift_interrupt_ok(now):  # 就活GD・②積極的: 脱線修正だけは発話中でも判断する
+                return "llm:drift_interrupt", list(DRIFT_INTERRUPT_ACTIONS), DRIFT_INTERRUPT_NOTE
             return "blocked:speaking", [], None
 
         remaining = st.remaining(now)
@@ -161,6 +174,8 @@ class FacilitatorAgent:
         if in_cooldown and self.pending_request is None:
             return "blocked:cooldown", [], None
         if st.silence_sec(now) < s.min_silence_for_intervention_sec:
+            if self._drift_interrupt_ok(now):  # 就活GD・②積極的: 脱線修正だけは2秒の間を待たない
+                return "llm:drift_interrupt", list(DRIFT_INTERRUPT_ACTIONS), DRIFT_INTERRUPT_NOTE
             return "blocked:short_pause", [], None
         if in_cooldown:
             # 進行役への依頼にだけは、クールダウン中でも応じる(1つの候補につき1回。発話中・2秒の間の条件は変えない)。
@@ -170,6 +185,9 @@ class FacilitatorAgent:
             if not content:  # 内容支援が無効なら依頼を検知しないので通常は起きない(念のため)
                 return "blocked:cooldown", [], None
             return "llm:request", [Action.no_intervention, *content], REQUEST_IN_COOLDOWN_NOTE
+        if self._trigger == "drift" and self._drift_interrupt_ok(now):
+            # 脱線の確認で始めた判断は、間が2秒を超えていても脱線修正だけ(ほかの介入は通常の分析に任せる)
+            return "llm:drift_interrupt", list(DRIFT_INTERRUPT_ACTIONS), DRIFT_INTERRUPT_NOTE
 
         allowed = list(FREE_ACTIONS)
         if self.off_topic_streak < self._param("drift_confirm_ticks"):
@@ -181,6 +199,38 @@ class FacilitatorAgent:
         content, self.content_reason = self._content_actions(now)
         allowed += content
         return "llm", allowed, None
+
+    # ================= 脱線修正の割り込み(就活GD・②脱線への対応が積極的) =================
+    def drift_interrupt(self) -> bool:
+        """脱線修正を発話中・短い間でも行うか(就活GDで②が積極的のときだけ。GW・雑談・②標準/控えめは従来どおり)。
+        engine も、この値で軌道修正の区切りの待機を省く。"""
+        return self.purpose == "job" and self.policy.drift == Level.high and self.dtype.key != "casual"
+
+    def _drift_interrupt_ok(self, now: float) -> bool:
+        """発話中・短い間に、脱線修正だけを許可してよいか。クールダウン・強制イベント・依頼の待ちは従来どおり優先する。"""
+        if not self.drift_interrupt() or self.pending_request is not None or self.forced_event_pending(now):
+            return False
+        since = self.state.since_last_intervention(now)
+        if since is not None and since < self._cooldown_sec():
+            return False
+        return self.off_topic_streak >= self._param("drift_confirm_ticks")
+
+    def _drift_check_due(self, now: float) -> bool:
+        """発話が続いていても脱線を確かめる判断を始めるか(should_tick のイベント駆動)。前回の LLM 判断の後に人間の新しい
+        発言があり、直近の drift_check_min_new 個の人間の発言に本題の語(テーマと前回の分析の論点・意見・合意)がないとき。
+        本題の語がある発言は脱線でないとみなし、LLM を呼ばない(呼び出しの回数を抑えるための粗い事前判定)。"""
+        st, s = self.state, self.settings
+        if not self._drift_interrupt_ok(now):
+            return False
+        if self.last_tick_time is not None and now - self.last_tick_time < s.drift_check_interval_sec:
+            return False
+        human = [u for u in st.utterances if u.source == "human" and u.end_time <= now]
+        recent = human[-s.drift_check_min_new:]
+        seen = self._llm_seen_id
+        if len(recent) < s.drift_check_min_new or not any(seen is None or u.id > seen for u in human):
+            return False
+        terms = topic_terms(st.theme, st.analysis, [])
+        return not any(t in u.text for u in recent for t in terms)
 
     # ================= 内容支援(介入ポリシー⑥) =================
     def _content_actions(self, now: float) -> tuple[list[Action], str | None]:
@@ -484,6 +534,7 @@ class FacilitatorAgent:
         st = self.state
         self._scan_requests(now)
         request = self.pending_request
+        self._trigger = trigger
         gate, allowed, note = self._gate(now)
         raw_action, overridden = None, None
         _, gap, behind = self.phase_status(now)  # 判断前(前回判断のフェーズ)の値を記録する
@@ -501,6 +552,7 @@ class FacilitatorAgent:
         else:
             ctx = self._context(now, trigger, allowed, note)
             llm_called = True
+            self._llm_seen_id = last_utt
             try:
                 try:
                     partial = (lambda acc: on_partial(acc, allowed, gate)) if on_partial else None
@@ -621,6 +673,8 @@ class FacilitatorAgent:
         last = self.last_tick_time
         due = last is None or now - last >= s.analysis_interval_sec
         if st.is_speaking(now):
+            if self._drift_check_due(now):  # 就活GD・②積極的: 発話中でも脱線を確かめる
+                return "drift"
             self.skipped_due = "speaking" if due else None
             return None
         remaining = st.remaining(now)
@@ -633,6 +687,8 @@ class FacilitatorAgent:
             return "time_threshold"
         silence = st.silence_sec(now)
         if silence < s.min_silence_for_intervention_sec:
+            if self._drift_check_due(now):
+                return "drift"
             self.skipped_due = "short_silence" if due else None
             return None  # 短い間では分析しない(定期分析のタイマーを無駄に消費しない)
         self._scan_requests(now)
@@ -643,4 +699,6 @@ class FacilitatorAgent:
             return "silence"
         if last is None or now - last >= s.analysis_interval_sec:
             return "periodic"
+        if self._drift_check_due(now):  # 定期分析を待たずに脱線を確かめる(就活GD・②積極的)
+            return "drift"
         return None
