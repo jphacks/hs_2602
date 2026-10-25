@@ -23,7 +23,7 @@ from config import PURPOSE_PRESET, load_settings  # noqa: E402
 from facilitator.llm.base import LLMError  # noqa: E402
 from facilitator.llm.factory import make_llm  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
-from facilitator.discussion_types import DISCUSSION_TYPES, SELECTABLE_TYPES, resolve_session_type  # noqa: E402
+from facilitator.discussion_types import CASUAL_FREE_THEME, DISCUSSION_TYPES, SELECTABLE_TYPES, resolve_session_type  # noqa: E402
 from facilitator.policy import KNOB_KEYS, knob_defaults, request_policy, ui_knobs, ui_spec  # noqa: E402
 
 STATIC = Path(__file__).parent / "static"
@@ -89,6 +89,8 @@ def start(req: StartReq) -> dict:
     purpose = req.purpose if req.purpose in ("job", "general") else "job"
     if purpose == "job" and not req.theme.strip():
         return {"ok": False, "error": "テーマを入力してください"}
+    if req.discussion_type == "casual" and not req.theme.strip():  # 雑談はテーマなしでもよい
+        req.theme = CASUAL_FREE_THEME
     try:  # 議論タイプは開始前に検証する(就活GDは選択必須。暗黙に割り当てない)
         resolve_session_type(req.discussion_type, purpose)
     except ValueError as e:

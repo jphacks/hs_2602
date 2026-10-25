@@ -96,6 +96,16 @@ body.framed .device-scroll::-webkit-scrollbar { width: 0; }
   background: var(--fill); color: var(--muted); transition: .2s; }
 .purpose:hover .go { background: var(--accent); color: #fff; }
 
+/* 雑談: 2つのモードより目立たない小さめの行 */
+.mode-mini { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border: 0; text-align: left; color: var(--muted); }
+.mode-mini:hover { background: var(--tile-2); }
+.mode-mini .mini-icon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--fill); color: var(--muted); flex: none; }
+.mode-mini .mini-icon svg { width: 17px; height: 17px; }
+.mode-mini b { color: var(--text); font-size: 15px; }
+.mode-mini .mini-sub { font-size: 13px; }
+.mode-mini .mini-go { width: 16px; height: 16px; margin-left: auto; color: var(--faint); }
+#theme-opt { font-weight: 500; margin-left: 4px; }
+
 /* ---------- 2. 設定 ---------- */
 .bento-setup { align-items: start; }
 .tile > .label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
@@ -407,6 +417,11 @@ body { font-size: 17px; }
       <div class="sub">AI も参加者として議論に加わる</div>
       <span class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
     </button>
+    <button class="tile mode-mini span-4" data-mode="chat">
+      <span class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.4A8 8 0 1 1 21 12z"/></svg></span>
+      <b>雑談</b><span class="mini-sub">結論を出さずに気軽に話す</span>
+      <svg class="mini-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
   </div>
 </section>
 
@@ -421,14 +436,16 @@ body { font-size: 17px; }
     </div>
 
     <div class="tile span-4">
-      <label class="label" for="f-theme">テーマ</label>
+      <label class="label" for="f-theme">テーマ<span id="theme-opt" class="hidden">(任意)</span></label>
       <div class="theme-row">
         <input class="input" id="f-theme" placeholder="例：大学の学食の混雑を改善するには？">
-        <button type="button" class="btn primary" id="btn-theme">自動生成</button>
+        <button type="button" class="btn primary no-chat" id="btn-theme">自動生成</button>
       </div>
-      <span class="label sub-label">議論タイプ</span>
-      <div class="choice2 type-grid" id="seg-type"></div>
-      <div class="hint" id="type-hint"></div>
+      <div class="no-chat">
+        <span class="label sub-label">議論タイプ</span>
+        <div class="choice2 type-grid" id="seg-type"></div>
+        <div class="hint" id="type-hint"></div>
+      </div>
     </div>
 
     <div class="tile span-2">
@@ -460,7 +477,7 @@ body { font-size: 17px; }
       </div>
     </div>
 
-    <div class="tile span-4 tile-style">
+    <div class="tile span-4 tile-style no-chat">
       <span class="label">スタイル</span>
       <div class="choice3" id="purpose">
         <button type="button" data-v="job">就活</button>
@@ -474,7 +491,7 @@ body { font-size: 17px; }
       </div>
     </div>
 
-    <div class="tile span-4">
+    <div class="tile span-4 no-chat">
       <span class="label">その他</span>
       <div class="knob"><span>入力方法</span><div class="seg" id="seg-input"><button type="button" data-v="voice">🎙 音声</button><button type="button" data-v="text">⌨ テキスト</button></div></div>
       <div class="hint" id="mode-hint" style="margin:-4px 0 10px"></div>
@@ -631,9 +648,12 @@ fitDevice();
 requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add("anim")));
 
 /* ---------- 1. モード選択 ---------- */
-document.querySelectorAll(".purpose").forEach((b) => b.onclick = () => {
+document.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => {
   ui.withAI = b.dataset.mode === "ai";
-  $("mode-label").textContent = ui.withAI ? "AI参加者あり" : "人間だけ";
+  ui.chat = b.dataset.mode === "chat";  // 雑談: テーマ(任意)・時間・人数・名前だけを決める
+  $("mode-label").textContent = ui.chat ? "雑談" : ui.withAI ? "AI参加者あり" : "人間だけ";
+  $("theme-opt").classList.toggle("hidden", !ui.chat);
+  $("f-theme").placeholder = ui.chat ? "例：休日の過ごし方(空欄でもOK)" : "例：大学の学食の混雑を改善するには？";
   syncSetup();
   show("s-setup");
 });
@@ -706,6 +726,7 @@ function syncSetup() {
   });
   document.querySelectorAll(".person-in").forEach((el, i) => el.classList.toggle("hidden", i >= ui.humans));
   document.querySelectorAll(".ai-only").forEach((el) => el.classList.toggle("hidden", !ui.withAI));
+  document.querySelectorAll(".no-chat").forEach((el) => el.classList.toggle("hidden", !!ui.chat));
   const on = (id, v) => $(id).querySelectorAll("button").forEach((b) => b.classList.toggle("on", String(v) === b.dataset.v));
   on("purpose", ui.purpose); on("seg-level", ui.level);
   // 詳細設定: どのスタイルでも変えられる。⑥-A(内容支援の範囲)が「なし」なら ⑥-B も「なし」に固定する
@@ -736,8 +757,8 @@ $("back-purpose").onclick = () => show("s-purpose");
 $("setup-form").onsubmit = (ev) => {
   ev.preventDefault();
   const names = [...document.querySelectorAll(".f-name")].slice(0, ui.humans).map((e) => e.value.trim());
-  if (!$("f-theme").value.trim()) { $("f-err").textContent = "テーマを入力するか、自動生成してください"; return; }
-  if (ui.purpose === "job" && !ui.dtype) { $("f-err").textContent = "議論タイプを選択してください"; return; }
+  if (!ui.chat && !$("f-theme").value.trim()) { $("f-err").textContent = "テーマを入力するか、自動生成してください"; return; }
+  if (!ui.chat && ui.purpose === "job" && !ui.dtype) { $("f-err").textContent = "議論タイプを選択してください"; return; }
   if (names.some((n) => !n)) { $("f-err").textContent = `参加者の名前を${ui.humans}人分入力してください`; return; }
   const bots = ui.withAI ? ui.bots : 0;
   if (names.length + bots < 2) { $("f-err").textContent = "合計2人以上にしてください(AI参加者ありモードなら AI を加えられます)"; return; }
@@ -748,6 +769,10 @@ $("setup-form").onsubmit = (ev) => {
     purpose: purposeOf(), preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level,
     knobs: { ...ui.knobs },
   };
+  if (ui.chat) {  // 雑談は雑談型・就活以外の初期値・その他は既定で進める(テーマが空ならサーバーで「自由な雑談」にする)
+    Object.assign(ui.config, { purpose: "general", discussion_type: "casual", ai_count: 0, knobs: knobDefaults("general"),
+      mode: ui.info?.default_mode || "voice", intro: true, tts: true, use_speaker_info: true });
+  }
   snap = null; logKey = ""; doneShown = false; ui.started = false; seenMsg.clear();
   renderReady();
   show("s-session");

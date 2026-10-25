@@ -16,6 +16,7 @@ from config import ROOT, load_settings  # noqa: E402
 from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
 from facilitator.agent.prompts import build_phase_block, build_system_prompt  # noqa: E402
 from facilitator.discussion_types import (  # noqa: E402
+    CASUAL_FREE_THEME,
     DISCUSSION_TYPES,
     GENERIC,
     PROBLEM_SOLVING,
@@ -32,7 +33,6 @@ EXPECTED = {
     "idea_generation": ["目的確認", "アイデア発散", "整理・発展", "まとめ"],
     "decision_making": ["選択肢確認", "評価基準", "比較", "決定"],
     "planning": ["目標整理", "作業洗い出し", "計画具体化", "確認"],
-    "casual": ["話題出し", "広げる", "締め"],
 }
 NEUTRAL_RULE = "アイデア・選択肢・作業や計画についても同じく、参加者が出していないものを持ち込まないでください"
 NEW_TYPES = ["idea_generation", "decision_making", "planning", "casual"]
@@ -206,3 +206,15 @@ def test_casual_type_does_not_ask_for_conclusion():
     warn, close = ag._template(Action.time_warning, 0.0), ag._template(Action.close_gd, 0.0)
     assert "結論" not in warn and "結論" not in close and "今日はここまで" in close
     assert "結論を出す必要はありません" in build_system_prompt("general", "casual")
+    assert [p.label for p in DISCUSSION_TYPES["casual"].phases] == ["話題出し", "広げる", "締め"]
+
+
+def test_casual_is_only_for_chat_mode():
+    """雑談型は議論タイプの選択肢には出さず、「雑談」モード(一般)だけで使う。テーマなしなら自由に話す開始の発言。"""
+    assert "casual" not in SELECTABLE_TYPES
+    assert resolve_session_type("casual", "general").key == "casual"
+    with pytest.raises(ValueError):
+        resolve_session_type("casual", "job")
+    st = DiscussionState(settings=load_settings(), theme=CASUAL_FREE_THEME, duration_sec=600)
+    ag = FacilitatorAgent(st, None, load_settings(), purpose="general", discussion_type="casual")
+    assert ag._template(Action.start_gd, 0.0) == "今日は自由に話しましょう。時間は10分です。始めてください。"

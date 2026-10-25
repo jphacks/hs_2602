@@ -164,7 +164,9 @@ PLANNING = DiscussionType(
     ),
 )
 
-# 雑談型: 結論を出さない会話の練習・交流向け。話しやすさと発言機会の偏りへの配慮を中心にする
+# 雑談型: モード選択の「雑談」で使う(議論タイプの選択肢には出さない)。結論を出さない会話の練習・交流向けで、
+# 話しやすさと発言機会の偏りへの配慮を中心にする。テーマを入れなかったときは CASUAL_FREE_THEME を使う
+CASUAL_FREE_THEME = "自由な雑談"
 CASUAL = DiscussionType(
     key="casual",
     label="雑談型",
@@ -199,7 +201,7 @@ GENERIC = DiscussionType(
 )
 
 DISCUSSION_TYPES = {t.key: t for t in (PROBLEM_SOLVING, IDEA_GENERATION, DECISION_MAKING, PLANNING, CASUAL, GENERIC)}
-SELECTABLE_TYPES = [PROBLEM_SOLVING.key, IDEA_GENERATION.key, DECISION_MAKING.key, PLANNING.key, CASUAL.key]  # ユーザーが選べる5種類
+SELECTABLE_TYPES = [PROBLEM_SOLVING.key, IDEA_GENERATION.key, DECISION_MAKING.key, PLANNING.key]  # ユーザーが選べる4種類
 DEFAULT_TYPE_BY_PURPOSE = {"job": PROBLEM_SOLVING.key, "general": GENERIC.key}
 
 
@@ -211,13 +213,13 @@ def get_discussion_type(key: str | None = None, purpose: str = "job") -> Discuss
 
 
 def resolve_session_type(key: str | None, purpose: str) -> DiscussionType:
-    """セッション開始時の議論タイプ。就活GDは選べる種類からの明示的な選択が必須(暗黙に割り当てない)。
+    """セッション開始時の議論タイプ。就活GDは4種類からの明示的な選択が必須(暗黙に割り当てない)。
     一般GWは省略時に汎用型(従来どおり)。不明な値はエラー。"""
     if not key:
         if purpose == "job":
             raise ValueError("就活GDでは議論タイプを選択してください")
         return GENERIC
-    allowed = SELECTABLE_TYPES + ([] if purpose == "job" else [GENERIC.key])
+    allowed = SELECTABLE_TYPES + ([] if purpose == "job" else [GENERIC.key, CASUAL.key])  # 雑談型は「雑談」モード(一般)だけ
     if key not in allowed:
         raise ValueError(f"選択できない議論タイプです: {key}")
     return DISCUSSION_TYPES[key]

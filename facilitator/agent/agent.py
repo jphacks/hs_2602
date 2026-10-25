@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from config import Settings
 from facilitator.agent.prompts import PHASE_BEHIND_NOTES, build_output_schema, build_system_prompt, build_user_prompt
-from facilitator.discussion_types import get_discussion_type
+from facilitator.discussion_types import CASUAL_FREE_THEME, get_discussion_type
 from facilitator.llm.base import LLMClient, LLMError, generate
 from facilitator.logging import TickLogger
 from facilitator.models import AI_SPEAKER, UNKNOWN, UNLIMITED_SEC, Action, AgentOutput, Decision, TickRecord, Utterance
@@ -406,6 +406,8 @@ class FacilitatorAgent:
         st = self.state
         if action == Action.start_gd:  # テーマと時間だけを短く伝える
             limit = "時間の制限はありません" if st.duration_sec >= UNLIMITED_SEC else f"時間は{int(st.duration_sec // 60)}分です"
+            if self.dtype.key == "casual" and st.theme == CASUAL_FREE_THEME:  # 雑談でテーマを決めなかったとき
+                return f"今日は自由に話しましょう。{limit}。始めてください。"
             return f"テーマは「{st.theme}」、{limit}。始めてください。"
         casual = self.dtype.key == "casual"  # 雑談型は結論を求めない
         if action == Action.time_warning:
