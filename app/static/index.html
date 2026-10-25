@@ -491,14 +491,17 @@ body { font-size: 17px; }
       </div>
     </div>
 
-    <div class="tile span-4 no-chat">
+    <div class="tile span-4">
       <span class="label">その他</span>
-      <div class="knob"><span>入力方法</span><div class="seg" id="seg-input"><button type="button" data-v="voice">🎙 音声</button><button type="button" data-v="text">⌨ テキスト</button></div></div>
-      <div class="hint" id="mode-hint" style="margin:-4px 0 10px"></div>
+      <div class="no-chat">
+        <div class="knob"><span>入力方法</span><div class="seg" id="seg-input"><button type="button" data-v="voice">🎙 音声</button><button type="button" data-v="text">⌨ テキスト</button></div></div>
+        <div class="hint" id="mode-hint" style="margin:-4px 0 10px"></div>
+      </div>
       <div class="toggles">
-        <label class="toggle"><input type="checkbox" id="f-intro" checked>自己紹介で声を登録</label>
-        <label class="toggle"><input type="checkbox" id="f-tts" checked>AI の声を出す</label>
-        <label class="toggle"><input type="checkbox" id="f-spk" checked>話者情報を使う</label>
+        <label class="toggle no-chat"><input type="checkbox" id="f-intro" checked>自己紹介で声を登録</label>
+        <label class="toggle no-chat"><input type="checkbox" id="f-tts" checked>AI の声を出す</label>
+        <label class="toggle no-chat"><input type="checkbox" id="f-spk" checked>話者情報を使う</label>
+        <label class="toggle"><input type="checkbox" id="f-grow" checked>発言量に応じて参加者カードの幅を変える</label>
       </div>
     </div>
 
@@ -765,6 +768,7 @@ $("setup-form").onsubmit = (ev) => {
     intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
     purpose: purposeOf(), preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level,
     knobs: { ...ui.knobs },
+    card_grow: $("f-grow").checked,
   };
   if (ui.chat) {  // 雑談は雑談型・就活以外の初期値・その他は既定で進める(テーマが空ならサーバーで「自由な雑談」にする)
     Object.assign(ui.config, { purpose: "general", discussion_type: "casual", ai_count: 0, knobs: knobDefaults("general"),
@@ -883,7 +887,8 @@ function renderPeople() {
     card.classList.toggle("active", snap?.active_speaker === id);
     card.querySelector(".badges").innerHTML = (bot ? '<span class="badge ai">AI</span>' : "")
       + (enrolled.has(n[id]) ? '<span class="badge voice">声 ✓</span>' : "");
-    card.style.flexGrow = cardGrow(s.total_speech_sec, snap?.started ? sum : 0, ids.length).toFixed(3);
+    const grow = ui.config?.card_grow === false ? 1 : cardGrow(s.total_speech_sec, snap?.started ? sum : 0, ids.length);
+    card.style.flexGrow = grow.toFixed(3);
   });
 }
 
