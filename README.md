@@ -93,6 +93,11 @@ AI は、何を話すかだけでなく、そもそも今話すべきかを判�
   * [facilitator/agent/prompts.py](facilitator/agent/prompts.py)
 * **介入ポリシー**: 進行・脱線・論点整理・発言機会・停滞・内容支援の度合いを、項目ごとに調整できます。
   * [facilitator/policy.py](facilitator/policy.py)
+* **雑談専用のAI司会者**: GD・GWとは独立した判断ロジックを実装しました。AIによる話題提供・深掘り・橋渡し・話題転換に加え、参加者同士の会話が成立すると自発的な介入を控える仕組みを設けています。話題の履歴や参加者の反応も管理し、質問の繰り返しや過剰介入を抑制します。
+  * [facilitator/chat/host.py](facilitator/chat/host.py)
+  * [facilitator/chat/prompts.py](facilitator/chat/prompts.py)
+  * [facilitator/chat/topic_tracker.py](facilitator/chat/topic_tracker.py)
+  * [facilitator/chat/speech_check.py](facilitator/chat/speech_check.py)
 * **自己紹介の声による話者の登録と照合**:
   * [facilitator/speaker/voice_id.py](facilitator/speaker/voice_id.py)
 * **生成しながら話す処理、AI 参加者の発言タイミング**:
