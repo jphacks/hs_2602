@@ -500,7 +500,6 @@ body { font-size: 17px; }
       <div class="toggles">
         <label class="toggle no-chat"><input type="checkbox" id="f-intro" checked>自己紹介で声を登録</label>
         <label class="toggle no-chat"><input type="checkbox" id="f-tts" checked>AI の声を出す</label>
-        <label class="toggle no-chat"><input type="checkbox" id="f-spk" checked>話者情報を使う</label>
         <label class="toggle"><input type="checkbox" id="f-grow">発言量の可視化</label>
       </div>
     </div>
@@ -765,7 +764,7 @@ $("setup-form").onsubmit = (ev) => {
   $("f-err").textContent = "";
   ui.config = {
     theme: $("f-theme").value.trim(), minutes: ui.minutes, names, mode: ui.input,
-    intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
+    intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: true,  // 話者情報は常に使う
     purpose: purposeOf(), preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level,
     knobs: { ...ui.knobs },
     card_grow: $("f-grow").checked,
