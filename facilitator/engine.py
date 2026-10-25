@@ -18,6 +18,7 @@ import numpy as np
 
 from config import POLICY_PRESET_LABELS, PURPOSE_PRESET, Settings, load_settings
 from facilitator.agent.agent import FacilitatorAgent
+from facilitator.chat.host import agent_class_for
 from facilitator.agent.topic_return import detect_topic_return
 from facilitator.discussion_types import resolve_session_type
 from facilitator.feedback import build_feedback
@@ -262,7 +263,8 @@ class Engine:
             "制限時間": f"{cfg.minutes:g}分",
         }
         self._bot_busy, self._bot_attempt_at, self._bot_answered_id, self._last_bot_end = False, -1e9, -1, -1e9
-        self.agent = FacilitatorAgent(
+        # 司会: 雑談(雑談型)は雑談の司会、それ以外は GD・GW の進行役
+        self.agent = agent_class_for(dtype.key)(
             self.state,
             llm,
             s,
@@ -696,6 +698,11 @@ class Engine:
             if d.action == Action.redirect_topic:
                 self._await_redirect(rec, gen)
                 return
+            stale = self.agent.stale_reason(now, rec.context_last_utt_id)  # 雑談の司会: 判断中に会話が再開した
+            if stale:
+                self.agent.cancel(rec, stale)
+                self._note(f"{d.action.value} を取りやめ({stale})")
+                return
             if st.is_speaking(now):
                 self.agent.cancel(rec, "誰かが話し始めた")
                 self._note(f"{d.action.value} を取りやめ(誰かが話している)")
@@ -714,7 +721,8 @@ class Engine:
         if not self._alive(gen) or self.paused or self.status != "running" or self.ai_speaking:
             return False
         now, st = self.now(), self.state
-        return not st.is_speaking(now) and st.silence_sec(now) >= self.settings.min_silence_for_intervention_sec
+        return (not st.is_speaking(now) and st.silence_sec(now) >= self.settings.min_silence_for_intervention_sec
+                and self.agent.stale_reason(now) is None)
 
     def _speak_live(self, live: LiveSpeech) -> None:
         """LiveSpeech の文を順に議論ログへ足して読み上げる。最初の文で発言を追加し、以降は同じ発言に書き足す。"""

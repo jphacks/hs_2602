@@ -14,7 +14,7 @@ from typing import Any
 import yaml
 
 from config import Settings
-from facilitator.agent.agent import FacilitatorAgent
+from facilitator.chat.host import agent_class_for
 from facilitator.llm.base import LLMClient
 from facilitator.logging import TickLogger
 from facilitator.models import TickRecord
@@ -127,7 +127,7 @@ def run_scenario(
     for sid, name in (sc.get("participants") or {}).items():
         state.set_speaker_name(sid, name, confirmed=sc.get("names_confirmed", True))
     # 議論タイプはシナリオで指定する(省略時は就活GDの既定=課題解決型。既存シナリオとの互換)
-    agent = FacilitatorAgent(
+    agent = agent_class_for(sc.get("discussion_type"))(  # 雑談型は雑談の司会
         state, llm, settings, logger=logger, purpose=sc.get("purpose", "job"),
         discussion_type=sc.get("discussion_type"), policy=policy,
     )
