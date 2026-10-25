@@ -35,6 +35,7 @@ class DiscussionState:
     observed_phase: str = ""  # LLM が判断した実際のフェーズ(開始前は空)
     phase_observed_at: float | None = None  # observed_phase を判断した時刻(時計の値)
     utterances: list[Utterance] = field(default_factory=list)
+    heard_at: float | None = None  # 音声を認識中(文字起こしの途中経過が届いた)の最後の時刻。沈黙はここからも数え直す
     analysis: Analysis = field(default_factory=Analysis)
     interventions: list[Intervention] = field(default_factory=list)
     speaker_ids: list[str] = field(default_factory=list)
@@ -140,6 +141,8 @@ class DiscussionState:
     def silence_sec(self, now: float) -> float:
         """最後の発話(人間・AI問わず)終了からの経過秒数。"""
         ended = [u.end_time for u in self.utterances if u.end_time <= now]
+        if self.heard_at is not None and self.heard_at <= now:  # 認識中の声も「話している」として扱う
+            ended.append(self.heard_at)
         last = max(ended) if ended else (self.start_time if self.started else now)
         return max(0.0, now - last - self._paused_between(last, now))
 
@@ -197,7 +200,9 @@ class DiscussionState:
     def speaker_stats(self, now: float) -> list[SpeakerStats]:
         stats = []
         for sid in self.speaker_ids:
-            mine = [u for u in self.participant_utterances() if u.speaker_id == sid and u.end_time <= now]
+            # 自己紹介(開始前)の発言は数えない
+            mine = [u for u in self.participant_utterances()
+                    if u.speaker_id == sid and u.end_time <= now and (not self.started or u.start_time >= self.start_time)]
             stats.append(
                 SpeakerStats(
                     speaker_id=sid,
