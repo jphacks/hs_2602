@@ -76,7 +76,7 @@ Claude Code のチャットで「チャット GD を始めて。テーマは〇�
 | 機能 | 採用 | 根拠・未確認事項 |
 |---|---|---|
 | LLM | Claude Opus 5.5(effort low、構造化出力) | `config.py` / `.env` で `LLM_MODEL` を変更可能 |
-| STT + 話者分離 | AssemblyAI Universal-3.6 Pro Realtime(予定) | 日本語ストリーミングに対応するのはこのモデル。`speaker_labels`・`max_speakers`・SpeakerRevision あり。日本語での話者分離精度は未確認 |
+| STT | AssemblyAI Universal-3.6 Pro Realtime | 日本語のリアルタイム文字起こしに使用。話者分離は使用せず、自己紹介時に登録した声を sherpa-onnx で照合して話者を識別 |
 | 比較候補 | Soniox stt-rt | トークンごとに話者が付く。$0.12/h。日本語精度は自社発表のみ |
 | 不採用 | Google Chirp 3 | ストリーミングでは話者分離不可(Batch/Recognize のみ) |
 | 不採用 | Azure ConversationTranscriber | ja-JP の対応は未確認。リアルタイムで不安定という利用者報告あり |
