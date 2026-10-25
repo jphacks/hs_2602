@@ -86,7 +86,8 @@ REQUEST_NOTE = (
     "司会のあなたへの依頼なら、許可されたアクションの範囲で応じてください(話題を求められたら offer_topic / change_topic、"
     "意見を求められたら自分の意見は言わずに参加者に返す)。参加者どうしのやり取りや、AI を話題にしているだけなら no_intervention を選びます。"
 )
-REACTION_JA = {"none": "答えなし", "single": "1人だけ答えた", "engaged": "参加者どうしの会話になった"}
+REACTION_JA = {"none": "答えなし", "passive": "「特にない」のような短い返事だけ", "single": "1人だけ答えた",
+               "joined": "まだ答えていなかった人が1人加わった", "engaged": "参加者どうしの会話になった"}
 PHASE_JA = {"lead": "AI 主導期(参加者が話すきっかけをつくる時期)", "free": "自走期(参加者どうしで会話が続いている時期)"}
 
 
@@ -148,6 +149,8 @@ def build_chat_user_prompt(ctx: dict[str, Any]) -> str:
         f"- 直前の AI の発言の後の参加者の発言: {chat['answers']}回(答えた人: {chat['answerers']}人)",
         f"- 答えのないまま続いた AI の発言: {chat['unanswered']}回",
     ]
+    if chat.get("passive_only"):
+        lines.append("- 直前の AI の発言への返事は「特にない」のような短い返事だけです")
     topic = chat.get("topic")
     if topic:
         by = "AI が出した" if topic["by"] == "ai" else "参加者が始めた"
@@ -155,6 +158,7 @@ def build_chat_user_prompt(ctx: dict[str, Any]) -> str:
         lines.append("\n# いまの話題")
         lines.append(f"- {topic['text']}({by}、{topic['age_sec']:.0f}秒前から)")
         lines.append(f"- この話題での AI の働きかけへの反応(古い順): {react}")
+        lines.append(f"- この話題で答えた人: {topic['answerers']}人")
         if topic["one_on_one"] >= topic["one_on_one_max"]:
             lines.append(f"- 同じ1人とだけの一問一答が{topic['one_on_one']}回続いています")
         if topic["settled"]:

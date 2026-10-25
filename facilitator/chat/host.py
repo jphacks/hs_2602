@@ -44,17 +44,27 @@ GD・GW のように議論を進めたり結論を出したりはしない。
   - ask_question / invite_all: 同じ働きかけが薄い反応のまま chat_same_nudge_max 回続いたら、それは繰り返さない
   - 依頼には従来どおり応じる(話題の制限はかけない)
 - どれを選ぶか(続ける・深掘り・橋渡し・切り替え・待つ)は、許可の範囲で LLM が会話履歴と反応から判断する
+
+第5段階の評価を受けた修正:
+- 話題の文は、問いかけの文(最後の「?」の文)を取り出す(問いの後に補足の文が続いても取り違えない)
+- 判断の後の話題の行動の再確認は、その判断で LLM が参加者の新しい話題を見つけたときだけ行う
+  (判断の前に許可した話題の提供を、LLM の会話の状態の判断が変わっただけで取り消さない)
+- 「特にないです」のような中身のない返事だけのときは、答えがないときと同じように待ち、続くほど待ちを伸ばす
+  (chat_passive_wait_sec / chat_passive_backoff_max。中身のある答えが1つでもあれば通常の待ちに戻る)。
+  中身のない返事は、つながった発言(自走期への切り替え)にも数えない
+- 話題ごとに答えた人を数え、まだ答えていなかった人が加わった反応は薄い反応に数えない(橋渡しが効いた)
 """
 
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from facilitator.agent.agent import FacilitatorAgent
 from facilitator.chat.prompts import CHAT_REQUEST_NOTE, CHAT_SYSTEM_PROMPT, build_chat_output_schema, build_chat_user_prompt
-from facilitator.chat.topic_tracker import TopicStatus, TopicTracker
+from facilitator.chat.topic_tracker import TopicStatus, TopicTracker, passive_reply
 from facilitator.chat.topics import is_free, opening_speech, opening_topic
 from facilitator.discussion_types import CASUAL
 from facilitator.models import Action, Decision, TickRecord, Utterance
@@ -69,6 +79,8 @@ TOPIC_ACTIONS = {Action.start_gd, Action.offer_topic, Action.change_topic}  # �
 CHAT_MAX_SENTENCES = 2  # 雑談の発話は短く(開始・時間告知・終了の定型文は除く)
 CHAT_INVITE_ALL = "ほかの皆さんはどうですか?よければ聞かせてください。"
 TOPIC_LEAD = {Action.offer_topic: "では、", Action.change_topic: "話は変わりますが、"}  # 話題を候補に差し替えるときの前置き
+TOPIC_LEADS = ("話は変わりますが、", "ところで、", "では、", "まずは、")  # 話題の文から外す前置き
+_SENTENCE = re.compile(r"[^。!?]+[。!?]*")
 NOT_TURNS = {Action.time_warning, Action.close_gd}  # 話題への働きかけに数えない AI の発言
 SCHEMA_ACTIONS = CHAT_ACTIONS + [Action.invite_person, Action.time_warning, Action.close_gd]
 
@@ -82,6 +94,8 @@ class ChatState:
     humans_after_ai: list[Utterance]  # AI の発言の後の人間の発言(AI が話し終えた後に話し終えたもの。話し始めの順)
     links_after_ai: int  # つながった発言の回数(別の人が短い間隔で続けて話した)。AI の発言と、主導期に入った時点の遅い方より後
     unanswered: int  # 人間の発言を挟まずに続いた、直近の AI の発言の数(直近の AI の発言の後に答えがあれば 0)
+    passive_only: bool = False  # AI の発言の後の人間の発言が、中身のない返事(「特にないです」など)だけ
+    quiet_streak: int = 0  # 直近から数えて、答えがない・中身のない返事だけの AI の働きかけが続いた回数
 
 
 class ChatHostAgent(FacilitatorAgent):
@@ -97,6 +111,7 @@ class ChatHostAgent(FacilitatorAgent):
         self.opening: str | None = None  # 開始の話題(最初の判断で候補から選ぶ)
         self.topics = TopicTracker(self.settings, self.state.theme)  # 話題の記録(AI が出したもの・参加者が始めたもの)
         self._topic_health: tuple[float, str] | None = None  # 直近の LLM の判断 (時刻, health)。話題が一段落したかに使う
+        self._participant_topic_at: float | None = None  # LLM の判断で参加者の新しい話題を記録した時刻
         self.chat_phase = LEAD
         self.chat_phase_since: float | None = None  # いまの時期に入った時刻
         self.chat_log: list[tuple[float, str, str]] = []  # 時期の切り替え (時刻, 新しい時期, 理由)
@@ -129,12 +144,19 @@ class ChatHostAgent(FacilitatorAgent):
 
     @staticmethod
     def _topic_text(speech: str) -> str:
-        """話題の発言から、話題そのもの(最後の問いかけの文)を取り出す(前置きの相づちで話題を取り違えないように)。"""
-        parts = [p for p in speech.replace("?", "?").split("?") if p.strip()]
-        last = parts[-1] if parts else speech
-        for lead in ("話は変わりますが、", "では、", "まずは、"):
-            last = last.split(lead)[-1]
-        return last.split("。")[-1].strip() + ("?" if "?" in speech or "?" in speech else "")
+        """話題の発言から、話題そのもの(最後の問いかけの文)を取り出す。前置きの相づちや、問いの後の補足の文
+        (「ちょっとしたことでも大丈夫です。」)で話題を取り違えないようにする。「?」の文がなければ「〜か。」の文、
+        それもなければ最後の文。"""
+        text = speech.replace("？", "?").replace("！", "!").strip()
+        sents = [x.strip() for x in _SENTENCE.findall(text) if x.strip(" 　。!?")]
+        if not sents:
+            return text
+        pick = next((x for x in reversed(sents) if "?" in x), None) or next(
+            (x for x in reversed(sents) if x.rstrip("。").endswith("か")), sents[-1])
+        question = "?" in pick or pick.rstrip("。").endswith("か")
+        for lead in TOPIC_LEADS:
+            pick = pick.split(lead)[-1]
+        return pick.strip().rstrip("。!?").strip() + ("?" if question else "")
 
     def _record(self, d: Decision, now: float, content_reason: str | None = None) -> None:
         super()._record(d, now, content_reason)
@@ -147,7 +169,8 @@ class ChatHostAgent(FacilitatorAgent):
         """LLM が判断した話題を読む: 参加者が自分たちで新しい話題を始めたなら、その流れを話題として記録する。"""
         a = raw.get("analysis") or {}
         if a.get("topic_by") == "participants" and isinstance(a.get("topic"), str):
-            self.topics.participant_topic(a["topic"], now)
+            if self.topics.participant_topic(a["topic"], now):
+                self._participant_topic_at = now
         self._topic_health = (now, str(a.get("health", "")))
 
     def topic_status(self, now: float) -> TopicStatus:
@@ -166,6 +189,7 @@ class ChatHostAgent(FacilitatorAgent):
             "since_ai": cs.since_ai,
             "answers": len(cs.humans_after_ai),
             "answerers": len({u.speaker_id for u in cs.humans_after_ai}),
+            "passive_only": cs.passive_only,
             "unanswered": cs.unanswered,
             "topics_used": self.topics.recent(),
             "topic_candidates": self.topics.candidates()[:3],
@@ -183,6 +207,7 @@ class ChatHostAgent(FacilitatorAgent):
             "age_sec": now - ts.topic.since,
             "reactions": ts.reactions,
             "weak_streak": ts.weak_streak,
+            "answerers": ts.answerers,
             "one_on_one": ts.one_on_one,
             "one_on_one_max": self.settings.chat_one_on_one_max,
             "engaged": ts.engaged,
@@ -202,7 +227,8 @@ class ChatHostAgent(FacilitatorAgent):
         humans = sorted((u for u in ended if u.source == "human" and u.end_time > after), key=lambda u: u.start_time)
         # つながりは、主導期に戻った後の発言だけで数える(途切れる前のやり取りで、すぐ自走期に戻らないように)
         lead_since = self.chat_phase_since if self.chat_phase == LEAD and self.chat_phase_since is not None else after
-        recent = [u for u in humans if u.end_time > max(after, lead_since)]
+        # 中身のない返事(「特にないです」など)は、つながった発言に数えない(順に気のない返事をしただけで自走期に移らない)
+        recent = [u for u in humans if u.end_time > max(after, lead_since) and not passive_reply(u.text)]
         gap = self.settings.chat_link_gap_sec
         links = sum(
             1 for a, b in zip(recent, recent[1:])
@@ -214,7 +240,9 @@ class ChatHostAgent(FacilitatorAgent):
                 unanswered += 1
             elif u.source == "human":
                 break
-        return ChatState(last_ai, None if last_ai is None else now - last_ai.end_time, humans, links, unanswered)
+        passive = bool(humans) and all(passive_reply(u.text) for u in humans)
+        return ChatState(last_ai, None if last_ai is None else now - last_ai.end_time, humans, links, unanswered,
+                         passive_only=passive, quiet_streak=self.topics.quiet_streak(self.state, now))
 
     def _llm_says_flowing(self, cs: ChatState) -> bool:
         """AI の発言の後の LLM の判断で、会話が進んでいるとされたか(ルールで決めきれないつながりを補う)。"""
@@ -248,9 +276,13 @@ class ChatHostAgent(FacilitatorAgent):
     def _need_silence(self, cs: ChatState) -> float:
         """主導期に、判断を始めるまでに必要な沈黙の長さ。"""
         s = self.settings
-        if cs.humans_after_ai:  # 誰かが答えた: ほかの人が反応するのを待つ
+        if cs.passive_only:  # 中身のない返事だけ: 質問攻めにしないよう、答えがないときと同じく待ち、続くほど長く待つ
+            backoff = min(max(cs.quiet_streak - 1, 0), s.chat_passive_backoff_max)
+            return s.chat_passive_wait_sec * (1 + backoff)
+        if cs.humans_after_ai:  # 中身のある答えがあった: ほかの人が反応するのを待つ
             return s.chat_reaction_wait_sec
-        backoff = min(max(cs.unanswered - 1, 0), s.chat_no_answer_backoff_max)  # 答えのない AI の発言が続くほど長く待つ
+        # 答えのない AI の発言が続くほど長く待つ(その前の中身のない返事も、続いた回数に数える)
+        backoff = min(max(max(cs.unanswered, cs.quiet_streak) - 1, 0), s.chat_no_answer_backoff_max)
         return s.chat_no_answer_sec * (1 + backoff)
 
     def chat_wait_reason(self, now: float, cs: ChatState) -> str | None:
@@ -260,6 +292,8 @@ class ChatHostAgent(FacilitatorAgent):
         if cs.last_ai is None:
             return None
         if self.state.silence_sec(now) < self._need_silence(cs):
+            if cs.passive_only:
+                return "chat_wait_passive"
             return "chat_wait_reaction" if cs.humans_after_ai else "chat_wait_answer"
         return None
 
@@ -333,9 +367,10 @@ class ChatHostAgent(FacilitatorAgent):
     # ================= 話題の重複・一問一答の検証 =================
     def _validate(self, d: Decision, allowed: list[Action], now: float) -> tuple[Decision, str | None]:
         d, note = super()._validate(d, allowed, now)
-        if d.action in TOPIC_LEAD and d.action != Action.no_intervention and self.pending_request is None:
-            # 許可はこの判断の前の話題で決めた。同じ判断で LLM が「参加者が新しい話題を始めた」と判断していたら、
-            # その話題はまだ始まったばかりなので、切り替え・新しい話題の提供はしない(参加者の流れを尊重する)
+        if d.action in TOPIC_LEAD and self.pending_request is None and self._participant_topic_at == now:
+            # 許可はこの判断の前の話題で決めた。同じ判断で LLM が「参加者が新しい話題を始めた」と判断して記録したときだけ
+            # 確かめ直す(その話題はまだ始まったばかりなので、切り替え・新しい話題の提供はしない)。LLM の会話の状態の
+            # 判断(health)が変わっただけでは、判断の前に許可した行動を取り消さない
             ts = self.topic_status(now)
             if not (ts.can_change if d.action == Action.change_topic else ts.can_offer):
                 return Decision(reasoning=d.reasoning), f"参加者が始めた話題を尊重し {d.action.value} を見送り"

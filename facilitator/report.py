@@ -43,6 +43,7 @@ GATE_JA = {
     "blocked:chat_free": "参加者どうしで会話が続いている(雑談の自走期)",
     "blocked:chat_wait_reaction": "ほかの人の反応を待っている(雑談)",
     "blocked:chat_wait_answer": "問いかけへの答えを待っている(雑談)",
+    "blocked:chat_wait_passive": "中身のない返事が続いたので、少し長めに待っている(雑談)",
 }
 
 
