@@ -5,7 +5,7 @@
 
 ## セットアップ
 ```bash
-cd ai-facilitator
+cd hs_2602
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env   # ANTHROPIC_API_KEY / ASSEMBLYAI_API_KEY を記入
@@ -16,7 +16,7 @@ mkdir -p models && curl -L -o models/campplus_zh_en_advanced.onnx \
 マイクを使うスクリプトは、macOS の「ターミナル」アプリで実行してください(初回はマイクの許可を求められます)。
 
 ## 画面の使い方
-1. **モード選択**: 「人間だけ」か「AI参加者あり」を選びます。
+1. **モード選択**: 「人間だけ」か「AI参加者あり」「雑談」を選びます。
 2. **設定**: テーマ(「自動生成」で AI がテーマを作ります)、制限時間、参加者の人数と名前、AI参加者の人数、スタイル(就活/就活以外)を入力します。「詳細」をオンにすると、進行の調整(フェーズ進行・脱線修正・話題整理・話を回す度合い・AIからの提案度合いを 控えめ/標準/積極的)と、その他の設定(入力方法・AIのレベル・声の登録・AIの声・話者情報)を変えられます。
 3. **進行**: 「開始」で GD が始まります。参加者カードの幅は発言量に応じて変わります。
 
