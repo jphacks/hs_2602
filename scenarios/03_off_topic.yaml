@@ -19,5 +19,6 @@ utterances:
   - {t: 232, d: 3, s: speaker_4, c: 0.87, text: 居酒屋いいなあ、まかない出ます？}
   - {t: 236, d: 4, s: speaker_2, c: 0.88, text: 出ます出ます。唐揚げがめっちゃおいしいんですよ。}
 checkpoints:
-  - {at: 204.5, expect: [no_intervention], expect_gate: blocked:short_pause, why: 軽い脱線が始まった程度。一言の雑談で即座に介入しない(直前の発言から1.5秒でルール層が見送る。LLM 自身の見守りは 25_drift_first_chatter で評価)}
+  - {at: 204.5, when: {drift: [low, standard]}, expect: [no_intervention], expect_gate: blocked:short_pause, why: 軽い脱線が始まった程度。一言の雑談で即座に介入しない(直前の発言から1.5秒でルール層が見送る。LLM 自身の見守りは 25_drift_first_chatter で評価)}
+  - {at: 204.5, when: {drift: high}, expect: [no_intervention], expect_gate: llm:drift_interrupt, why: 一言の雑談が出ただけ。②積極的では短い間でも脱線修正だけは LLM に任せるので、LLM 自身が「2発言ほど続く」前と判断して見守る}
   - {at: 242, expect: [redirect_topic], expect_phase: [solution_ideation], why: テーマと無関係なバイトの話が30秒以上続いている}

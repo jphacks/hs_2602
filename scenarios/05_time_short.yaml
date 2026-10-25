@@ -25,6 +25,7 @@ utterances:
   - {t: 550, d: 4, s: speaker_2, c: 0.86, text: 対策もそれぞれに対応してるので、筋は通ってますね。}
 checkpoints:
   - {at: 482, expect: [time_warning], expect_phase: [evaluation, conclusion], why: 残り2分を切った。結論が出ていないので時間告知と取りまとめの促し(強制イベント)}
-  - {at: 511, expect: [no_intervention], expect_gate: blocked:cooldown, why: 直前の介入から29秒でクールダウン中。かつ自分たちで結論を出した}
+  - {at: 511, when: {drift: [low, standard]}, expect: [no_intervention], expect_gate: blocked:cooldown, why: 直前の介入から29秒でクールダウン中。かつ自分たちで結論を出した}
+  - {at: 511, when: {drift: high}, expect: [no_intervention], expect_gate: llm:drift_interrupt, why: 自分たちで結論を出した(脱線ではない)。②積極的ではクールダウン中でも脱線修正だけは LLM に任せるので、LLM 自身が見守る}
   - {at: 556, expect: [no_intervention], require_llm: true, expect_phase: [conclusion], why: 結論が出て自分たちで確認している。介入不要}
   - {at: 601, expect: [close_gd], expect_phase: [conclusion], why: 制限時間到達。結論を確認して終了}

@@ -20,7 +20,7 @@ from config import load_settings  # noqa: E402
 from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
 from facilitator.chat.host import ChatHostAgent  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
-from facilitator.models import Action  # noqa: E402
+from facilitator.models import Action, Analysis, Decision  # noqa: E402
 from facilitator.policy import InterventionPolicy, Level  # noqa: E402
 from facilitator.state import DiscussionState  # noqa: E402
 from tests.sim import THEME, SimClock, SimSession, chat_script  # noqa: E402
@@ -41,9 +41,9 @@ class JudgeLLM:
 
     name = "mock-judge"
 
-    def __init__(self, latency: float = 1.0, action: str | None = None, on_call=None) -> None:
-        self.latency, self.action, self.on_call = latency, action, on_call
-        self.redirected, self.calls, self.clock, self.last_usage = False, [], time, None
+    def __init__(self, latency: float = 1.0, action: str | None = None, on_call=None, max_redirects: int = 1) -> None:
+        self.latency, self.action, self.on_call, self.max_redirects = latency, action, on_call, max_redirects
+        self.redirected, self.calls, self.clock, self.last_usage = 0, [], time, None
         self.now = lambda: 0.0
 
     def generate_json(self, system, user, schema, context):
@@ -63,8 +63,8 @@ class JudgeLLM:
             action, speech = allowed[0], "時間になりました。"
         elif self.action and len(self.calls) == 1:
             action, speech = self.action, "原因はどう整理できそうですか?"
-        elif run >= 2 and not self.redirected and "redirect_topic" in allowed:
-            self.redirected = True
+        elif run >= 2 and self.redirected < self.max_redirects and "redirect_topic" in allowed:
+            self.redirected += 1
             action, speech = "redirect_topic", REDIRECT
         analysis = {**ANALYSIS, "health": "off_topic" if run >= 2 else "progressing"}
         return {"analysis": analysis, "decision": {"action": action, "reasoning": "r", "speech": speech, "urgency": 0.8, "target_speaker": None}}
@@ -212,14 +212,94 @@ def test_high_other_interventions_still_need_two_seconds(monkeypatch):
     assert not s.ai("原因はどう整理")
 
 
-def test_high_respects_cooldown(monkeypatch):
-    """クールダウン(45秒)中は発話中の判断もしない。開始の説明の直後に雑談が始まっても、45秒たつまで割り込まない。"""
+# ---------- 共通のクールダウン(45秒)を越える / 脱線修正どうしの重複を防ぐ ----------
+def redirects(s: SimSession) -> list[float]:
+    return [iv.time for iv in s.eng.state.interventions if iv.action == Action.redirect_topic]
+
+
+def test_high_bypasses_cooldown_right_after_start(monkeypatch):
+    """開始の説明の直後(45秒以内)に雑談が始まっても、脱線修正はクールダウンを待たない。"""
     llm = JudgeLLM(latency=1.0)
     s = session(monkeypatch, llm)
     s.play(chat_script((CHAT * 4)[:18], start=5.0, gap=0.3, dur=2.0))
-    s.run(60, stop=lambda: bool(s.eng.redirect_log))
-    assert all(t >= 45.0 for t, trig, _a in llm.calls if trig == "drift")
-    assert s.eng.redirect_log and s.eng.agent.history[-1].time >= 45.0
+    s.run(45, stop=lambda: bool(s.eng.redirect_log))
+    assert s.eng.redirect_log and s.eng.redirect_log[0]["outcome"] == "spoken"
+    assert redirects(s)[0] < 20.0  # 雑談2発言目(9.6秒)の後、確認の間隔と応答時間のうちに話した
+
+
+def test_high_bypasses_cooldown_after_other_intervention(monkeypatch):
+    """ほかの介入(質問)の直後に脱線が始まっても、45秒を待たずに脱線修正する。ほかの介入はクールダウンのまま。"""
+    llm = JudgeLLM(latency=1.0, action="ask_question")
+    s = session(monkeypatch, llm)
+    s.say(T0, "speaker_1", ON[0])
+    s.say(T0 + 1.5, "speaker_2", ON[1])  # その後の沈黙で質問する
+    s.run(T0 + 25, stop=lambda: bool(s.eng.state.interventions[1:]))
+    ask = s.eng.state.interventions[-1]
+    assert ask.action == Action.ask_question
+    s.play(chat_script(CHAT * 2, start=s.now() + 5.0, gap=0.3, dur=2.0))
+    s.run(ask.time + 44, stop=lambda: bool(redirects(s)))
+    assert redirects(s) and redirects(s)[0] - ask.time < 45.0
+    gates = {r.gate for r in s.eng.agent.history if r.time - ask.time < 45.0 and r.llm_called and r.time > ask.time}
+    assert gates == {"llm:drift_interrupt"}  # クールダウン中に LLM に許したのは脱線修正だけ
+
+
+def test_high_cooldown_gate_allows_only_redirect():
+    """クールダウン中に許すのは脱線修正と見送りだけ(質問・整理などはクールダウンのまま)。"""
+    s = load_settings()
+    st = DiscussionState(settings=s, theme=THEME, duration_sec=600)
+    st.started, st.start_time = True, 0.0
+    agent = FacilitatorAgent(st, JudgeLLM(), s, purpose="job", policy=InterventionPolicy(drift=Level.high))
+    st.record_intervention(50.0, Decision(action=Action.ask_question, reasoning="r", speech="?"))
+    st.add_utterance("speaker_1", CHAT[0], 55, 57, 1.0)
+    gate, allowed, _ = agent._gate(62.0)  # 沈黙5秒・質問から12秒
+    assert gate == "llm:drift_interrupt" and allowed == [Action.no_intervention, Action.redirect_topic]
+    std = FacilitatorAgent(st, JudgeLLM(), s, purpose="job", policy=InterventionPolicy(drift=Level.standard))
+    assert std._gate(62.0)[0] == "blocked:cooldown"
+
+
+def test_high_same_drift_is_not_redirected_twice(monkeypatch):
+    """脱線修正の後も同じ雑談が続くだけなら、45秒たつまで再び修正しない(その間は脱線の確認の LLM も呼ばない)。"""
+    llm = JudgeLLM(latency=1.0, max_redirects=3)
+    s = session(monkeypatch, llm)
+    continuous_chat(s, n=30)  # 約70秒続く
+    s.run(T0 + 75)
+    rs = redirects(s)
+    assert rs, "1回目の脱線修正がない"
+    assert all(b - a >= 45.0 for a, b in zip(rs, rs[1:])), rs
+    assert not [t for t, trig, _a in llm.calls if rs[0] < t < rs[0] + 45.0]
+
+
+def test_high_new_drift_after_return_can_be_redirected_again(monkeypatch):
+    """修正の後に本題へ戻り、そこから新しい脱線が始まれば、45秒を待たずにまた修正できる(前回から10秒以上あける)。"""
+    llm = JudgeLLM(latency=1.0, max_redirects=2)
+    s = session(monkeypatch, llm)
+    continuous_chat(s, n=3)
+    s.run(T0 + 30, stop=lambda: bool(redirects(s)))
+    first = redirects(s)[0]
+    t = s.now() + 3.5  # 修正(3秒)を聞いた後
+    s.say(t, "speaker_1", "話を戻すと、レジの対策を考えましょう。", 2.0)
+    s.play(chat_script(["ところで週末どこか行きました？", "海に行きました。日焼けがすごくて。", "いいですね、どこの海ですか？"],
+                       start=t + 2.3, gap=0.3, dur=2.0))
+    s.run(first + 44)
+    rs = redirects(s)
+    assert len(rs) == 2, rs
+    assert 10.0 <= rs[1] - first < 45.0
+
+
+def test_redirect_repeat_reason_unit():
+    s = load_settings()
+    st = DiscussionState(settings=s, theme=THEME, duration_sec=600)
+    st.started, st.start_time = True, 0.0
+    agent = FacilitatorAgent(st, JudgeLLM(), s, purpose="job", policy=InterventionPolicy(drift=Level.high))
+    st.add_utterance("speaker_1", CHAT[0], 55, 57, 1.0)
+    st.record_intervention(60.0, Decision(action=Action.redirect_topic, reasoning="r", speech="戻りましょう。"))
+    st.add_utterance("speaker_2", CHAT[1], 63, 65, 1.0)
+    assert agent.redirect_repeat_reason(65.0) == "直前に脱線修正をした"
+    assert agent.redirect_repeat_reason(75.0) == "同じ脱線が続いている"
+    assert agent.redirect_repeat_reason(105.0) is None  # 45秒たてば従来どおり
+    st.add_utterance("speaker_3", "話を戻すと、学食の混雑ですよね。", 66, 68, 1.0)
+    assert agent.redirect_repeat_reason(69.0) == "直前に脱線修正をした"  # 戻っていても10秒はあける
+    assert agent.redirect_repeat_reason(75.0) is None  # 本題に戻った後なので新しい脱線を修正できる
 
 
 @pytest.mark.parametrize("purpose, dtype, cls", [("general", "general", FacilitatorAgent), ("general", "casual", ChatHostAgent)])
@@ -252,13 +332,81 @@ def test_gd_gate_unit():
         assert (agent.should_tick(68.0) == "drift") == (drift == "high")
 
 
-def test_drift_check_skips_on_topic_talk():
-    """本題の語を含む発言が続いている間は、発話中の脱線の確認(LLM の呼び出し)を始めない。"""
+# ---------- 事前判定(LLM を呼ぶかの粗い判定)の検証。脱線かどうかは LLM が決める ----------
+ISSUES = Analysis(issues=["混雑の原因", "レジの待ち時間"], opinions=["キャッシュレスレジ", "空き教室の開放"])
+PREFILTER_CASES = [
+    # (名前, 直近2発言, 前回の分析, LLM を呼ぶか)。呼ぶ = 事前判定で脱線の疑いあり
+    ("本題・テーマの語なし", ["それなら昼休みを学部ごとにずらせばいいんじゃない？", "確かに、時間を分ければ並ぶ人も減りそう。"], ISSUES, True),
+    ("本題・言い換え", ["お昼の行列、券売機が遅いのが一番だと思う。", "支払いを電子マネーにすれば早いですよね。"], ISSUES, True),
+    ("本題・テーマの語が1つずつ", ["学食の席を増やすのはどうですか。", "混雑する時間をずらすのもありですね。"], Analysis(), True),
+    ("本題・本題の語が2つ", ["学食の混雑はレジが原因ですよね。", "キャッシュレスレジなら混雑も減りそう。"], ISSUES, False),
+    ("脱線・テーマの語あり", ["学食のカレー、最近値上がりしましたよね。", "学食より駅前のラーメン屋の方が安いですよ。"], ISSUES, True),
+    ("脱線・テーマの語あり2", ["混雑といえば、昨日の電車すごかったです。", "大学の最寄り駅、朝は地獄ですよね。"], ISSUES, True),
+    ("脱線・本題の語が2つ", ["学食の混雑と関係ないけど、大学の近くにラーメン屋できましたよ。", "え、どこですか？"], ISSUES, False),
+    ("一時的な雑談からすぐ本題へ", ["そういえば昨日のドラマ見ました？", "あ、でも学食の話に戻ると、レジが問題ですよね。"], ISSUES, False),
+    ("一時的な雑談からすぐ本題へ(分析なし)", ["そういえば昨日のドラマ見ました？", "あ、でも学食の話に戻ると、レジが問題ですよね。"], Analysis(), True),
+    ("無関係な話が続く", ["駅前のラーメン屋、替え玉無料なんですよ。", "え、知らなかった。今度行こうかな。"], ISSUES, True),
+]
+
+
+@pytest.mark.parametrize("name, texts, analysis, expect", PREFILTER_CASES, ids=[c[0] for c in PREFILTER_CASES])
+def test_prefilter_cases(name, texts, analysis, expect):
     s = load_settings()
     st = DiscussionState(settings=s, theme=THEME, duration_sec=600)
     st.started, st.start_time = True, 0.0
+    st.analysis = analysis
     agent = FacilitatorAgent(st, JudgeLLM(), s, purpose="job", policy=InterventionPolicy(drift=Level.high))
-    for i, text in enumerate(ON + ["学食の席を増やすのはどうですか。", "混雑する時間をずらすのもありですね。"]):
-        st.add_utterance(f"speaker_{i % 3 + 1}", text, 60 + i * 2.3, 62 + i * 2.3, 1.0)
+    agent.last_tick_time = 60.0  # 前回の判断から5秒(定期分析の間隔の確認は働かない)
+    for i, text in enumerate(texts):
+        st.add_utterance(f"speaker_{i + 1}", text, 60 + i * 2.3, 62 + i * 2.3, 1.0)
     st.speaking_now = True
-    assert agent.should_tick(70.0) is None
+    assert agent._drift_check_due(65.0) is expect
+
+
+def test_prefilter_miss_is_covered_by_interval_check(monkeypatch):
+    """事前判定が本題らしいとみなす脱線(本題の語を2つ含む雑談)が切れ目なく続いても、20秒の間隔の確認で LLM が判断する。"""
+    drift = ["学食の混雑と関係ないけど、大学の近くにラーメン屋できましたよ。", "学食の混雑より、大学の駅前のラーメンが気になります。"]
+    llm = JudgeLLM(latency=1.0)
+    s = session(monkeypatch, llm)
+    s.play(chat_script(ON + drift * 6, start=T0, gap=0.3, dur=2.0))
+    s.run(T0 + 40)
+    calls = [t for t, trig, _a in llm.calls if trig == "drift" and t > T0]
+    assert calls and all(b - a >= 20.0 - 0.25 for a, b in zip(calls, calls[1:]))  # 発話中でも20秒ごとに確かめる
+    assert len(calls) <= 3
+
+
+def test_on_topic_continuous_talk_calls_llm_at_most_every_20s(monkeypatch):
+    """本題の語を2つ含む発言が切れ目なく続く間は、脱線の確認は20秒ごとだけ(事前判定では呼ばない)。"""
+    talk = ["学食の混雑はレジが原因ですよね。", "キャッシュレスレジなら混雑も減りそう。", "学食の席の混雑も原因ですね。"]
+    llm = JudgeLLM(latency=1.0)
+    s = session(monkeypatch, llm)
+    s.play(chat_script(talk * 8, start=T0, gap=0.3, dur=2.0))
+    s.run(T0 + 50)
+    calls = [t for t, _trig, _a in llm.calls if t > T0]
+    assert len(calls) <= 3 and not s.eng.redirect_log
+
+
+
+# ---------- モック評価: ②積極的の時点は LLM 自身の見守りを確かめる ----------
+class AlwaysRedirect:
+    name = "always-redirect"
+
+    def generate_json(self, system, user, schema, context):
+        allowed = context["allowed_actions"]
+        action = allowed[0] if len(allowed) == 1 else ("redirect_topic" if "redirect_topic" in allowed else "no_intervention")
+        speech = "" if action == "no_intervention" else "テーマに戻りましょう。"
+        return {"analysis": ANALYSIS, "decision": {"action": action, "reasoning": "r", "speech": speech, "urgency": 0.8, "target_speaker": None}}
+
+
+@pytest.mark.parametrize("name, at", [("01_smooth", 95.5), ("01_smooth", 125.0), ("03_off_topic", 204.5), ("07_monologue", 270.0)])
+def test_high_checkpoints_fail_when_llm_redirects_on_topic(name, at):
+    """発話中・短い間の時点で LLM が本題の議論を脱線と誤って修正すれば不合格(ルール層の見送りで合格にならない)。
+    ②標準では同じ時点はルール層が見送るので、同じ LLM でも合格する(従来どおり)。"""
+    from config import ROOT
+    from facilitator.scenario import load_scenario, run_scenario
+
+    sc = load_scenario(ROOT / "scenarios" / f"{name}.yaml")
+    for drift, passed in (("high", False), ("standard", True)):
+        res = run_scenario(sc, AlwaysRedirect(), load_settings(llm_provider="mock"), policy=InterventionPolicy(drift=Level(drift)))
+        c = next(c for c in res.checks if c.at == at)
+        assert c.passed is passed, (drift, c.record.gate, c.fail_reason)

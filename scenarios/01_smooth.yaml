@@ -31,6 +31,8 @@ utterances:
   - {t: 159, d: 5, s: speaker_2, c: 0.9, text: モバイルオーダーは中長期の案として残しておくのはどうですか。}
 checkpoints:
   - {at: 0, expect: [start_gd], why: 開始時はAIがテーマと進め方を説明する}
-  - {at: 95.5, expect: [no_intervention], expect_gate: blocked:short_pause, why: 原因整理から案出しまで自走している。一瞬の間で割り込まない}
-  - {at: 125, expect: [no_intervention], expect_gate: blocked:speaking, why: 発話中(VAD)なので話さない}
+  - {at: 95.5, when: {drift: [low, standard]}, expect: [no_intervention], expect_gate: blocked:short_pause, why: 原因整理から案出しまで自走している。一瞬の間で割り込まない}
+  - {at: 95.5, when: {drift: high}, expect: [no_intervention], expect_gate: llm:drift_interrupt, why: 本題の議論が自走している。②積極的では発話中・短い間でも脱線修正だけはルール層が LLM に任せるので、LLM 自身が脱線ではないと判断して見守る}
+  - {at: 125, when: {drift: [low, standard]}, expect: [no_intervention], expect_gate: blocked:speaking, why: 発話中(VAD)なので話さない}
+  - {at: 125, when: {drift: high}, expect: [no_intervention], expect_gate: llm:drift_interrupt, why: 本題の議論が自走している。②積極的では発話中・短い間でも脱線修正だけはルール層が LLM に任せるので、LLM 自身が脱線ではないと判断して見守る}
   - {at: 166, expect: [no_intervention], require_llm: true, expect_phase: [evaluation, conclusion], why: 自ら比較軸を設定し収束に向かっている。見守るべき}

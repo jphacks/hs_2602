@@ -17,7 +17,7 @@ from facilitator.models import AI_SPEAKER, UNKNOWN, UNLIMITED_SEC, Action, Agent
 from facilitator.agent.content_check import content_flags
 from facilitator.agent.name_check import strip_names
 from facilitator.agent.request_detect import detect_request
-from facilitator.agent.topic_return import topic_terms
+from facilitator.agent.topic_return import detect_topic_return
 from facilitator.policy import CONTENT_ACTIONS, ContentInitiative, InterventionPolicy, Level, level_settings, levels, session_policy
 from facilitator.state import DiscussionState
 
@@ -43,9 +43,9 @@ REQUEST_IN_COOLDOWN_NOTE = (
     "依頼でない場合や、内容支援では応じられない依頼の場合は no_intervention を選んでください(ほかの介入はしません)。"
 )
 DRIFT_INTERRUPT_NOTE = (
-    "参加者が話している途中、または発言の間が短い時点です。②脱線への対応が「積極的」のため、脱線修正(redirect_topic)"
-    "だけは割り込んで行えます。判断基準は通常どおりです(テーマと関係ない話題が2発言ほど続き、本題に戻る様子がなければ "
-    "redirect_topic。一言の雑談やテーマに関わる経験談、すでに本題に戻っているなら no_intervention)。"
+    "参加者が話している途中、発言の間が短い、または直前の介入から間がない時点です。②脱線への対応が「積極的」のため、"
+    "脱線修正(redirect_topic)だけは割り込んで行えます。判断基準は通常どおりです(テーマと関係ない話題が2発言ほど続き、"
+    "本題に戻る様子がなければ redirect_topic。一言の雑談やテーマに関わる経験談、すでに本題に戻っているなら no_intervention)。"
     "ほかの介入はこの時点ではできません。"
 )
 DRIFT_INTERRUPT_ACTIONS = [Action.no_intervention, Action.redirect_topic]
@@ -172,6 +172,9 @@ class FacilitatorAgent:
 
         in_cooldown = since is not None and since < self._cooldown_sec()
         if in_cooldown and self.pending_request is None:
+            # 就活GD・②積極的: 脱線修正だけは共通のクールダウンを越える(脱線修正どうしの重複は _drift_interrupt_ok が防ぐ)
+            if self._drift_interrupt_ok(now) and self._new_human_since_llm(now):
+                return "llm:drift_interrupt", list(DRIFT_INTERRUPT_ACTIONS), DRIFT_INTERRUPT_NOTE
             return "blocked:cooldown", [], None
         if st.silence_sec(now) < s.min_silence_for_intervention_sec:
             if self._drift_interrupt_ok(now):  # 就活GD・②積極的: 脱線修正だけは2秒の間を待たない
@@ -207,30 +210,61 @@ class FacilitatorAgent:
         return self.purpose == "job" and self.policy.drift == Level.high and self.dtype.key != "casual"
 
     def _drift_interrupt_ok(self, now: float) -> bool:
-        """発話中・短い間に、脱線修正だけを許可してよいか。クールダウン・強制イベント・依頼の待ちは従来どおり優先する。"""
+        """発話中・短い間・共通のクールダウン中でも、脱線修正だけを許可してよいか。強制イベントと依頼の待ちは従来どおり優先し、
+        脱線修正どうしの重複は redirect_repeat_reason で防ぐ。"""
         if not self.drift_interrupt() or self.pending_request is not None or self.forced_event_pending(now):
             return False
-        since = self.state.since_last_intervention(now)
-        if since is not None and since < self._cooldown_sec():
+        if self.redirect_repeat_reason(now):
             return False
         return self.off_topic_streak >= self._param("drift_confirm_ticks")
 
+    def redirect_repeat_reason(self, now: float) -> str | None:
+        """前回の脱線修正から間がなく、もう一度修正すると重複になるなら理由を返す(共通のクールダウンの代わりの制限)。
+        - drift_redirect_gap_sec 未満: 新しい脱線かどうかによらず修正しない
+        - それ以降で、修正の後に参加者が本題に戻った根拠(topic_return の判定)がない: 同じ脱線が続いているとみなし、
+          共通のクールダウン(45秒)がたつまで修正しない(たった後は従来どおり)
+        - 本題に戻った後に始まった脱線は新しい脱線として、また修正できる"""
+        st = self.state
+        last = next((iv for iv in reversed(st.interventions) if iv.action == Action.redirect_topic), None)
+        if last is None:
+            return None
+        since = now - last.time
+        if since >= self._cooldown_sec():
+            return None
+        if since < self.settings.drift_redirect_gap_sec:
+            return "直前に脱線修正をした"
+        human = [u for u in st.utterances if u.source == "human" and u.end_time <= now]
+        before = [u.text for u in human if u.start_time < last.time][-4:]
+        after = [u.text for u in human if u.start_time >= last.time]
+        if detect_topic_return(st.theme, st.analysis, before, after) is None:
+            return "同じ脱線が続いている"
+        return None
+
+    def _new_human_since_llm(self, now: float) -> bool:
+        """直近の LLM 判断の後に、人間の新しい発言があるか。"""
+        seen = self._llm_seen_id
+        return any(u.source == "human" and u.end_time <= now and (seen is None or u.id > seen) for u in self.state.utterances)
+
     def _drift_check_due(self, now: float) -> bool:
         """発話が続いていても脱線を確かめる判断を始めるか(should_tick のイベント駆動)。前回の LLM 判断の後に人間の新しい
-        発言があり、直近の drift_check_min_new 個の人間の発言に本題の語(テーマと前回の分析の論点・意見・合意)がないとき。
-        本題の語がある発言は脱線でないとみなし、LLM を呼ばない(呼び出しの回数を抑えるための粗い事前判定)。"""
+        発言があり、次のどちらかのとき:
+        - 直近の drift_check_min_new 個の人間の発言が、どれも本題らしくない(本題に戻る言い回しも、本題の語2つもない。
+          topic_return.detect_topic_return と同じ基準)。LLM を呼ぶ回数を抑えるための粗い事前判定
+        - 前回の判断から定期分析の間隔(20秒)がたった。発話が続く間は定期分析が走らないので、本題の語を含む脱線
+          (「学食のカレー」など)を事前判定が見逃しても、この間隔で確かめる
+        脱線かどうかは LLM が判断する(事前判定だけで修正は決めない)。"""
         st, s = self.state, self.settings
-        if not self._drift_interrupt_ok(now):
+        if not self._drift_interrupt_ok(now) or not self._new_human_since_llm(now):
             return False
-        if self.last_tick_time is not None and now - self.last_tick_time < s.drift_check_interval_sec:
+        since = None if self.last_tick_time is None else now - self.last_tick_time
+        if since is not None and since < s.drift_check_interval_sec:
             return False
-        human = [u for u in st.utterances if u.source == "human" and u.end_time <= now]
-        recent = human[-s.drift_check_min_new:]
-        seen = self._llm_seen_id
-        if len(recent) < s.drift_check_min_new or not any(seen is None or u.id > seen for u in human):
+        if since is None or since >= s.analysis_interval_sec:
+            return True
+        recent = [u.text for u in st.utterances if u.source == "human" and u.end_time <= now][-s.drift_check_min_new:]
+        if len(recent) < s.drift_check_min_new:
             return False
-        terms = topic_terms(st.theme, st.analysis, [])
-        return not any(t in u.text for u in recent for t in terms)
+        return all(detect_topic_return(st.theme, st.analysis, [], [text]) is None for text in recent)
 
     # ================= 内容支援(介入ポリシー⑥) =================
     def _content_actions(self, now: float) -> tuple[list[Action], str | None]:
