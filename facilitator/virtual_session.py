@@ -141,7 +141,7 @@ class VirtualSession:
                     self.out(f"{INDENT}└ 理由: {d.reasoning}")
                 if rec.overridden:
                     self.out(f"{INDENT}└ ルール層による変更: {rec.overridden}")
-            elif rec.gate == "llm":
+            elif rec.gate.startswith("llm"):
                 self.out(f"[{when}] 🧭 進行役: 見守り — {d.reasoning}")
             elif self.show_blocked and rec.gate.startswith("blocked"):
                 self.out(f"[{when}] ・ 進行役は見送り(ルール: {GATE_JA.get(rec.gate, rec.gate)})")
@@ -196,7 +196,7 @@ class VirtualSession:
         st = self.st
         end = max([self.t] + [u.end_time for u in st.utterances])
         acted = Counter(iv.action.value for iv in st.interventions)
-        watched = sum(1 for r, _ in self.sec.decisions if r.gate == "llm" and r.decision.action.value == "no_intervention")
+        watched = sum(1 for r, _ in self.sec.decisions if r.gate.startswith("llm") and r.decision.action.value == "no_intervention")
         blocked = Counter(r.gate for r, _ in self.sec.decisions if r.gate.startswith("blocked"))
         stats = st.speaker_stats(end)
         total = sum(x.total_speech_sec for x in stats) or 1

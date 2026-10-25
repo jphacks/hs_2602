@@ -14,7 +14,7 @@ from pydantic import ValidationError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import POLICY_PRESETS, PURPOSE_PRESET, STYLE_KNOBS, load_settings  # noqa: E402
-from facilitator.agent.prompts import build_system_prompt  # noqa: E402
+from facilitator.agent.prompts import CONTENT_NONE_RULES, build_system_prompt  # noqa: E402
 from facilitator.engine import Engine, SessionConfig  # noqa: E402
 from facilitator.policy import (  # noqa: E402
     ITEM_LABELS,
@@ -182,7 +182,14 @@ def _sha(text: str) -> str:
 
 @pytest.mark.parametrize("purpose,dtype", list(PROMPT_SHA))
 def test_all_standard_prompt_unchanged(purpose, dtype):
-    assert _sha(build_system_prompt(purpose, dtype)) == PROMPT_SHA[(purpose, dtype)]
+    """就活GDは第1段階のプロンプトのまま。一般GWは「内容支援なし」の節(高-1)を末尾に加えただけで、ほかは同じ。"""
+    p = build_system_prompt(purpose, dtype)
+    if purpose == "general":
+        assert p.endswith(CONTENT_NONE_RULES) and p.count(CONTENT_NONE_RULES) == 1
+        p = p[: -len(CONTENT_NONE_RULES)]
+    else:
+        assert CONTENT_NONE_RULES not in p
+    assert _sha(p) == PROMPT_SHA[(purpose, dtype)]
     assert build_system_prompt(purpose, dtype, levels=STANDARD_LEVELS) == build_system_prompt(purpose, dtype)
 
 

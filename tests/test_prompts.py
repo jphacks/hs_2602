@@ -14,6 +14,7 @@ from facilitator.agent.agent import FacilitatorAgent  # noqa: E402
 from facilitator.policy import levels, purpose_preset  # noqa: E402
 from facilitator.agent.prompts import (  # noqa: E402
     COMMON_PROMPT,
+    CONTENT_NONE_RULES,
     PURPOSE_INTRO,
     PURPOSE_RULES,
     SYSTEM_PROMPT,
@@ -34,7 +35,8 @@ def _line(prefix: str) -> str:
 @pytest.mark.parametrize("purpose", list(PURPOSE_INTRO))
 def test_prompt_is_intro_common_phases_and_rules(purpose):
     block = build_phase_block(get_discussion_type(purpose=purpose))
-    assert build_system_prompt(purpose) == PURPOSE_INTRO[purpose] + COMMON_PROMPT + block + PURPOSE_RULES[purpose]
+    none_rules = CONTENT_NONE_RULES if purpose == "general" else ""  # 一般GW の内容支援なしの節(就活GDは用途別ルールで同じ趣旨)
+    assert build_system_prompt(purpose) == PURPOSE_INTRO[purpose] + COMMON_PROMPT + block + PURPOSE_RULES[purpose] + none_rules
 
 
 def test_default_and_unknown_purpose_fall_back_to_job():

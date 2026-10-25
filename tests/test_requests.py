@@ -110,8 +110,9 @@ def test_request_bypasses_cooldown_but_not_short_pause():
     agent._scan_requests(214.5)
     assert agent.pending_request is not None
     assert agent._gate(214.5)[0] == "blocked:short_pause"  # 依頼でも、言い終わってから2秒は待つ
-    gate, allowed, _ = agent._gate(215.5)
-    assert gate == "llm" and Action.offer_hint in allowed  # 直前の介入から10秒(クールダウン中)でも応じる
+    gate, allowed, note = agent._gate(215.5)
+    # 直前の介入から10秒(クールダウン中)でも依頼には応じる。許可は見送りと範囲の中の内容支援だけ
+    assert gate == "llm:request" and allowed == [Action.no_intervention, Action.offer_hint] and "依頼に応じることだけ" in note
 
 
 def test_non_request_is_cleared_after_one_llm_judgment():

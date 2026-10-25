@@ -33,7 +33,12 @@ FREE_ACTIONS = [
     Action.compare_criteria,
     Action.invite_all,
 ]
-INVITE_ALL_FALLBACK = "まだお話しされていない方も、ここまでの議論についてどう考えているか聞かせてもらえますか?"
+REQUEST_IN_COOLDOWN_NOTE = (
+    "直前の介入から間がないため、いまは進行役への依頼に応じることだけができます。"
+    "「進行役への依頼」の発言が、あなたに考えるヒントやアイデアを求める依頼なら、許可された内容支援で応じてください。"
+    "依頼でない場合や、内容支援では応じられない依頼の場合は no_intervention を選んでください(ほかの介入はしません)。"
+)
+INVITE_ALL_FALLBACK ="まだお話しされていない方も、ここまでの議論についてどう考えているか聞かせてもらえますか?"
 REDIRECT_MAX_SENTENCES = 2  # 軌道修正は短い区切りで話すので短くする
 # 発話の文数の上限(既定は3文)。ヒントは問いの形の短いものにする
 MAX_SENTENCES = {Action.redirect_topic: REDIRECT_MAX_SENTENCES, Action.offer_hint: 2, Action.propose_idea: 3}
@@ -121,11 +126,19 @@ class FacilitatorAgent:
                     f"残り約{int(remaining // 60)}分{int(remaining % 60)}秒です。time_warning を選んでください。",
                 )
 
-        # 進行役への依頼にはクールダウン中でも応じる(1つの依頼につき1回。発話中・2秒の間の条件は変えない)
-        if since is not None and since < s.cooldown_sec and self.pending_request is None:
+        in_cooldown = since is not None and since < s.cooldown_sec
+        if in_cooldown and self.pending_request is None:
             return "blocked:cooldown", [], None
         if st.silence_sec(now) < s.min_silence_for_intervention_sec:
             return "blocked:short_pause", [], None
+        if in_cooldown:
+            # 進行役への依頼にだけは、クールダウン中でも応じる(1つの候補につき1回。発話中・2秒の間の条件は変えない)。
+            # 許可するのは見送りと範囲の中の内容支援だけ。依頼と無関係な介入(質問・脱線修正・整理・発言促進)は
+            # クールダウンを越えられない。LLM が依頼でないと判断すれば見送り、候補は消えて通常のクールダウンに戻る
+            content, self.content_reason = self._content_actions(now)
+            if not content:  # 内容支援が無効なら依頼を検知しないので通常は起きない(念のため)
+                return "blocked:cooldown", [], None
+            return "llm:request", [Action.no_intervention, *content], REQUEST_IN_COOLDOWN_NOTE
 
         allowed = list(FREE_ACTIONS)
         if self.off_topic_streak < self._param("drift_confirm_ticks"):

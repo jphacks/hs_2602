@@ -178,6 +178,15 @@ JOB_NEUTRAL_RULES = """\
 JOB_CONTENT_RULES = """\
 - この回は主催者の設定で内容支援が有効です(厳格な選考向けの中立設定ではありません)。参加者が出していない観点やアイデアを持ち込むのは、内容支援のアクションが許可されているときだけにしてください。それ以外の発言(質問・整理など)には持ち込まないでください。"""
 assert COMMON_PROMPT.count(ROLE_DONT["none"]) == 1 and PURPOSE_RULES["job"].count(JOB_NEUTRAL_RULES) == 1
+# 内容支援が「なし」のときの中立のルール。就活GDは用途別ルール(JOB_NEUTRAL_RULES)が同じ趣旨を定めているので、
+# 一般GW のときだけ加える(就活GD標準のプロンプトは変えない)
+CONTENT_NONE_RULES = """
+# 内容支援なし(主催者の設定)
+この回は内容支援が「なし」です。進行の支援だけを行います。
+- 参加者が出していないアイデア・観点・切り口を持ち込まないでください。問いかけの形でも同じです(例: 参加者が来場者の話をしていないのに「来場者の気持ちから考えてみませんか?」と問うのは、新しい切り口の持ち込みになります)。
+- 問いかけは、参加者の発言、参加者が決めた目的や条件、テーマの言葉そのものを手がかりにしてください。
+- まだ意見が出ていないときや、手がかりになる発言がないときは、内容に触れない進め方の問いかけにします(例:「まずは思いついたことから挙げてみませんか?」「今回のテーマについて、どこから考えていきましょうか?」)。
+"""
 
 CONTENT_LABELS = {"hint": "ヒントまで", "concrete": "具体案まで", "none": "依頼されたときだけ", "stalled": "停滞時のみ", "proactive": "積極的"}
 CONTENT_INITIATIVE_TEXT = {
@@ -233,6 +242,8 @@ def build_system_prompt(
     rules = PURPOSE_RULES[p]
     if scope != "none":
         rules = rules.replace(JOB_NEUTRAL_RULES, JOB_CONTENT_RULES) + build_content_block(scope, initiative)
+    elif p == "general":
+        rules += CONTENT_NONE_RULES
     extra = ""
     if style_notes:
         # 主催者が画面の「詳細」で選んだ進行の調整。上の方針(特に答えを与えない)の範囲内で従う
