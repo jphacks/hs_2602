@@ -919,6 +919,49 @@ class Engine:
             return None
         return None
 
+    def result(self) -> dict[str, Any]:
+        """終了後の結果画面用: 全部の発言と、参加者ごとの発言量(回数・秒数・文字数)。"""
+        st, cfg, agent = self.state, self.cfg, self.agent
+        if not st or not cfg or not agent:
+            return {"ok": False}
+        now = self._ended_at if self._ended_at is not None else self.now()
+        names = {f"speaker_{i + 1}": n for i, n in enumerate(cfg.names)}
+        names.update({p.speaker_id: p.name for p in self.personas})
+        done = [u for u in st.utterances if u.start_time <= now]
+
+        def amount(us: list[Any]) -> dict[str, Any]:
+            return {"turns": len(us), "sec": round(sum(max(0.0, u.end_time - u.start_time) for u in us), 1),
+                    "chars": sum(len(u.text) for u in us)}
+
+        people = []
+        order = list(names) + ([UNKNOWN] if any(u.speaker_id == UNKNOWN for u in done) else [])
+        for sid in order:
+            mine = [u for u in done if u.speaker_id == sid and u.source != "ai"]
+            kind = "bot" if sid in st.bot_ids else ("unknown" if sid == UNKNOWN else "human")
+            people.append({"id": sid, "name": names.get(sid, "不明"), "kind": kind, **amount(mine)})
+        return {
+            "ok": True,
+            "theme": cfg.theme,
+            "purpose": cfg.purpose,
+            "discussion_type": agent.dtype.label,
+            "elapsed": round(st.elapsed(now), 1) if st.started else 0.0,
+            "duration": st.duration_sec,
+            "people": people,
+            "facilitator": amount([u for u in done if u.source == "ai"]),
+            "interventions": len(st.interventions),
+            "log": [
+                {
+                    "id": u.id,
+                    "t": round(st.elapsed(u.start_time) if st.started else u.start_time, 1),
+                    "speaker_id": u.speaker_id,
+                    "who": "AI ファシリテーター" if u.source == "ai" else (names.get(u.speaker_id) or "不明"),
+                    "text": u.text,
+                    "source": u.source,
+                }
+                for u in done
+            ],
+        }
+
     def snapshot(self) -> dict[str, Any]:
         st, cfg, agent = self.state, self.cfg, self.agent
         if not st or not cfg or not agent:

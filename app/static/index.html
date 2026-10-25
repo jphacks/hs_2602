@@ -225,10 +225,6 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .enrolled span { font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 999px; background: var(--fill); color: var(--muted); }
 .enrolled span.ok { color: var(--accent); background: var(--accent-soft); }
 .enrolled span.now { color: #fff; background: var(--accent); }
-.summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0 24px; }
-.summary-grid div { padding: 14px; border-radius: 16px; background: var(--tile-2); }
-.summary-grid b { display: block; font-family: var(--rounded); font-size: 26px; }
-.summary-grid span { color: var(--muted); font-size: 12.5px; }
 .drawer { position: fixed; top: 10px; right: 10px; bottom: 10px; width: min(420px, 92vw); z-index: 25; transform: translateX(110%); transition: transform .4s cubic-bezier(.2,.8,.2,1);
   background: var(--material); backdrop-filter: saturate(180%) blur(30px); -webkit-backdrop-filter: saturate(180%) blur(30px);
   border-radius: 26px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 0 0 .5px var(--line); }
@@ -355,6 +351,27 @@ body { font-size: 17px; }
 /* 議論タイプ: 2列。数が奇数のときは先頭(指定なし)を横いっぱいに */
 .type-grid button:first-child:nth-last-child(odd) { grid-column: 1 / -1; }
 .type-grid button { font-size: 15px !important; }
+/* ---------- 4. 結果 ---------- */
+.r-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.r-meta span { font-size: 13px; font-weight: 500; padding: 4px 11px; border-radius: 999px; background: var(--fill); color: var(--muted); }
+.r-meta b { color: var(--text); font-family: var(--rounded); }
+/* 全員の発言時間の割合(1本の帯) */
+.r-share { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: var(--fill); margin: 2px 0 16px; }
+.r-share i { display: block; height: 100%; background: var(--c); transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.r-share i + i { box-shadow: inset 2px 0 0 #fff; }
+.r-person { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 4px 12px; align-items: center; padding: 10px 0; }
+.r-person + .r-person { border-top: .5px solid var(--line); }
+.r-person .avatar { width: 40px; height: 40px; border-radius: 11px; font-size: 17px; margin: 0; grid-row: span 3; }
+.r-person .avatar svg { width: 22px; height: 22px; }
+.r-person .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-width: 0; }
+.r-person .top b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-person .top b small { font-size: 11px; font-weight: 600; color: var(--ai); margin-left: 6px; }
+.r-person .pct { font-family: var(--rounded); font-weight: 700; font-size: 18px; }
+.r-person .r-bar { height: 8px; border-radius: 999px; background: var(--fill); overflow: hidden; }
+.r-person .r-bar i { display: block; height: 100%; border-radius: 999px; background: var(--c); width: 0; transition: width .8s cubic-bezier(.2,.8,.2,1); }
+.r-person .nums { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.r-person.fac .pct { color: var(--muted); font-size: 14px; font-weight: 600; }
+.r-log { display: flex; flex-direction: column; gap: 12px; }
 </style>
 </head>
 <body>
@@ -514,6 +531,33 @@ body { font-size: 17px; }
   </div>
 </section>
 
+<!-- ============ 4. 結果 ============ -->
+<section class="screen" id="s-result">
+  <div class="bento bento-result">
+    <div class="tile tile-hero span-4">
+      <span class="mode-pill">ディスカッション終了</span>
+      <h1 id="r-theme">—</h1>
+      <div class="r-meta" id="r-meta"></div>
+    </div>
+
+    <div class="tile span-4">
+      <span class="label">喋った量</span>
+      <div class="r-share" id="r-share"></div>
+      <div class="r-people" id="r-people"></div>
+    </div>
+
+    <div class="tile span-4">
+      <span class="label" id="r-log-label">会話ログ</span>
+      <div class="r-log" id="r-log"></div>
+    </div>
+
+    <div class="setup-actions span-4">
+      <button type="button" class="btn" id="r-again">同じ設定でもう一度</button>
+      <button type="button" class="btn primary" id="r-new">新しく始める</button>
+    </div>
+  </div>
+</section>
+
 <!-- 自己紹介 -->
 <div class="overlay" id="ov-intro">
   <div class="glass modal">
@@ -521,24 +565,6 @@ body { font-size: 17px; }
     <h2 id="intro-title">自己紹介</h2>
     <p>名前と一言を、5秒ほど話してください。AI が声を覚えます。</p>
     <div class="enrolled" id="intro-list"></div>
-  </div>
-</div>
-
-<!-- 終了 -->
-<div class="overlay" id="ov-done">
-  <div class="glass modal">
-    <div class="eyebrow">SESSION COMPLETE</div>
-    <h2>お疲れさまでした</h2>
-    <p id="done-theme"></p>
-    <div class="summary-grid">
-      <div><b id="d-time">--:--</b><span>経過時間</span></div>
-      <div><b id="d-utts">0</b><span>発言数</span></div>
-      <div><b id="d-ai">0</b><span>AIの介入</span></div>
-    </div>
-    <div class="row" style="justify-content:center">
-      <button class="btn" id="d-close">ログを見る</button>
-      <button class="btn primary" id="d-new">新しく始める</button>
-    </div>
   </div>
 </div>
 
@@ -849,11 +875,7 @@ function render() {
   // 終了
   if (s.status === "finished" && s.started && !doneShown) {
     doneShown = true;
-    $("done-theme").textContent = s.theme;
-    $("d-time").textContent = mmss(s.elapsed);
-    $("d-utts").textContent = s.utterances.filter((u) => u.source === "human").length;
-    $("d-ai").textContent = s.interventions;
-    $("ov-done").classList.add("show");
+    showResult();
   }
 }
 
@@ -909,8 +931,51 @@ $("btn-setup").onclick = () => {
 };
 $("btn-decisions").onclick = () => $("drawer").classList.toggle("open");
 $("drawer-close").onclick = () => $("drawer").classList.remove("open");
-$("d-close").onclick = () => $("ov-done").classList.remove("show");
-$("d-new").onclick = () => { $("ov-done").classList.remove("show"); ui.started = false; show("s-purpose"); };
+/* ---------- 4. 結果 ---------- */
+async function showResult() {
+  const r = await fetch("/api/result").then((x) => x.json()).catch(() => null);
+  if (!r?.ok) return;
+  $("drawer").classList.remove("open"); $("logbox").classList.remove("expanded");
+  $("r-theme").textContent = r.theme;
+  const limit = r.duration >= 24 * 3600 ? "制限なし" : `${Math.round(r.duration / 60)}分`;
+  const said = r.people.reduce((a, p) => a + p.turns, 0);
+  $("r-meta").innerHTML = [`時間 <b>${mmss(r.elapsed)}</b> / ${limit}`, esc(r.discussion_type), `発言 <b>${said}</b>回`, `AIの介入 <b>${r.interventions}</b>回`]
+    .map((x) => `<span>${x}</span>`).join("");
+  // 喋った量: 参加者どうしの発言時間の割合(進行役は別に表示し、割合には含めない)
+  const total = r.people.reduce((a, p) => a + p.sec, 0);
+  const max = Math.max(1, r.facilitator.sec, ...r.people.map((p) => p.sec));
+  // 色は結果のデータから決める(再読み込み後でも進行中と同じ色: 人間は順に COLORS、AI 参加者は順に AI_COLORS)
+  const colors = {}; let h = 0, b = 0;
+  r.people.forEach((p) => { colors[p.id] = p.kind === "unknown" ? "#c7c7cc" : p.kind === "bot" ? AI_COLORS[b++ % AI_COLORS.length] : COLORS[h++ % COLORS.length]; });
+  const col = (p) => colors[p.id];
+  const pct = (p) => (total ? Math.round((p.sec / total) * 100) : 0);
+  const icon = (p) => (p.kind === "bot" ? ROBOT : esc((p.name || "?").slice(0, 1)));
+  const ranked = r.people.slice().sort((a, b) => b.sec - a.sec);
+  $("r-share").innerHTML = ranked.filter((p) => p.sec > 0)
+    .map((p) => `<i style="--c:${col(p)};width:0" data-w="${(p.sec / total) * 100}%" title="${esc(p.name)} ${pct(p)}%"></i>`).join("");
+  const row = (p, c, cls, right, tag) => `<div class="r-person ${cls}" style="--c:${c}">
+      <div class="avatar">${p.icon}</div>
+      <div class="top"><b>${esc(p.name)}${tag}</b><span class="pct">${right}</span></div>
+      <div class="r-bar"><i data-w="${(p.sec / max) * 100}%"></i></div>
+      <div class="nums">${p.turns}回 · ${Math.round(p.sec)}秒 · ${p.chars}文字</div>
+    </div>`;
+  $("r-people").innerHTML = ranked.map((p) => row({ ...p, icon: icon(p) }, col(p), "", `${pct(p)}%`, p.kind === "bot" ? "<small>AI参加者</small>" : "")).join("")
+    + row({ ...r.facilitator, name: "AI ファシリテーター", icon: "AI" }, "#8e8e93", "fac", "進行役", "");
+  // 会話ログ(全部)
+  $("r-log-label").textContent = `会話ログ(全${r.log.length}件)`;
+  $("r-log").innerHTML = r.log.length ? r.log.map((u) => {
+    const c = u.source === "ai" ? "#8e8e93" : colors[u.speaker_id] || "#c7c7cc";
+    const av = u.source === "ai" ? "AI" : u.source === "bot" ? ROBOT : esc((u.who || "?").slice(0, 1));
+    const tag = u.source === "bot" ? '<span class="aitag">AI参加者</span>' : "";
+    return `<div class="msg ${u.source === "ai" ? "ai" : u.source === "bot" ? "bot" : ""}" style="--c:${c}"><div class="av">${av}</div>
+      <div><div class="who"><b>${esc(u.who)}</b>${tag}<time>${mmss(u.t)}</time></div><div class="bubble">${esc(u.text)}</div></div></div>`;
+  }).join("") : '<div class="empty">発言はありませんでした</div>';
+  show("s-result");
+  requestAnimationFrame(() => requestAnimationFrame(() =>  // 帯と棒を 0 から伸ばす
+    document.querySelectorAll("#s-result [data-w]").forEach((el) => { el.style.width = el.dataset.w; })));
+}
+$("r-new").onclick = () => { ui.started = false; show("s-purpose"); };
+$("r-again").onclick = () => { ui.started = false; show("s-setup"); };
 const send = () => {
   const text = $("in-text").value.trim(); if (!text) return;
   post("/api/text", { speaker_id: $("in-speaker").value, text }); $("in-text").value = "";
