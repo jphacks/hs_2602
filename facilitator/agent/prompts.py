@@ -189,14 +189,36 @@ CONTENT_NONE_RULES = """
 """
 
 CONTENT_LABELS = {"hint": "ヒントまで", "concrete": "具体案まで", "none": "依頼されたときだけ", "stalled": "停滞時のみ", "proactive": "積極的"}
+# 自発的な内容支援の説明。(範囲, 自発性) ごと。「ヒントまで」では具体案(propose_idea)に触れない(使えないため)
 CONTENT_INITIATIVE_TEXT = {
     "none": "参加者から進行役のあなたへ明示的に頼まれたとき(状況説明の「進行役への依頼」)だけ許可されます。",
-    "stalled": "頼まれたときに加えて、停滞が続くときにも許可されます。停滞時は段階を踏みます: まず ask_question などの進行支援を行い、それでも止まっているときに offer_hint、さらに止まっているときに propose_idea(許可されたアクションにあるものだけ)。",
-    "proactive": "頼まれたときと停滞が続くときに加えて、議論に大事な視点が欠けているとあなたが判断したときにも offer_hint が許可されます。参加者が自分で考えて進んでいるときは使いません。具体案(propose_idea)は、頼まれたときか停滞が続くときだけです。",
+    "stalled": {
+        "hint": "頼まれたときに加えて、停滞が続くときにも許可されます。停滞時は段階を踏みます: まず ask_question などの進行支援を行い、それでも止まっているときに offer_hint(許可されたアクションにあるときだけ)。",
+        "concrete": "頼まれたときに加えて、停滞が続くときにも許可されます。停滞時は段階を踏みます: まず ask_question などの進行支援を行い、それでも止まっているときに offer_hint、さらに止まっているときに propose_idea(許可されたアクションにあるものだけ)。",
+    },
+    "proactive": {
+        "hint": "頼まれたときと停滞が続くときに加えて、議論に大事な視点が欠けているとあなたが判断したときにも offer_hint が許可されます。参加者が自分で考えて進んでいるときは使いません。",
+        "concrete": "頼まれたときと停滞が続くときに加えて、議論に大事な視点が欠けているとあなたが判断したときにも offer_hint が許可されます。参加者が自分で考えて進んでいるときは使いません。具体案(propose_idea)は、頼まれたときか停滞が続くときだけです。",
+    },
 }
+# 「具体案まで」では具体案の例を示すので、役割の「答えは与えない」を「結論は参加者に委ねる」に合わせる
+ROLE_LINE = "議論の内容には踏み込むが、答えは与えない「議論促進型」のファシリテーターです。"
+ROLE_LINE_CONCRETE = "議論の内容には踏み込むが、結論は参加者に委ねる「議論促進型」のファシリテーターです。具体案の例を示すのは、下の「内容支援」の方針に従うときだけです。"
+assert COMMON_PROMPT.count(ROLE_LINE) == 1
+# 介入の段階を変えたり内容支援を有効にしたりすると、同じ区切りに複数の項目が反応しうる。そのときの方針(固定の優先順位は設けない)。
+# 就活GD標準(すべて標準・内容支援なし)のプロンプトは変えないよう、それ以外のときだけ「発話のルール」の前に入れる
+OVERLAP_NOTE = """
+# 介入を検討する場面が重なるとき
+上の場面がいくつか同時に当てはまっても、その場で最も必要な介入を1つだけ選び、ほかは見送ってください(1回の判断で選べる行動は1つです)。
+同じ区切りで、整理・発言の促し・内容支援などを続けて行わないでください。どれも急ぐ必要がなければ no_intervention を選びます。
+"""
+RULES_HEAD = "\n# 発話のルール\n"
+assert COMMON_PROMPT.count(RULES_HEAD) == 1
 
 
 def build_content_block(scope: str, initiative: str) -> str:
+    texts = CONTENT_INITIATIVE_TEXT[initiative]
+    initiative_text = texts if isinstance(texts, str) else texts[scope]
     lines = [
         f"\n# 内容支援(主催者の設定: 範囲={CONTENT_LABELS[scope]} / 自発的な支援={CONTENT_LABELS[initiative]})",
         "内容支援は、参加者が考えを進めるための材料を補うものです。あなたが議論を主導したり、結論を決めたりしてはいけません。",
@@ -209,7 +231,7 @@ def build_content_block(scope: str, initiative: str) -> str:
             "(例:「例えば〜という案も考えられます。皆さんはどう思いますか?」)。勧めたり、評価したり、採用を求めたりはしません。1〜3文。"
         )
     lines += [
-        f"- 内容支援のアクションは「許可されたアクション」にあるときだけ使えます。{CONTENT_INITIATIVE_TEXT[initiative]}",
+        f"- 内容支援のアクションは「許可されたアクション」にあるときだけ使えます。{initiative_text}",
         "- 内容支援以外のアクション(ask_question・organize_issues など)の発話には、参加者が出していない観点やアイデアを混ぜないでください。",
         "- 頼まれた内容が設定の範囲を超えるとき(例: ヒントまでの設定で具体案を求められた)は、範囲の中で応じます。",
         "- 1回に示すのは1つだけです。参加者が考える時間を残し、続けて内容支援をしないでください。",
@@ -226,6 +248,10 @@ def build_common_prompt(levels: dict[str, str] | None = None, content_scope: str
             text = text.replace(LEVEL_TEXT[item]["standard"], LEVEL_TEXT[item][level])
     if content_scope != "none":
         text = text.replace(ROLE_DONT["none"], ROLE_DONT[content_scope])
+    if content_scope == "concrete":
+        text = text.replace(ROLE_LINE, ROLE_LINE_CONCRETE)
+    if content_scope != "none" or any(v != "standard" for v in (levels or {}).values()):
+        text = text.replace(RULES_HEAD, OVERLAP_NOTE + RULES_HEAD)
     return text
 
 
