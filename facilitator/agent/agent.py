@@ -407,8 +407,12 @@ class FacilitatorAgent:
         if action == Action.start_gd:  # テーマと時間だけを短く伝える
             limit = "時間の制限はありません" if st.duration_sec >= UNLIMITED_SEC else f"時間は{int(st.duration_sec // 60)}分です"
             return f"テーマは「{st.theme}」、{limit}。始めてください。"
+        casual = self.dtype.key == "casual"  # 雑談型は結論を求めない
         if action == Action.time_warning:
-            return f"残り約{max(1, round(st.remaining(now) / 60))}分です。そろそろ結論に向けてまとめていきましょう。"
+            mins = max(1, round(st.remaining(now) / 60))
+            return f"残り約{mins}分です。" + ("話してみて印象に残ったことも、よければ聞かせてください。" if casual else "そろそろ結論に向けてまとめていきましょう。")
+        if casual:
+            return "時間になりました。今日はここまでにしましょう。ありがとうございました。"
         return "時間になりました。皆さんの結論を最後に確認させてください。お疲れさまでした。"
 
     # ================= Act =================
