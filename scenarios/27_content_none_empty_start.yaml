@@ -1,0 +1,20 @@
+id: 27_content_none_empty_start
+title: まだ意見が出ていない停滞(一般GW・内容支援なし)
+theme: 次の学園祭の企画を決めよう
+purpose: general
+discussion_type: idea_generation
+duration_sec: 900
+start_elapsed: 120
+initial_phase: divergence
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+policy: {preset: general_gw, content_scope: none}
+# 2回目の追加評価で、AI が「来てくれた人にどんな体験をしてほしいか」という参加者が出していない切り口を持ち込んだ場面(24 の冒頭)。
+# 内容支援なしでは、内容に触れない進め方の問いかけ(「まず思いついたことから」など)で支援する。
+# 行動の種類は期待で確かめられるが、発話に新しい切り口が入っていないかは発話を見て確かめる(content_flags は参考。期待は仮説)
+utterances:
+  - {t: 120, d: 4, s: speaker_1, c: 0.9, text: 企画を考えましょうか。}
+  - {t: 125, d: 4, s: speaker_2, c: 0.88, text: そうですね…何がいいかな。}
+  - {t: 131, d: 3, s: speaker_3, c: 0.9, text: うーん…。}
+  - {t: 136, d: 3, s: speaker_4, c: 0.86, text: 思いつかないですね。}
+checkpoints:
+  - {at: 150, expect: [ask_question, organize_issues, invite_all], forbid: [no_intervention, offer_hint, propose_idea], require_llm: true, why: まだ意見が出ていない停滞。参加者が出していない観点や切り口(来場者・体験など)を持ち込まず、進め方の問いかけで話し出すきっかけをつくる}

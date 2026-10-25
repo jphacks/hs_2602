@@ -1,0 +1,30 @@
+id: 29_proactive_smooth
+title: 自発的な内容支援が「積極的」でも、順調な議論ではヒントを出さない
+theme: 大学の学食の混雑を改善するには？
+purpose: general
+duration_sec: 600
+start_elapsed: 150
+discussion_type: problem_solving
+initial_phase: cause_analysis
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+policy: {preset: general_gw, content_scope: concrete, content_initiative: proactive}
+# 2回目の追加評価(14 を GW・具体案まで・積極的で流したもの)を正式化。ヒントは許可されているが、参加者が自分たちで進めている間は使わない。
+# 発言は 14_smooth_with_pauses と同じ(期待は仮説。Claude では3回とも見守った)
+utterances:
+  - {t: 150, d: 5, s: speaker_1, c: 0.9, text: 原因は、昼の12時台に人が集中することと、会計の遅さの2つが大きそうですね。}
+  - {t: 156, d: 6, s: speaker_2, c: 0.88, text: 私、去年の春に学食で20分並んだことがあって。レジで小銭を数えている人が多かったんです。}
+  - {t: 163, d: 5, s: speaker_3, c: 0.9, text: その経験、まさに会計の遅さの具体例ですね。現金だと一人あたりの時間が長くなる。}
+  - {t: 169, d: 4, s: speaker_4, c: 0.86, text: だとすると、会計を速くする対策は効果が大きそうです。}
+  - {t: 176, d: 5, s: speaker_1, c: 0.9, text: じゃあ対策を考えましょう。キャッシュレス専用レジはどうですか。}
+  - {t: 182, d: 6, s: speaker_3, c: 0.9, text: 賛成です。ただ、現金しか使わない人もいるので、全部のレジを変えるのは反対です。}
+  - {t: 189, d: 6, s: speaker_2, c: 0.88, text: 私は全部変えた方がいいと思います。混在すると結局列が分かれて分かりにくいので。}
+  - {t: 196, d: 5, s: speaker_4, c: 0.86, text: なるほど、分かりやすさとアクセスのしやすさのどちらを取るか、ですね。}
+  - {t: 205, d: 6, s: speaker_1, c: 0.9, text: 時間帯で分けるのはどうでしょう。ピークの時だけ全部キャッシュレスにするとか。}
+  - {t: 212, d: 5, s: speaker_2, c: 0.88, text: それなら現金の人も、ピークを外せば使えますね。}
+  - {t: 218, d: 6, s: speaker_1, c: 0.9, text: あと、席の回転の対策も要りますよね。食べ終わった人が座ったまま話していることが多いので。}
+  - {t: 225, d: 6, s: speaker_1, c: 0.9, text: ピーク時だけ、食後は空き教室に移ってもらうよう案内するのはどうでしょう。}
+  - {t: 232, d: 4, s: speaker_3, c: 0.9, text: 空き教室の案内、いいですね。掲示なら費用もかかりません。}
+checkpoints:
+  - {at: 175.5, expect: [no_intervention], require_llm: true, why: 経験談から原因の具体化、対策へと自分たちで進んでいる。ヒントは許可されているが使わない}
+  - {at: 204, expect: [no_intervention], require_llm: true, why: 根拠を出し合う建設的な対立で、比較軸も自分たちで言語化している}
+  - {at: 238.5, expect: [no_intervention], require_llm: true, why: 折衷案が出て、新しい論点の案も具体化している}
