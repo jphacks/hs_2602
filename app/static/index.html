@@ -46,7 +46,7 @@ body.framed .device-scroll::-webkit-scrollbar { width: 0; }
 /* ---------- 共通 ---------- */
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; letter-spacing: .06em; }
 /* アプリアイコン風: 角の丸い正方形 + 上からのグラデーション + 白い記号 */
-.purpose .icon, .avatar, .msg .av, .mic {
+.purpose .icon, .avatar, .msg .av {
   background-image: linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,0) 60%); }
 .brand-mark { width: 30px; height: 30px; display: block; }
 .btn { border: 0; background: var(--fill); padding: 10px 18px; border-radius: 999px; color: var(--accent);
@@ -215,7 +215,15 @@ body.framed .device-scroll::-webkit-scrollbar { width: 0; }
 .msg.ai .av { background-color: var(--c); }
 .msg.ai .who b { color: var(--text); }
 .msg .low { color: var(--accent); font-size: 11px; }
-.partial { color: var(--muted); font-style: italic; min-height: 22px; padding: 6px 4px 0; font-size: 14px; }
+.msg.live .bubble { opacity: .75; }
+.msg .live-tag { color: var(--muted); background: var(--fill); }
+/* 声の登録(議論を始める前): 人間の参加者のカードのボタン */
+.enroll-btn { margin-top: 6px; border: 0; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600;
+  background: var(--accent); color: #fff; white-space: nowrap; }
+.enroll-btn.done { background: var(--accent-soft); color: var(--accent); }
+.enroll-btn.rec { background: var(--text); animation: pulse 1.2s ease-in-out infinite; }
+.enroll-btn:disabled:not(.rec) { opacity: .35; }
+@keyframes pulse { 50% { opacity: .55; } }
 .composer { display: flex; gap: 8px; margin-top: 10px; padding-top: 12px; border-top: .5px solid var(--line); }
 .composer select { background: var(--fill); border: 0; border-radius: 999px; padding: 0 12px; }
 .composer .input { padding: 10px 16px; border-radius: 999px; }
@@ -228,14 +236,6 @@ body.framed .device-scroll::-webkit-scrollbar { width: 0; }
 .modal { width: min(480px, 100%); padding: 32px 28px; text-align: center; border-radius: 28px; box-shadow: inset 0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.12) !important; }
 .modal h2 { margin: 14px 0 6px; font-size: 24px; font-weight: 700; }
 .modal p { color: var(--muted); margin: 0 0 18px; }
-.mic { width: 84px; height: 84px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; position: relative; background-color: var(--accent); color: #fff; }
-.mic svg { width: 36px; height: 36px; }
-.mic::before, .mic::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid var(--accent); animation: ripple 1.8s ease-out infinite; }
-.mic::after { animation-delay: .9s; }
-.enrolled { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
-.enrolled span { font-size: 13px; font-weight: 500; padding: 4px 12px; border-radius: 999px; background: var(--fill); color: var(--muted); }
-.enrolled span.ok { color: var(--accent); background: var(--accent-soft); }
-.enrolled span.now { color: #fff; background: var(--accent); }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .hidden { display: none !important; }
 
@@ -319,10 +319,10 @@ body { font-size: 17px; }
 .rotate-hint { display: none; }
 /* 縦向きのスマホでは横向きにするよう案内する(PC などの枠表示では枠が自動で横になるので出さない) */
 @media (orientation: portrait) and (max-width: 700px) {
-  body:not(.framed) #s-session .rotate-hint { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; position: fixed; inset: 0; z-index: 20;
+  body:not(.framed) #s-session .rotate-hint, body:not(.framed) #s-result .rotate-hint { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; position: fixed; inset: 0; z-index: 20;
     background: var(--bg); color: var(--muted); font-size: 17px; }
-  #s-session .rotate-hint svg { width: 56px; height: 56px; color: var(--text); }
-  #s-session .rotate-hint b { color: var(--text); }
+  .rotate-hint svg { width: 56px; height: 56px; color: var(--text); }
+  .rotate-hint b { color: var(--text); }
 }
 /* 時計はタップで経過時間と残り時間を入れ替える */
 .clock { cursor: pointer; user-select: none; -webkit-user-select: none; }
@@ -389,6 +389,16 @@ body { font-size: 17px; }
 .subcard { margin-top: 16px; padding: 16px 16px 8px; border-radius: 16px; background: var(--tile-2); }
 .subcard > .label { display: block; font-size: 15px; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
 .subcard .seg { background: rgba(0, 0, 0, .06); }
+/* 振り返りは横画面: 喋った量(左)と発言の内容(右)を並べ、見出し・会話ログ・ボタンは横いっぱい */
+#s-result { max-width: 1180px; }
+@media (min-width: 700px) {
+  #s-result .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: none; align-items: start; }
+  #s-result .bento > .r-left { grid-column: 1 !important; }
+  #s-result .bento > .r-right { grid-column: 2 !important; }
+  #s-result .setup-actions { flex-direction: row; justify-content: flex-end; }
+  #s-result .setup-actions .btn { padding: 11px 18px; font-size: 15px; }
+  #s-result .tile-hero h1 { font-size: 30px; }
+}
 </style>
 </head>
 <body>
@@ -439,7 +449,7 @@ body { font-size: 17px; }
       <label class="label" for="f-theme">テーマ<span id="theme-opt" class="hidden">(任意)</span></label>
       <div class="theme-row">
         <input class="input" id="f-theme" placeholder="例：大学の学食の混雑を改善するには？">
-        <button type="button" class="btn primary no-chat" id="btn-theme">自動生成</button>
+        <button type="button" class="btn primary" id="btn-theme">自動生成</button>
       </div>
       <div class="no-chat">
         <span class="label sub-label">議論タイプ</span>
@@ -491,14 +501,16 @@ body { font-size: 17px; }
       </div>
     </div>
 
-    <div class="tile span-4 no-chat">
+    <div class="tile span-4">
       <span class="label">その他</span>
-      <div class="knob"><span>入力方法</span><div class="seg" id="seg-input"><button type="button" data-v="voice">🎙 音声</button><button type="button" data-v="text">⌨ テキスト</button></div></div>
-      <div class="hint" id="mode-hint" style="margin:-4px 0 10px"></div>
+      <div class="no-chat">
+        <div class="knob"><span>入力方法</span><div class="seg" id="seg-input"><button type="button" data-v="voice">🎙 音声</button><button type="button" data-v="text">⌨ テキスト</button></div></div>
+        <div class="hint" id="mode-hint" style="margin:-4px 0 10px"></div>
+      </div>
       <div class="toggles">
-        <label class="toggle"><input type="checkbox" id="f-intro" checked>自己紹介で声を登録</label>
-        <label class="toggle"><input type="checkbox" id="f-tts" checked>AI の声を出す</label>
-        <label class="toggle"><input type="checkbox" id="f-spk" checked>話者情報を使う</label>
+        <label class="toggle no-chat"><input type="checkbox" id="f-intro" checked>自己紹介で声を登録</label>
+        <label class="toggle no-chat"><input type="checkbox" id="f-tts" checked>AI の声を出す</label>
+        <label class="toggle"><input type="checkbox" id="f-grow">発言量の可視化</label>
       </div>
     </div>
 
@@ -520,7 +532,7 @@ body { font-size: 17px; }
     <div class="theme" id="b-theme">—</div>
     <div class="chips"><span class="chip" id="b-purpose"></span><span class="chip" id="b-type"></span><span class="chip" id="b-preset"></span><span class="chip" id="b-level"></span><span class="chip" id="b-llm"></span></div>
     <div class="actions">
-      <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>開始</button>
+      <button class="btn primary" id="btn-start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg><span id="start-label">開始</span></button>
       <button class="btn primary hidden" id="btn-result"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>振り返り</button>
       <button class="btn" id="btn-pause" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg><span>一時停止</span></button>
       <button class="btn danger" id="btn-stop" disabled><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>終了</button>
@@ -541,7 +553,6 @@ body { font-size: 17px; }
     <div class="glass logbox" id="logbox" title="タップで大きく表示">
       <div class="head"><h2>会話ログ</h2><span class="head-r"><span class="chip" id="silence"></span><span class="zoom" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></span></span></div>
       <div class="log" id="log"><div class="empty">発言がここに表示されます</div></div>
-      <div class="partial" id="partial"></div>
       <div class="composer">
         <select id="in-speaker"></select>
         <input class="input" id="in-text" placeholder="テキストで発言を追加(Enter で送信)">
@@ -553,6 +564,10 @@ body { font-size: 17px; }
 
 <!-- ============ 4. 結果 ============ -->
 <section class="screen" id="s-result">
+  <div class="rotate-hint">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M2 12a10 10 0 0 0 4 8M20 4l2 2-2 2"/></svg>
+    <b>スマホを横向きにしてください</b>
+  </div>
   <div class="bento bento-result">
     <div class="tile tile-hero span-4">
       <span class="mode-pill">振り返り</span>
@@ -560,13 +575,13 @@ body { font-size: 17px; }
       <div class="r-meta" id="r-meta"></div>
     </div>
 
-    <div class="tile span-4">
+    <div class="tile span-4 r-left">
       <span class="label">喋った量</span>
       <div class="r-share" id="r-share"></div>
       <div class="r-people" id="r-people"></div>
     </div>
 
-    <div class="tile span-4">
+    <div class="tile span-4 r-right">
       <span class="label">発言の内容</span>
       <div class="choice2" id="fb-tabs">
         <button type="button" data-v="types" class="on">発言の種類</button>
@@ -591,15 +606,6 @@ body { font-size: 17px; }
 
 </div><!-- /device-scroll -->
 
-<!-- 自己紹介 -->
-<div class="overlay" id="ov-intro">
-  <div class="glass modal">
-    <div class="mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
-    <h2 id="intro-title">自己紹介</h2>
-    <p>名前と一言を、5秒ほど話してください。AI が声を覚えます。</p>
-    <div class="enrolled" id="intro-list"></div>
-  </div>
-</div>
 
 </div>
 
@@ -614,7 +620,7 @@ const mmss = (s) => { s = Math.max(0, Math.floor(s)); return `${String(Math.floo
 const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }).then((r) => r.json());
 
 const ui = {
-  withAI: false, purpose: "job", dtype: null, minutes: 8, humans: 3, bots: 1, input: "voice", level: 2,
+  withAI: false, purpose: "job", dtype: "", minutes: 8, humans: 3, bots: 1, input: "voice", level: 2,
   knobs: {}, info: null, config: null, started: false,
 };
 let snap = null, logKey = "", doneShown = false;
@@ -626,7 +632,7 @@ function show(id) {
   fitDevice();
   // スマホでは、ディスカッション中だけ横向きに固定を試みる(対応していない端末では何もしない)
   try {
-    if (id === "s-session") screen.orientation?.lock?.("landscape")?.catch?.(() => {});
+    if (id === "s-session" || id === "s-result") screen.orientation?.lock?.("landscape")?.catch?.(() => {});
     else screen.orientation?.unlock?.();
   } catch (e) { /* 未対応 */ }
 }
@@ -637,7 +643,7 @@ function fitDevice() {
   const framed = Math.min(innerWidth, innerHeight) >= 520;  // スマホ(短い辺が 520px 未満)では画面いっぱいに表示
   document.body.classList.toggle("framed", framed);
   if (!framed) return;
-  const landscape = $("s-session").classList.contains("active");
+  const landscape = $("s-session").classList.contains("active") || $("s-result").classList.contains("active");  // 進行と振り返りは横
   const w = landscape ? PHONE.h : PHONE.w, h = landscape ? PHONE.w : PHONE.h;
   const k = Math.min((innerWidth - 64) / w, (innerHeight - 64) / h, 1.3);
   const st = document.body.style;
@@ -684,15 +690,13 @@ const purposeOf = () => (ui.purpose === "job" ? "job" : "general");
 const knobDefaults = (style) => ({ ...(ui.info?.knob_defaults?.[style === "job" ? "job" : "general"] || {}) });
 seg("purpose", "purpose", () => {
   if (ui.purpose !== "custom") ui.knobs = knobDefaults(ui.purpose);
-  if (ui.purpose === "job" && !ui.dtype) ui.dtype = null;          // 就活GDは毎回選ぶ
-  if (ui.purpose !== "job" && ui.dtype == null) ui.dtype = "";  // 就活以外は「指定なし(汎用)」が初期値
   renderTypes(); syncSetup();
 });
-// 議論タイプ: 就活GDは4種類から必須。就活以外は「指定なし(汎用)」も選べる
+// 議論タイプ: 指定なし(汎用)・課題解決型・アイデア創出型・意思決定型・計画立案型。どのスタイルでも「指定なし」が初期値
 const GENERIC_TYPE = { key: "", label: "指定なし(汎用)", phases: ["案出し", "比較検討", "結論"] };
 function typeOptions() {
   const types = ui.info?.discussion_types || [];
-  return purposeOf() === "general" ? [GENERIC_TYPE, ...types] : types;
+  return [GENERIC_TYPE, ...types];
 }
 function typeLabel(key) {
   const t = [GENERIC_TYPE, ...(ui.info?.discussion_types || [])].find((x) => x.key === (key || ""));
@@ -744,7 +748,7 @@ $("btn-theme").onclick = async () => {
   const b = $("btn-theme"); b.disabled = true; b.textContent = "生成中…";
   try {
     const res = await fetch("/api/theme", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ purpose: purposeOf(), exclude: $("f-theme").value.trim() }) });
+      body: JSON.stringify({ purpose: ui.chat ? "casual" : purposeOf(), exclude: $("f-theme").value.trim() }) });
     if (!res.ok) throw new Error(res.status);
     const r = await res.json();
     if (r.theme) { $("f-theme").value = r.theme; $("f-err").textContent = ""; }
@@ -758,16 +762,16 @@ $("setup-form").onsubmit = (ev) => {
   ev.preventDefault();
   const names = [...document.querySelectorAll(".f-name")].slice(0, ui.humans).map((e) => e.value.trim());
   if (!ui.chat && !$("f-theme").value.trim()) { $("f-err").textContent = "テーマを入力するか、自動生成してください"; return; }
-  if (!ui.chat && ui.purpose === "job" && !ui.dtype) { $("f-err").textContent = "議論タイプを選択してください"; return; }
   if (names.some((n) => !n)) { $("f-err").textContent = `参加者の名前を${ui.humans}人分入力してください`; return; }
   const bots = ui.withAI ? ui.bots : 0;
   if (names.length + bots < 2) { $("f-err").textContent = "合計2人以上にしてください(AI参加者ありモードなら AI を加えられます)"; return; }
   $("f-err").textContent = "";
   ui.config = {
     theme: $("f-theme").value.trim(), minutes: ui.minutes, names, mode: ui.input,
-    intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: $("f-spk").checked,
+    intro: $("f-intro").checked, tts: $("f-tts").checked, use_speaker_info: true,  // 話者情報は常に使う
     purpose: purposeOf(), preset: "A", custom: {}, discussion_type: ui.dtype || null, ai_count: bots, ai_level: ui.level,
     knobs: { ...ui.knobs },
+    card_grow: $("f-grow").checked,
   };
   if (ui.chat) {  // 雑談は雑談型・就活以外の初期値・その他は既定で進める(テーマが空ならサーバーで「自由な雑談」にする)
     Object.assign(ui.config, { purpose: "general", discussion_type: "casual", ai_count: 0, knobs: knobDefaults("general"),
@@ -817,7 +821,7 @@ function renderReady() {
   ["btn-start", "btn-pause", "btn-stop"].forEach((id) => $(id).classList.remove("hidden"));
   $("btn-result").classList.add("hidden"); ui.fbPromise = null;
 
-  $("log").innerHTML = '<div class="empty">発言がここに表示されます</div>'; $("partial").textContent = ""; $("silence").textContent = "";
+  $("log").innerHTML = '<div class="empty">発言がここに表示されます</div>'; $("silence").textContent = "";
   renderPhases("", "");
   $("pcards").dataset.key = "";
   renderPeople();
@@ -834,13 +838,12 @@ function renderPhases(phase, target) {
   }).join("");
 }
 
+const CARD_BASE_SEC = 5;  // 全員が最初から5秒ずつ話している状態として計算する(開始時は全員同じ幅)
 function cardGrow(sec, sum, n) {
-  // カードの幅の比率。発言時間の割合が平均(1/n)なら1(開始時と同じ幅)、多いほど広く(最大4倍)、少ないほど狭く(0.5倍)。
-  // 最初の数発言で極端な差がつかないよう、発言の合計が 90 秒に達するまでは差を割り引く(開始時は全員同じ大きさ)
-  if (!sum) return 1;
-  const r = (sec / sum) * n;
-  const target = Math.min(4, Math.max(0.5, Math.pow(r, 0.8)));
-  return 1 + (target - 1) * Math.min(1, sum / 90);
+  // カードの幅の比率。発言時間の割合が平均(1/n)なら1、多いほど広く(最大4倍)、少ないほど狭く(0.5倍)
+  if (!n) return 1;
+  const r = ((sec + CARD_BASE_SEC) / (sum + CARD_BASE_SEC * n)) * n;
+  return Math.min(4, Math.max(0.5, Math.pow(r, 0.8)));
 }
 
 // 時計: 既定は経過時間を大きく、残り時間を小さく表示する。タップで入れ替える
@@ -867,16 +870,34 @@ function renderPeople() {
   const key = JSON.stringify(ps.map((p) => [p.id, p.name, p.bot?.stance || "", p.bot?.opinion || ""]));
   if (box.dataset.key !== key) {
     // 参加者の顔ぶれが変わったときだけカードを作り直す(幅のアニメーションを途切れさせないため)
+    const humanIds = ps.filter((p) => !p.bot).map((p) => p.id);
     box.innerHTML = ids.map((id) => {
       const bot = botOf[id];
       return `<div class="glass pcard ${bot ? "bot" : ""}" data-id="${id}" style="--c:${color(id)}">
         <div class="badges"></div>
         <div class="avatar">${bot ? ROBOT : esc(n[id].slice(0, 1))}</div>
         <div class="name">${esc(n[id])}</div>
+        ${bot ? "" : `<button type="button" class="enroll-btn hidden" data-idx="${humanIds.indexOf(id)}"></button>`}
       </div>`;
     }).join("");
     box.dataset.key = key;
+    box.querySelectorAll(".enroll-btn").forEach((b) => b.onclick = async () => {
+      // 登録中のボタンは「登録を終了」(ここまでの声で登録する)
+      const r = b.classList.contains("rec") ? await post("/api/enroll/finish") : await post("/api/enroll", { index: +b.dataset.idx });
+      if (!r.ok) alert(r.error);
+    });
   }
+  // 声の登録(自己紹介): 議論を始める前だけ、人間の参加者のカードにボタンを出す
+  const intro = snap?.status === "intro" ? snap.intro : null;
+  box.querySelectorAll(".pcard").forEach((card) => {
+    const b = card.querySelector(".enroll-btn"); if (!b) return;
+    b.classList.toggle("hidden", !intro);
+    if (!intro) return;
+    const name = n[card.dataset.id], rec = intro.recording === card.dataset.id, done = intro.enrolled.includes(name);
+    b.textContent = rec ? "■ 登録を終了" : done ? "✓ 登録済み" : intro.failed.includes(name) ? "もう一度登録" : "声を登録";
+    b.className = `enroll-btn ${rec ? "rec" : done ? "done" : ""}`;
+    b.disabled = !!intro.recording && !rec;
+  });
   const stats = Object.fromEntries((snap?.stats || []).map((s) => [s.speaker_id, s]));
   const sum = Object.values(stats).reduce((a, s) => a + s.total_speech_sec, 0);
   const enrolled = new Set(snap?.intro?.enrolled || []);
@@ -886,13 +907,16 @@ function renderPeople() {
     card.classList.toggle("active", snap?.active_speaker === id);
     card.querySelector(".badges").innerHTML = (bot ? '<span class="badge ai">AI</span>' : "")
       + (enrolled.has(n[id]) ? '<span class="badge voice">声 ✓</span>' : "");
-    card.style.flexGrow = cardGrow(s.total_speech_sec, snap?.started ? sum : 0, ids.length).toFixed(3);
+    const grow = ui.config?.card_grow === false ? 1 : cardGrow(s.total_speech_sec, snap?.started ? sum : 0, ids.length);
+    card.style.flexGrow = grow.toFixed(3);
   });
 }
 
 function render() {
   const s = snap; if (!s || !s.theme) return;
   const running = s.status === "running" || s.status === "intro";
+  const introNow = s.status === "intro";
+  $("start-label").textContent = introNow ? "議論を始める" : "開始";
   $("b-theme").textContent = s.theme;
   $("b-purpose").textContent = s.purpose === "general" ? "就活以外" : "就活";
   $("b-type").textContent = s.discussion_type || "";
@@ -910,7 +934,7 @@ function render() {
   renderPhases(s.phase, s.status === "finished" ? "" : s.target_phase);
 
   // ボタン
-  $("btn-start").disabled = running || s.status === "finished";
+  $("btn-start").disabled = (running && !introNow) || s.status === "finished" || (introNow && !!s.intro.recording);
   const finished = s.status === "finished" && s.started;  // 終わったら「開始」の代わりに「振り返り」を出す
   ["btn-start", "btn-pause", "btn-stop"].forEach((id) => $(id).classList.toggle("hidden", finished));
   $("btn-result").classList.toggle("hidden", !finished);
@@ -922,14 +946,7 @@ function render() {
 
   renderPeople();
   renderLog(s);
-  $("partial").textContent = s.partial ? `… ${s.partial}` : "";
 
-  // 自己紹介
-  $("ov-intro").classList.toggle("show", s.status === "intro" && !!s.intro.current);
-  if (s.status === "intro") {
-    $("intro-title").textContent = s.intro.current ? `${s.intro.current}さん、どうぞ` : "自己紹介";
-    $("intro-list").innerHTML = (s.humans || Object.keys(s.names)).map((id) => s.names[id]).map((n) => `<span class="${s.intro.enrolled.includes(n) ? "ok" : n === s.intro.current ? "now" : ""}">${s.intro.enrolled.includes(n) ? "✓ " : ""}${esc(n)}</span>`).join("");
-  }
   // 終了
   if (s.status === "finished" && s.started && !doneShown) {
     doneShown = true;
@@ -938,11 +955,19 @@ function render() {
 }
 
 function renderLog(s) {
-  const key = JSON.stringify(s.utterances.map((u) => [u.id, u.speaker_id, u.text]));
+  // 認識中の発言(「。」ごとの吹き出し。文ごとに推定した話者)
+  const live = s.status === "running" && s.partial
+    ? (s.partial_parts?.length ? s.partial_parts : [{ text: s.partial, speaker: s.partial_speaker }]) : null;
+  const key = JSON.stringify([s.utterances.map((u) => [u.id, u.speaker_id, u.text]), live, s.status === "intro"]);  // 認識中の文が変わるたびに描き直す
   if (key === logKey || document.activeElement?.classList?.contains("relabel")) return;
   logKey = key;
   const box = $("log"); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-  if (!s.utterances.length) { box.innerHTML = '<div class="empty">発言がここに表示されます</div>'; return; }
+  if (!s.utterances.length && !live) {
+    box.innerHTML = s.status === "intro"
+      ? '<div class="empty">参加者のカードの「声を登録」を押して、一言ずつ自己紹介してください。<br>話し終えたら「登録を終了」を押します(少し黙ると自動でも終わります)。<br>全員終わったら「議論を始める」を押します。</div>'
+      : '<div class="empty">発言がここに表示されます</div>';
+    return;
+  }
   const humans = new Set(s.humans || Object.keys(s.names));
   const opts = (sel) => Object.entries(s.names).filter(([id]) => humans.has(id)).map(([id, n]) => `<option value="${id}" ${id === sel ? "selected" : ""}>${esc(n)}</option>`).join("")
     + `<option value="unknown" ${sel === "unknown" ? "selected" : ""}>不明</option>`;
@@ -955,6 +980,14 @@ function renderLog(s) {
     : `<div class="msg${cls(u)}" style="--c:${u.speaker_id === "unknown" ? "#c7c7cc" : color(u.speaker_id)}"><div class="av">${esc((s.names[u.speaker_id] || "?").slice(0, 1))}</div>
        <div><div class="who"><select class="relabel" data-id="${u.id}" title="話者を修正">${opts(u.speaker_id)}</select><time>${mmss(u.t)}</time>
        ${u.conf < 0.7 && u.speaker_id !== "unknown" ? '<span class="low">低確信</span>' : ""}</div><div class="bubble">${esc(u.text)}</div></div></div>`).join("");
+  if (live) {  // 認識中: 文ごとに話している人(推定)の吹き出しを出す。確定すると文ごとの発言に置き換わる
+    box.insertAdjacentHTML("beforeend", live.map((p) => {
+      const c = p.speaker ? color(p.speaker) : "#c7c7cc";
+      const nm = p.speaker ? (s.names[p.speaker] || "?") : "認識中";
+      return `<div class="msg live" style="--c:${c}"><div class="av">${p.speaker ? esc(nm.slice(0, 1)) : "…"}</div>
+        <div><div class="who"><b>${esc(nm)}</b><span class="aitag live-tag">認識中</span></div><div class="bubble">${esc(p.text)}</div></div></div>`;
+    }).join(""));
+  }
   s.utterances.forEach((u) => seenMsg.add(u.id));
   box.querySelectorAll(".relabel").forEach((el) => el.onchange = () => { post("/api/relabel", { id: +el.dataset.id, speaker_id: el.value }); el.blur(); });
   if (atBottom) box.scrollTop = box.scrollHeight;
@@ -962,6 +995,11 @@ function renderLog(s) {
 
 $("btn-start").onclick = async () => {
   if (!ui.config) return show("s-setup");
+  if (snap?.status === "intro") {  // 声の登録を終えて議論に入る
+    const r = await post("/api/begin");
+    if (!r.ok) alert(r.error);
+    return;
+  }
   $("btn-start").disabled = true;
   const r = await post("/api/start", ui.config);
   if (!r.ok) { $("btn-start").disabled = false; alert(r.error); return; }

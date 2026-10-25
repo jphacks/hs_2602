@@ -41,6 +41,7 @@ from facilitator.participants import (
     transcript_for_bot,
 )
 from facilitator.report import RecordingLLM, TestReport
+from facilitator.speaker.split import fill_labels, per_sentence, sentence_spans, split_sentences
 from facilitator.state import DiscussionState
 from facilitator.stt.base import TranscriptEvent, is_noise_text
 
@@ -157,6 +158,11 @@ class Engine:
         self.level_db = -100.0
         self.ai_speaking = False
         self._ai_mute_until = 0.0
+        self.partial_speaker: str | None = None  # 認識中の発言の話者の推定
+        self.partial_parts: list[dict[str, Any]] = []  # 認識中の発言を「。」で分けたもの [{text, speaker}]
+        self._partial_labels: list[tuple[str | None, bool]] = []  # 文ごとの (話者, 書き終わった文の判定か)
+        self._partial_turn: int | None = None
+        self._partial_id_at = 0.0
         self._voice_end: float | None = None  # VAD で声が止まった時刻(音声モードの区切り判定に使う)
         self._agent_busy = False
         self.redirect_log: list[dict[str, Any]] = []  # 軌道修正の結果(話した / 取り消し)の計測
@@ -180,6 +186,7 @@ class Engine:
         self._speaking_as: str | None = None  # 今声を出している話者(AI_SPEAKER / AI 参加者の ID)
         self._feedback: tuple[int, dict[str, Any]] | None = None  # (セッションの世代, 振り返り)
         self._feedback_lock = threading.Lock()
+        self._enroll_stop = threading.Event()  # 声の登録を画面のボタンで終える合図
         self._speak_lock = threading.RLock()  # 発話を1つずつにする(_speak_decision → _say の入れ子で取り直す)
         self.ai_level: int | None = None
         self._interval: tuple[float, float] | None = None
@@ -268,6 +275,7 @@ class Engine:
             policy=policy,
         )
         self.intro = IntroState()
+        self.partial, self.partial_speaker, self.partial_parts, self._partial_labels = "", None, [], []
         self.events = []
         self._t0 = self.clock.monotonic()
         self._ai_mute_until = 0.0  # 時計を0に戻すので、前のセッションの時計でのミュート時刻を持ち越さない
@@ -302,8 +310,6 @@ class Engine:
                 "AI参加者: " + "、".join(f"{p.name}({p.stance})" for p in self.personas)
                 + f" / {'練習相手モード' if self.bot_mode == 'active' else '控えめモード'}"
             )
-        if self.status == "intro" and background:
-            threading.Thread(target=self._intro_flow, args=(gen,), daemon=True).start()
         self._note(f"セッション開始({cfg.mode} モード)")
 
     def _alive(self, gen: int) -> bool:
@@ -356,7 +362,9 @@ class Engine:
         self._vid = VoiceIdentifier()
         self._buf = AudioBuffer()
         self._vad = EnergyVAD()
-        self._stt = AssemblyAIStream(speaker_labels=False, keyterms=list(self.cfg.names) if self.cfg else None)
+        # 一文ずつ確定させる: Universal-3.x Pro は「文末の句読点 + min_turn_silence の無音」でターンを区切る
+        self._stt = AssemblyAIStream(speaker_labels=False, keyterms=list(self.cfg.names) if self.cfg else None,
+                                     extra_params={"min_turn_silence": "300"})
         self._stt.start(lambda e: self._on_stt(e) if gen == self._gen else None)
         self._q = queue.Queue()
         self._mic = Mic(self._q.put)
@@ -392,6 +400,9 @@ class Engine:
         if e.kind == "partial":
             if not self.ai_speaking:  # AI の発話中の途中経過は、ほとんどが AI 自身の声なので出さない
                 self.partial = e.text
+                if self.state and e.text.strip():
+                    self.state.heard_at = self.now()  # 認識中は沈黙を数えない(確定は話し終わってから届くため)
+                    self._guess_partial_speaker(e)
             return
         if e.kind == "error":
             self._note(f"STT エラー: {e.text[:80]}")
@@ -399,18 +410,70 @@ class Engine:
         if e.kind != "final" or e.start is None or is_noise_text(e.text) or self.paused:
             return
         self.partial = ""
+        self.partial_speaker, self.partial_parts, self._partial_labels = None, [], []
         if self.status == "intro":
             self.intro.turns.append(e)
             return
-        sid, conf = UNKNOWN, 0.0
-        if self._vid and self._vid.enrolled:
+        for text, start, end, sid, conf in self._identify_by_sentence(e):
+            echo = self._echo_of_ai(text, start, end)
+            if echo:
+                self._note(f"AI の声の回り込みとみなして除外: {echo}")
+                continue
+            self.state.add_utterance(sid, text, start, end, conf)
+
+    def _guess_partial_speaker(self, e: TranscriptEvent) -> None:
+        """認識中の発言を「。」ごとに分け、文ごとに話者を推定する(画面の「認識中」の吹き出し)。
+        書き終わった文はその文の声で1回判定し、書きかけの文は新しい文が始まった時と約1秒ごとに判定し直す。
+        確定したときは文ごとの判定(_identify_by_sentence)で置き換わる。"""
+        parts = split_sentences(e.text) or [e.text]
+        if e.turn_order != self._partial_turn:  # 新しいターン
+            self._partial_turn, self._partial_labels = e.turn_order, []
+        labels = self._partial_labels
+        vid, buf = self._vid, self._buf
+        if vid and vid.enrolled and buf and e.start is not None and e.end is not None:
+            spans = sentence_spans(parts, e.start, e.end, (e.raw or {}).get("words"))
+            now = self.now()
+            for i, (s, t) in enumerate(spans):
+                done = i < len(parts) - 1
+                if i < len(labels) and (done and labels[i][1] or not done and now - self._partial_id_at < 1.0):
+                    continue  # 書き終わった文は判定済み / 書きかけの文は1秒以内に判定済み
+                if t - s >= vid.min_sec:
+                    r = vid.identify(buf.segment(max(s, t - 4.0), t))
+                    lab = (r.speaker_id if r.speaker_id != UNKNOWN else None, done)
+                else:  # 短すぎる文は前の文の話者を引き継ぐ(書き終わっていれば確定扱い)
+                    lab = (labels[i - 1][0] if 0 < i <= len(labels) else None, done)
+                if i < len(labels):
+                    labels[i] = lab
+                else:
+                    labels.append(lab)
+                if not done:
+                    self._partial_id_at = now
+        self.partial_parts = [{"text": p, "speaker": labels[i][0] if i < len(labels) else None} for i, p in enumerate(parts)]
+        self.partial_speaker = self.partial_parts[-1]["speaker"]
+
+    def _identify_by_sentence(self, e: TranscriptEvent) -> list[tuple[str, float, float, str, float]]:
+        """誰が話したかを文ごとに判定する。複数人が間をあけずに話して1つのターンになった場合も、人ごとの発言に分ける。
+        短すぎて判定できない文・不確かな文は前後の文の話者を引き継ぎ、同じ人が続く文はまとめる。"""
+        assert e.start is not None and e.end is not None
+        if not (self._vid and self._vid.enrolled):
+            return [(e.text, e.start, e.end, UNKNOWN, 0.0)]
+        parts = split_sentences(e.text)
+        if len(parts) <= 1:
             r = self._vid.identify(self._buf.segment(e.start - 0.1, e.end + 0.1))
-            sid, conf = r.speaker_id, r.confidence
-        echo = self._echo_of_ai(e.text, e.start, e.end)
-        if echo:
-            self._note(f"AI の声の回り込みとみなして除外: {echo}")
-            return
-        self.state.add_utterance(sid, e.text, e.start, e.end, conf)
+            return [(e.text, e.start, e.end, r.speaker_id, r.confidence)]
+        spans = sentence_spans(parts, e.start, e.end, (e.raw or {}).get("words"))
+        # 文(「。」)ごとに声を照合し直し、文ごとに1つの発言にする
+        labels: list[tuple[str, float] | None] = []
+        for s, t in spans:
+            if t - s >= self._vid.min_sec:
+                r = self._vid.identify(self._buf.segment(s - 0.05, t + 0.05))
+                labels.append((r.speaker_id, r.confidence))
+            else:
+                labels.append(None)
+        if all(lb is None or lb[0] == UNKNOWN for lb in labels):  # どの文も判定できなければ、ターン全体の判定を各文に使う
+            r = self._vid.identify(self._buf.segment(e.start - 0.1, e.end + 0.1))
+            labels = [(r.speaker_id, r.confidence)] * len(parts)
+        return per_sentence(parts, spans, fill_labels(labels, UNKNOWN))
 
     def _echo_of_ai(self, text: str, start: float, end: float) -> str | None:
         """AI の発話と時間が重なる文字起こしが、AI の発言とよく似ていれば(スピーカーの声をマイクが拾った)理由を返す。"""
@@ -426,49 +489,94 @@ class Engine:
         return f"一致度 {sim:.2f}" if sim >= ECHO_SIMILARITY else None
 
     # ================= 自己紹介(声の登録) =================
-    def _intro_flow(self, gen: int) -> None:
+    def enroll(self, index: int) -> dict[str, Any]:
+        """画面の「声を登録」: index 番目の人間の参加者の声を、今から話す自己紹介で登録する(やり直しもできる)。"""
+        cfg = self.cfg
+        with self._session_lock:
+            if self.status != "intro" or not cfg or not (0 <= index < len(cfg.names)):
+                return {"ok": False, "error": "今は声を登録できません"}
+            if self.intro.index >= 0:
+                return {"ok": False, "error": f"{cfg.names[self.intro.index]}さんの登録中です"}
+            self.intro.index = index
+            self.intro.turns = []
+            self._enroll_stop.clear()
+            gen = self._gen
+        threading.Thread(target=self._enroll_one, args=(gen, index), daemon=True).start()
+        return {"ok": True}
+
+    def finish_enroll(self) -> dict[str, Any]:
+        """画面の「登録を終了」: 今の人の声の登録を、ここまでに話した声で終える。"""
+        if self.status != "intro" or self.intro.index < 0:
+            return {"ok": False, "error": "登録中の人はいません"}
+        self._enroll_stop.set()
+        return {"ok": True}
+
+    def begin(self) -> dict[str, Any]:
+        """画面の「議論を始める」: 声の登録を終えて議論に入る(次のエージェントのサイクルで開始の説明をする)。"""
+        with self._session_lock:
+            if self.status != "intro":
+                return {"ok": False, "error": "今は始められません"}
+            if self.intro.index >= 0:
+                return {"ok": False, "error": "声の登録が終わるまでお待ちください"}
+            self.status = "running"
+        return {"ok": True}
+
+    def _enroll_one(self, gen: int, i: int) -> None:
         st, cfg = self.state, self.cfg
         assert st and cfg and self._vid and self._buf
-        self.clock.sleep(1.0)
-        for i, name in enumerate(cfg.names):
-            if not self._alive(gen):
-                return
-            sid = f"speaker_{i + 1}"
-            self.intro.index = i
-            self.intro.turns = []
-            if i == 0:
-                prompt = (
-                    "はじめに、お一人ずつ、お名前と一言自己紹介をお願いします。"
-                    f"私が声を覚えますので、5秒ほど話してください。では、{name}さんからどうぞ。"
-                )
-            else:
-                prompt = f"ありがとうございます。次は{name}さん、お願いします。"
-            self._say(prompt, record=True, gen=gen)
-            t_start = self.now()
+        sid, name = f"speaker_{i + 1}", cfg.names[i]
+        t_start = self.now()
+        self._voice_end = None
+
+        def mine() -> list[TranscriptEvent]:
+            # ボタンを押した後に話し始めた声だけを使う(前の人の遅れて届いた文字起こしを除く)
+            return [t for t in self.intro.turns if t.start is not None and t.start >= t_start - 0.3]
+
+        try:
             while self._alive(gen):
                 self.clock.sleep(0.2)
-                voiced = sum(t.end - t.start for t in self.intro.turns)
-                last_end = max((t.end for t in self.intro.turns), default=None)
-                quiet = not st.speaking_now and last_end is not None and self.now() - last_end >= INTRO_END_SILENCE_SEC
+                if self._enroll_stop.is_set():  # 「登録を終了」が押された: 話し終わりの文字起こしが届くのを少し待つ
+                    deadline = self.now() + 2.0
+                    while self._alive(gen) and self.now() < deadline and (st.speaking_now or self.partial):
+                        self.clock.sleep(0.1)
+                    break
+                turns = mine()
+                voiced = sum(t.end - t.start for t in turns)
+                last_end = max((t.end for t in turns), default=None)
+                # 区切りは「マイクが実際に静かになってからの時間」で判断する(文字起こしの確定は遅れて届くため)
+                heard_end = max(x for x in (last_end, self._voice_end) if x is not None) if last_end is not None else None
+                quiet = not st.speaking_now and heard_end is not None and self.now() - heard_end >= INTRO_END_SILENCE_SEC
                 if (voiced >= INTRO_MIN_VOICED_SEC and quiet) or self.now() - t_start > INTRO_TIMEOUT_SEC:
                     break
-            turns = list(self.intro.turns)
+            if not self._alive(gen):
+                return
+            turns = [t for t in mine() if not self._is_enrolled_voice(t, sid)]
             if turns:
                 audio = np.concatenate([self._buf.segment(t.start, t.end) for t in turns])
+                self._vid.enrolled.pop(sid, None)  # 登録し直しのときは前の声を捨てる
                 self._vid.enroll(sid, audio)
                 st.set_speaker_name(sid, name, confirmed=True)
-                self.intro.enrolled.append(name)
+                if name not in self.intro.enrolled:
+                    self.intro.enrolled.append(name)
+                if name in self.intro.failed:
+                    self.intro.failed.remove(name)
                 for t in turns:
                     st.add_utterance(sid, t.text, t.start, t.end, 1.0)
                 self._note(f"{name}さんの声を登録しました({len(audio) / 16000:.1f}秒)")
             else:
-                self.intro.failed.append(name)
-                self._note(f"{name}さんの自己紹介を取得できませんでした(匿名のまま進行)")
-        with self._session_lock:
-            if not self._alive(gen):
-                return
-            self.intro.index = -1
-            self.status = "running"  # 次のエージェントのサイクルで start_gd が発動する
+                if name not in self.intro.failed and name not in self.intro.enrolled:
+                    self.intro.failed.append(name)
+                self._note(f"{name}さんの声を取得できませんでした")
+        finally:
+            if gen == self._gen:
+                self.intro.index = -1
+
+    def _is_enrolled_voice(self, t: TranscriptEvent, sid: str) -> bool:
+        """自己紹介の声が、すでに登録した別の人の声とはっきり一致するか(前の人がまだ話していた場合など)。"""
+        if not (self._vid and self._vid.enrolled) or t.start is None or t.end is None:
+            return False
+        r = self._vid.identify(self._buf.segment(t.start, t.end))
+        return r.speaker_id not in (UNKNOWN, sid) and r.confidence >= 0.8
 
     # ================= エージェント =================
     def _agent_loop(self, gen: int) -> None:
@@ -1105,6 +1213,8 @@ class Engine:
             "thinking": self._agent_busy,
             "level_db": round(self.level_db, 1),
             "partial": self.partial,
+            "partial_speaker": self.partial_speaker,
+            "partial_parts": self.partial_parts,
             "use_speaker_info": self.settings.use_speaker_info,
             "reliability": round(st.speaker_reliability(), 2),
             "stats": [x.model_dump() for x in st.speaker_stats(now)],
@@ -1113,6 +1223,7 @@ class Engine:
             "interventions": len(st.interventions),
             "intro": {
                 "current": cfg.names[self.intro.index] if 0 <= self.intro.index < len(cfg.names) else None,
+                "recording": f"speaker_{self.intro.index + 1}" if 0 <= self.intro.index < len(cfg.names) else None,
                 "enrolled": self.intro.enrolled,
                 "failed": self.intro.failed,
             },

@@ -64,12 +64,11 @@ def test_problem_solving_definition_unchanged():
     assert "目的:" not in block and block.count("\n- ") == 5
 
 
-# ---------- 手動指定(暗黙の割り当てをしない) ----------
-def test_job_requires_explicit_type():
-    with pytest.raises(ValueError, match="議論タイプを選択"):
-        resolve_session_type(None, "job")
-    with pytest.raises(ValueError):
-        resolve_session_type("generic", "job")  # 就活GDでは4種類から選ぶ
+# ---------- 手動指定 ----------
+def test_job_can_choose_unspecified():
+    """2026-10-25 ユーザー決定: 就活GDでも「指定なし」(汎用型)を選べる。"""
+    assert resolve_session_type(None, "job") is GENERIC
+    assert resolve_session_type("generic", "job") is GENERIC
     with pytest.raises(ValueError):
         resolve_session_type("chat", "job")  # 雑談型などは対象外
     for k in SELECTABLE_TYPES:
@@ -140,15 +139,15 @@ def test_engine_snapshot_shows_selected_type(engine, key):
 def test_engine_rejects_missing_type_without_stopping_running_session(engine):
     engine.start(_cfg(discussion_type="planning"))
     with pytest.raises(ValueError):
-        engine.start(_cfg())  # 就活GDで未選択
+        engine.start(_cfg(discussion_type="casual"))  # 就活GDでは選べない(雑談型は雑談モードだけ)
     assert engine.status == "running" and engine.agent.dtype.key == "planning"  # 走っているセッションはそのまま
 
 
 def test_api_start_validates_theme_and_type(engine, monkeypatch):
     monkeypatch.setattr(server, "engine", engine)
     base = dict(minutes=5, names=["A", "B"], mode="text", intro=False, tts=False)
-    r = server.start(server.StartReq(theme="テーマ", **base))
-    assert not r["ok"] and "議論タイプ" in r["error"]
+    assert server.start(server.StartReq(theme="テーマ", **base))["ok"]  # 「指定なし」は就活GDでも汎用型
+    assert engine.agent.dtype is GENERIC
     r = server.start(server.StartReq(theme="  ", discussion_type="planning", **base))
     assert not r["ok"] and "テーマ" in r["error"]
     assert server.start(server.StartReq(theme="テーマ", discussion_type="idea_generation", **base))["ok"]
@@ -165,7 +164,7 @@ def test_api_info_lists_four_types():
 def test_ui_has_type_selector_and_validation():
     html = (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
     assert 'id="seg-type"' in html and 'id="b-type"' in html
-    assert "議論タイプを選択してください" in html and "discussion_type: ui.dtype || null" in html
+    assert "discussion_type: ui.dtype || null" in html and "[GENERIC_TYPE, ...types]" in html  # どのスタイルでも「指定なし」を選べる
     assert "discussion_type: s.discussion_type_key" in html  # 再読み込み時もタイプを引き継ぐ
 
 
@@ -218,3 +217,13 @@ def test_casual_is_only_for_chat_mode():
     st = DiscussionState(settings=load_settings(), theme=CASUAL_FREE_THEME, duration_sec=600)
     ag = FacilitatorAgent(st, None, load_settings(), purpose="general", discussion_type="casual")
     assert ag._template(Action.start_gd, 0.0) == "今日は自由に話しましょう。時間は10分です。始めてください。"
+
+
+def test_casual_theme_generation_uses_casual_topics(monkeypatch):
+    """雑談モードのテーマ自動生成は、結論のいらない身近な話題から選ぶ(モック・失敗時は候補から)。"""
+    from facilitator.llm.mock_llm import MockLLM
+
+    monkeypatch.setattr(server, "make_llm", lambda settings: MockLLM())
+    for _ in range(5):
+        t = server.theme(server.ThemeReq(purpose="casual"))["theme"]
+        assert t in server.THEME_POOL["casual"]
