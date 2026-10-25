@@ -1,0 +1,17 @@
+id: 22_progress_levels
+title: フェーズの1段階の遅れと①進行・時間管理の段階
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 270
+initial_phase: cause_analysis
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+# 経過50%(目標は解決策の検討)で原因分析が一区切りした。1段階の遅れは、標準・控えめでは「時間配分」の注意の対象外で、積極的では対象(期待は仮説)
+utterances:
+  - {t: 270, d: 5, s: speaker_1, c: 0.9, text: 原因をもう少し挙げると、メニューの選びにくさもありますね。}
+  - {t: 276, d: 5, s: speaker_2, c: 0.88, text: 確かに。メニュー表が見にくいから、レジ前で迷う人がいます。}
+  - {t: 282, d: 4, s: speaker_3, c: 0.9, text: それも会計の遅さにつながってますね。}
+  - {t: 287, d: 5, s: speaker_4, c: 0.86, text: じゃあ原因は、時間の集中・会計の遅さ・席の回転の3つで出揃った感じですかね。}
+  - {t: 293, d: 2, s: speaker_1, c: 0.9, text: そうですね。}
+checkpoints:
+  - {at: 299, when: {progress: high}, expect: [organize_issues, ask_question], forbid: [no_intervention], why: 遅れていて、原因分析が一区切りした。次の段階に進むかを問いかける}
+  - {at: 299, when: {progress: [low, standard]}, expect: [no_intervention], require_llm: true, why: 1段階の遅れで経過60%前。議論は進んでいるので見守る}

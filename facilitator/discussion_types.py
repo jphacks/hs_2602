@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,8 @@ class DiscussionType:
     label: str
     phases: tuple[PhaseDef, ...]
     guidance: str = ""  # このタイプで進行を支援するときの要点(プロンプトに出す)
+    # 内容支援(介入ポリシー⑥)が有効なときの要点。範囲(hint / concrete)ごと。なければ guidance を使う
+    support_guidance: dict[str, str] = field(default_factory=dict, hash=False, compare=False)
 
     @property
     def keys(self) -> list[str]:
@@ -90,6 +92,12 @@ IDEA_GENERATION = DiscussionType(
     key="idea_generation",
     label="アイデア創出型",
     guidance="アイデアを出すのは参加者です。発散中は量と多様さを大切にし、評価や絞り込みを急がせないでください。",
+    support_guidance={
+        "hint": "アイデアを出すのは主に参加者です。発散中は量と多様さを大切にし、評価や絞り込みを急がせないでください。"
+                "案が出ずに止まったときは、考える切り口のヒント(誰の立場から、どんな場面で、など)を示してよいです。",
+        "concrete": "アイデアを出すのは主に参加者です。発散中は量と多様さを大切にし、評価や絞り込みを急がせないでください。"
+                    "案が出ずに止まったときは、呼び水として具体的なアイデアの例を1つ示してよいです(採用するかは参加者が決めます)。",
+    },
     phases=(
         PhaseDef("purpose_check", "目的確認", "誰のために何を実現したいか、条件や前提を確かめている",
                  "目的や対象の認識がずれたまま案出しに入ってかみ合わないとき、目的の確認を促す", 0.15,
@@ -110,6 +118,12 @@ DECISION_MAKING = DiscussionType(
     key="decision_making",
     label="意思決定型",
     guidance="選択肢・評価基準・比較・決定はすべて参加者が行います。AI は選択肢や基準を示さず、参加者が自分で基準を立てて比べられるよう支援してください。",
+    support_guidance={
+        "hint": "評価基準・比較・決定は参加者が行います。基準が出ずに止まったときは、考える観点のヒントを示してよいですが、"
+                "どの選択肢がよいかは示しません。",
+        "concrete": "比較と決定は参加者が行います。止まったときは、評価基準や比べ方の具体例を1つ示してよいですが、"
+                    "どの選択肢を選ぶべきかは示しません。",
+    },
     phases=(
         PhaseDef("options_review", "選択肢確認", "選べる選択肢と、それぞれの中身や前提を確かめている",
                  "選択肢の中身の理解がずれたまま話がかみ合わないとき、各選択肢の確認を促す", 0.2,
@@ -130,6 +144,10 @@ PLANNING = DiscussionType(
     key="planning",
     label="計画立案型",
     guidance="作業の洗い出し・担当・日程の具体化は参加者が行います。AI は作業や計画の案を示さず、抜けや順序を参加者自身が確かめられるよう支援してください。",
+    support_guidance={
+        "hint": "作業の洗い出し・担当・日程は参加者が決めます。抜けを確かめる観点のヒント(準備・当日・事後、など)を示してよいです。",
+        "concrete": "担当・日程と計画全体は参加者が決めます。作業が出ずに止まったときは、必要になりそうな作業の具体例を1つ示してよいです。",
+    },
     phases=(
         PhaseDef("goal_setting", "目標整理", "何を、いつまでに、どの水準で達成するかを確かめている",
                  "目標や期限の認識がずれたまま作業の話に入ってかみ合わないとき、目標の確認を促す", 0.15,

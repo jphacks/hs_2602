@@ -5,6 +5,8 @@
   python scripts/evaluate.py --llm mock        # API なしで配線だけ確認
   python scripts/evaluate.py -s 02 -s 06 -v    # 一部シナリオ、詳細表示
   python scripts/evaluate.py --repeat 3        # 判断のブレを見る
+  python scripts/evaluate.py --preset general_gw          # 介入ポリシーのプリセットを指定(シナリオの policy の代わり)
+  python scripts/evaluate.py -s 18 --set stall=high       # 項目の段階を指定(複数可。シナリオの policy に重ねる)
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from config import ROOT, load_settings  # noqa: E402
 from facilitator.llm.factory import make_llm  # noqa: E402
 from facilitator.logging import TickLogger  # noqa: E402
 from facilitator.report import RecordingLLM, TestReport  # noqa: E402
-from facilitator.scenario import load_scenario, run_scenario  # noqa: E402
+from facilitator.scenario import load_scenario, parse_sets, run_scenario, scenario_policy  # noqa: E402
 
 
 def main() -> None:
@@ -31,7 +33,10 @@ def main() -> None:
     ap.add_argument("-s", "--scenario", action="append", help="シナリオIDの前方一致(複数可)")
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--preset", help="介入ポリシーのプリセット(job_gd / general_gw)")
+    ap.add_argument("--set", action="append", metavar="ITEM=LEVEL", help="介入ポリシーの項目(例 stall=high)")
     args = ap.parse_args()
+    sets = parse_sets(args.set)
 
     overrides = {}
     if args.llm:
@@ -53,8 +58,11 @@ def main() -> None:
     for rep in range(args.repeat):
         for p in paths:
             sc = load_scenario(p)
+            policy = scenario_policy(sc, args.preset, sets)
             title = sc["id"] + (f" (#{rep + 1})" if args.repeat > 1 else "") + f" — {sc['title']}"
-            res = run_scenario(sc, llm, settings, logger, section=report.section(title))
+            res = run_scenario(sc, llm, settings, logger, section=report.section(title), policy=policy)
+            if args.preset or sets or sc.get("policy"):
+                print(f"--- {res.id}: 介入ポリシー {res.policy}")
             for c in res.checks:
                 total += 1
                 passed += c.passed
@@ -94,6 +102,7 @@ def main() -> None:
                     {
                         "rep": rep,
                         "scenario": res.id,
+                        "policy": res.policy,
                         "at": c.at,
                         "expect": c.expect,
                         "passed": c.passed,

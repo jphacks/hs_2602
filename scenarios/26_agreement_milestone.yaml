@@ -1,0 +1,22 @@
+id: 26_agreement_milestone
+title: 対立が合意に至った直後(③論点・意見の整理の境界)
+theme: 大学の学食の混雑を改善するには？
+duration_sec: 600
+start_elapsed: 150
+initial_phase: evaluation
+participants: {speaker_1: たろう, speaker_2: はなこ, speaker_3: けんた, speaker_4: みさき}
+# 2回目の追加評価(21 の 197 秒以降を除いた派生ケース)を正式化。21_organize_levels の 225 秒は、次の話題に移った後で
+# 節目を過ぎているため、合意の節目での判断はこのシナリオで評価する(期待は仮説)。
+# 積極的は参加者自身に確認を促すのが期待だが、合意を参加者が自分たちで確認済みと判断して見守るのも誤りとしない
+utterances:
+  - {t: 150, d: 5, s: speaker_1, c: 0.9, text: 一番効くのはキャッシュレス化だと思います。会計が速くなるので。}
+  - {t: 156, d: 5, s: speaker_2, c: 0.88, text: いや、券売機を増やす方が早いですよ。導入も簡単だし。}
+  - {t: 162, d: 5, s: speaker_1, c: 0.9, text: でも券売機だと結局並びますよね。キャッシュレスの方がいい。}
+  - {t: 168, d: 5, s: speaker_2, c: 0.88, text: キャッシュレスは慣れてない人もいるから、券売機の方が確実です。}
+  - {t: 176, d: 4, s: speaker_3, c: 0.9, text: 両方ありかもしれないですね。}
+  - {t: 181, d: 5, s: speaker_4, c: 0.86, text: 短期は券売機、長期はキャッシュレスとか？}
+  - {t: 187, d: 4, s: speaker_1, c: 0.9, text: それいいですね。}
+  - {t: 192, d: 4, s: speaker_2, c: 0.88, text: 賛成です。}
+checkpoints:
+  - {at: 200, when: {organize: high}, expect: [organize_issues, no_intervention], require_llm: true, why: 合意の節目。参加者自身に決まったこと・未決のことの確認を促す(見守りも可)}
+  - {at: 200, when: {organize: [low, standard]}, expect: [no_intervention], require_llm: true, why: 対立が参加者自身の提案で解消した。標準・控えめは定期的な要約をしない}
