@@ -120,6 +120,12 @@ def result() -> dict:
     return engine.result()
 
 
+@app.get("/api/feedback")
+def feedback() -> dict:
+    """終了したセッションの振り返り(練習の補助)と発言の種類。初回は LLM を1回呼ぶので時間がかかる。"""
+    return engine.feedback()
+
+
 @app.get("/api/info")
 def info() -> dict:
     """画面の初期値。モック版(mock-test ブランチ)ではテキスト入力を既定にする。"""

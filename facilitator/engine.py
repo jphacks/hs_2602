@@ -20,6 +20,7 @@ from config import CUSTOM_KEYS, PRESETS, Settings, knob_overrides, load_settings
 from facilitator.agent.agent import FacilitatorAgent
 from facilitator.agent.topic_return import detect_topic_return
 from facilitator.discussion_types import resolve_session_type
+from facilitator.feedback import build_feedback
 from facilitator.llm.factory import make_llm
 from facilitator.logging import TickLogger
 from facilitator.llm.base import LLMError, supports_stream
@@ -171,6 +172,8 @@ class Engine:
         self._bot_answered_id = -1  # 名指しに答えた発言 ID(二重に答えない)
         self._last_bot_end = -1e9
         self._speaking_as: str | None = None  # 今声を出している話者(AI_SPEAKER / AI 参加者の ID)
+        self._feedback: tuple[int, dict[str, Any]] | None = None  # (セッションの世代, 振り返り)
+        self._feedback_lock = threading.Lock()
         self._speak_lock = threading.RLock()  # 発話を1つずつにする(_speak_decision → _say の入れ子で取り直す)
         self.ai_level: int | None = None
         self._interval: tuple[float, float] | None = None
@@ -920,6 +923,22 @@ class Engine:
                 return u.speaker_id
             return None
         return None
+
+    def feedback(self) -> dict[str, Any]:
+        """終了後の振り返り(練習の補助)と発言の種類。セッションごとに1回だけ作って使い回す。"""
+        r = self.result()
+        if not r.get("ok"):
+            return {"ok": False}
+        key = self._gen
+        with self._feedback_lock:
+            if self._feedback is not None and self._feedback[0] == key:
+                return self._feedback[1]
+            humans = [{"id": p["id"], "name": p["name"]} for p in r["people"] if p["kind"] == "human"]
+            # 振り返りの内容はファイルに保存しない(人の発言の本文を含むため)
+            fb = build_feedback(self.agent.llm, r["theme"], r["discussion_type"], r["log"], humans)
+            if key == self._gen:
+                self._feedback = (key, fb)
+            return fb
 
     def result(self) -> dict[str, Any]:
         """終了後の結果画面用: 全部の発言と、参加者ごとの発言量(回数・秒数・文字数)。"""
