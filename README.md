@@ -1,6 +1,6 @@
 # SHIKAI
 
-[![IMAGE ALT TEXT HERE](https://jphacks.com/wp-content/uploads/2026/07/IMG_5316.png)](https://www.youtube.com/watch?v=piaNsc6ilBI)
+[![SHIKAI デモ動画](https://img.youtube.com/vi/QYKlxxxBx9Y/0.jpg)](https://www.youtube.com/watch?v=QYKlxxxBx9Y)
 
 ## 製品概要
 ### 背景(製品開発のきっかけ、課題等）
