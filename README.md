@@ -1,6 +1,6 @@
 # SHIKAI
 
-[![SHIKAI デモ動画](https://img.youtube.com/vi/QYKlxxxBx9Y/0.jpg)](https://www.youtube.com/watch?v=QYKlxxxBx9Y)
+[![SHIKAI デモ動画](https://img.youtube.com/vi/QYKlxxxBx9Y/maxresdefault.jpg)](https://www.youtube.com/watch?v=QYKlxxxBx9Y)
 
 ## 製品概要
 ### 背景(製品開発のきっかけ、課題等）
